@@ -1,0 +1,218 @@
+"""Edges of the Collectivize graph.
+
+Each edge is directed `source_id -> target_id` and carries its own
+provenance, visibility and lifecycle (from GraphRecord). Person-owned
+edges also carry a recommendation-consent flag, separate from visibility.
+
+Deliberately NOT edges: similarity between people and predicted
+attendance. Those are computed at ranking time and never stored as facts.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from datetime import datetime
+from enum import Enum
+
+from .base import DomainRuleError, GraphRecord, Visibility, require_aware
+
+
+class RecommendationUse(Enum):
+    """Whether a person-owned fact may feed recommendations."""
+
+    NONE = "none"
+    OWN_ONLY = "own_only"  # default: improve only this person's recs
+    NETWORK = "network"  # may also place the person in front of others
+
+
+@dataclass(frozen=True, kw_only=True)
+class Edge(GraphRecord):
+    source_id: str
+    target_id: str
+
+    def __post_init__(self) -> None:
+        if self.source_id == self.target_id:
+            raise DomainRuleError("an edge cannot point to its own source")
+
+
+@dataclass(frozen=True, kw_only=True)
+class PersonOwnedEdge(Edge):
+    recommendation_use: RecommendationUse = RecommendationUse.OWN_ONLY
+
+    def with_recommendation_use(self, use: RecommendationUse) -> PersonOwnedEdge:
+        return replace(self, recommendation_use=use)
+
+
+# --- Person -> Org -----------------------------------------------------------
+
+
+class MemberRole(Enum):
+    MEMBER = "member"
+    OFFICER = "officer"
+    ADMIN = "admin"
+
+
+@dataclass(frozen=True, kw_only=True)
+class MemberOf(PersonOwnedEdge):
+    """Person (source) belongs to Org (target). Two-sided: the person
+    claims it, the org confirms it."""
+
+    role: MemberRole = MemberRole.MEMBER
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    org_confirmed: bool = False
+    visibility: Visibility = Visibility.MEMBERS
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        require_aware(self.started_at, "started_at")
+        require_aware(self.ended_at, "ended_at")
+
+    @property
+    def is_current(self) -> bool:
+        return self.is_active and self.ended_at is None
+
+    @property
+    def is_confirmed_current(self) -> bool:
+        return self.is_current and self.org_confirmed
+
+    @property
+    def is_admin(self) -> bool:
+        return self.is_confirmed_current and self.role is MemberRole.ADMIN
+
+    def confirmed(self) -> MemberOf:
+        return replace(self, org_confirmed=True)
+
+    def with_role(self, role: MemberRole) -> MemberOf:
+        return replace(self, role=role)
+
+    def ended(self, at: datetime) -> MemberOf:
+        return replace(self, ended_at=at)
+
+
+@dataclass(frozen=True, kw_only=True)
+class Follows(PersonOwnedEdge):
+    """Later. One-sided "keep me updated"; no approval, private by default."""
+
+    visibility: Visibility = Visibility.PRIVATE
+
+
+# --- Org -> Org --------------------------------------------------------------
+
+
+class PartOfKind(Enum):
+    CHAPTER_OF = "chapter_of"  # chapter -> national
+    MEMBER_OF_COUNCIL = "member_of_council"  # chapter/club -> council
+    UNDER_INSTITUTION = "under_institution"  # anything -> institution
+
+
+@dataclass(frozen=True, kw_only=True)
+class PartOf(Edge):
+    """Child org (source) is structurally part of parent org (target)."""
+
+    kind: PartOfKind
+    child_accepted: bool = False
+    parent_accepted: bool = False
+    staff_verified: bool = False
+
+    @property
+    def is_established(self) -> bool:
+        both_accepted = self.child_accepted and self.parent_accepted
+        return self.is_active and (both_accepted or self.staff_verified)
+
+
+@dataclass(frozen=True, kw_only=True)
+class PartnersWith(Edge):
+    """Later. Peer (non-hierarchical) relation; needs both confirmations."""
+
+    source_confirmed: bool = False
+    target_confirmed: bool = False
+
+    @property
+    def is_established(self) -> bool:
+        return self.is_active and self.source_confirmed and self.target_confirmed
+
+
+# --- Org -> Event, Event -> Series -------------------------------------------
+
+
+class HostRole(Enum):
+    PRIMARY = "primary"
+    CO_HOST = "co_host"
+
+
+@dataclass(frozen=True, kw_only=True)
+class Hosts(Edge):
+    """Org (source) is responsible for Event (target)."""
+
+    role: HostRole
+    accepted: bool = False
+
+    @property
+    def is_effective(self) -> bool:
+        return self.is_active and self.accepted
+
+
+@dataclass(frozen=True, kw_only=True)
+class InstanceOf(Edge):
+    """Event (source) is one occurrence of EventSeries (target)."""
+
+
+# --- Person -> Event (Later) -------------------------------------------------
+
+
+class RsvpStatus(Enum):
+    GOING = "going"
+    INTERESTED = "interested"
+    NOT_GOING = "not_going"
+
+
+@dataclass(frozen=True, kw_only=True)
+class Rsvp(PersonOwnedEdge):
+    status: RsvpStatus
+    updated_at: datetime
+
+
+class AttendanceMethod(Enum):
+    SELF_REPORTED = "self_reported"
+    HOST_CHECK_IN = "host_check_in"
+    TICKET_SCAN = "ticket_scan"
+
+
+@dataclass(frozen=True, kw_only=True)
+class Attended(PersonOwnedEdge):
+    """Strongest signal; private by default (location history is sensitive)."""
+
+    method: AttendanceMethod
+    visibility: Visibility = Visibility.PRIVATE
+
+
+# --- Person <-> Person (Later) -----------------------------------------------
+
+
+@dataclass(frozen=True, kw_only=True)
+class Connected(PersonOwnedEdge):
+    """Mutual connection; exists only when both people accept."""
+
+    source_accepted: bool = False
+    target_accepted: bool = False
+    visibility: Visibility = Visibility.CONNECTIONS
+
+    @property
+    def is_established(self) -> bool:
+        return self.is_active and self.source_accepted and self.target_accepted
+
+
+# --- Tagging -----------------------------------------------------------------
+
+
+@dataclass(frozen=True, kw_only=True)
+class Tagged(Edge):
+    """Org or Event (source) is tagged with Tag (target) by its admins."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class InterestedIn(PersonOwnedEdge):
+    """Later. Person (source) -> Tag (target). Set only by the person."""
+
+    visibility: Visibility = Visibility.PRIVATE
