@@ -64,6 +64,18 @@ class HierarchyService:
             if e.is_established
         ]
 
+    def descendant_ids(self, org_id: str) -> set[str]:
+        """Established descendants, e.g. every chapter under a council."""
+        seen: set[str] = set()
+        frontier = [org_id]
+        while frontier:
+            current = frontier.pop()
+            for edge in self._store.edges(PartOf, target_id=current):
+                if edge.is_established and edge.source_id not in seen:
+                    seen.add(edge.source_id)
+                    frontier.append(edge.source_id)
+        return seen
+
     def ancestor_ids(self, org_id: str, *, include_pending: bool = False) -> set[str]:
         seen: set[str] = set()
         frontier = [org_id]

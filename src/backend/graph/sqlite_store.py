@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS edges (
     state     TEXT NOT NULL,
     data      TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS nodes_by_type ON nodes (type);
 CREATE INDEX IF NOT EXISTS edges_by_source ON edges (source_id, type);
 CREATE INDEX IF NOT EXISTS edges_by_target ON edges (target_id, type);
 """
@@ -93,6 +94,13 @@ class SqliteGraphStore:
     def delete_node(self, node_id: str) -> None:
         """Hard delete. Reserved for account erasure."""
         self._write("DELETE FROM nodes WHERE id = ?", (node_id,))
+
+    def nodes(self, cls: type[N]) -> list[N]:
+        names = type_names_for(cls)
+        if not names:
+            return []
+        sql = f"SELECT type, data FROM nodes WHERE type IN ({', '.join('?' * len(names))}) ORDER BY rowid"
+        return [_load(row) for row in self._conn.execute(sql, names)]  # type: ignore[misc]
 
     # --- edges ---------------------------------------------------------------
 

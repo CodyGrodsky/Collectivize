@@ -1,5 +1,6 @@
 """Graph services that enforce the rules in user_Orgs.md."""
 
+from .discovery import DiscoveryPage, DiscoveryQuery, DiscoveryService
 from .errors import NotFoundError, PermissionDeniedError
 from .events import EventService
 from .hierarchy import ALLOWED_PART_OF, HierarchyService
@@ -19,11 +20,17 @@ class CollectivizeGraph:
         self.events = EventService(self.store, self.membership)
         self.series = SeriesService(self.store, self.membership, self.events)
         self.privacy = PrivacyService(self.store, self.membership, self.events)
+        self.discovery = DiscoveryService(
+            self.store, self.events, self.hierarchy, self.privacy
+        )
 
 
 __all__ = [
     "ALLOWED_PART_OF",
     "CollectivizeGraph",
+    "DiscoveryPage",
+    "DiscoveryQuery",
+    "DiscoveryService",
     "EventService",
     "GraphStore",
     "HierarchyService",

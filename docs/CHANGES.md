@@ -4,6 +4,88 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-13 — Event discovery query
+
+**Request:** "Build the discovery query."
+
+This is the first user-facing feature. `graph.discovery.search(query, now)` returns upcoming events the viewer is allowed to see. Results can be filtered and paged, and each one is ranked with plain-language reasons.
+
+### How to use it
+
+```python
+from backend.database import open_graph
+from backend.graph import DiscoveryQuery
+
+with open_graph() as graph:
+    page = graph.discovery.search(
+        DiscoveryQuery(viewer_id=person_id, text="robot",
+                       preferred_tag_ids=(robotics_tag_id,), limit=20),
+        now,
+    )
+    for item in page.items:
+        item.event, item.host, item.score, item.reasons, item.is_cancelled
+```
+
+### Which events can appear
+- Published events that haven't ended yet, including ones already under way.
+- Cancelled events, until their original start time. They're flagged and always ranked last, so people who planned to go find out.
+- Never drafts, archived events or ended events.
+- Only events the viewer is allowed to see. **The host org must be visible to the viewer too,** so an event is never more exposed than the org running it.
+
+### Filters (`DiscoveryQuery`)
+
+| Field | Effect |
+|-------|--------|
+| `viewer_id` | Who is looking. `None` means a logged-out visitor. |
+| `text` | Case-insensitive match on title, description and location. Max 200 characters. |
+| `tag_ids` | The event must match at least one of these tags. The event's own tags and its host orgs' tags both count. |
+| `preferred_tag_ids` | The viewer's interests. These **boost** matching events but never filter. |
+| `org_id`, `include_related` | Events hosted by an org. By default this includes orgs below it in the hierarchy (e.g. "all IFC chapters"). |
+| `starts_after`, `starts_before` | Only events starting within this time range. |
+| `include_cancelled` | Default `True`. |
+| `limit`, `offset` | Paging. `limit` is 1–100 (default 20). The result reports `total` and `has_more`. |
+
+Invalid queries raise `DomainRuleError`.
+
+### Ranking
+
+Higher scores come first. Ties are broken by start time, then by id. Every factor that moves an event's score adds a reason:
+
+| Factor | Score | Reason shown |
+|--------|-------|--------------|
+| Host claimed / claim pending / unclaimed | +3 / +1 / 0 | "Hosted by a verified org" / "Host's claim is being verified" / "Unclaimed listing: not managed by the org itself" |
+| Host quiet / stale | −1 / −3 | "Host hasn't posted recently" / "Host info may be out of date" |
+| Event details verified / disputed | +1 / −3 | "Event details verified" / "Event details are disputed" |
+| Each matching interest tag | +2.5 | "Matches your interest: Robotics" |
+| How soon it starts | up to +2, fading over 30 days | "Starts within 48 hours" (shown when it starts within 48 hours) |
+| Cancelled | −100 | "Cancelled" |
+
+All weights are named constants at the top of `discovery.py`, so they're easy to adjust.
+
+### Added
+- **`src/backend/graph/discovery.py`:** `DiscoveryQuery`, `DiscoveryItem`, `DiscoveryPage` and `DiscoveryService`.
+- **`tests/backend/test_discovery.py`:** 15 test cases, each run against both stores, covering what can appear, visibility, every filter, ranking and reasons, paging, and input checks.
+
+### Changed
+- **`src/backend/graph/store.py`, `sqlite_store.py`:** new `nodes(cls)` method lists every node of a type. SQLite gained a `nodes_by_type` index.
+- **`src/backend/graph/hierarchy.py`:** new `descendant_ids(org_id)` finds every org below an org through confirmed `PART_OF` links.
+- **`src/backend/graph/__init__.py`:** `CollectivizeGraph` now has `.discovery`.
+
+### Checked against the seeded test DB
+- A logged-out visitor sees 7 of the 8 events. The draft is hidden, and the cancelled mixer is last.
+- When Drew (demo) has robotics as an interest, "Robot demo day" moves to #1 with the reason "Matches your interest: Robotics".
+
+### Decisions
+- **Inherited tags:** tags on a host org also apply to its events, so tagging the Robotics Club makes its events show up under robotics.
+- **Interests are passed in for now:** `preferred_tag_ids` comes with the query because people's interest edges aren't built yet. Once they are, they can feed this directly.
+- **Scan everything, then filter:** each search loads every event and filters in Python. That's fine at pilot scale but should move into SQL queries as data grows.
+
+### Not done yet
+- No interest edges, embeddings, follows or "related to orgs you follow" suggestions.
+- No API endpoint or frontend to call this.
+
+---
+
 ## 2026-11-13 — Separate test and production databases
 
 **Request:** "Make it so there is a test database that stores mockup information and then a production database that stores real data."
