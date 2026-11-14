@@ -59,7 +59,9 @@ class SqliteGraphStore:
         if str(path) != IN_MEMORY:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.environment = environment
-        self._conn = sqlite3.connect(str(path))
+        # Autocommit mode: this class issues BEGIN / SAVEPOINT itself, so
+        # nested transaction() blocks can roll back independently.
+        self._conn = sqlite3.connect(str(path), isolation_level=None)
         self._depth = 0
         self._conn.executescript(SCHEMA)
         self._stamp_environment(environment)
@@ -173,18 +175,27 @@ class SqliteGraphStore:
     @contextmanager
     def transaction(self) -> Iterator[None]:
         """All-or-nothing: rolls back every write in the block if it raises.
-        Nested blocks join the outermost transaction."""
+
+        The outermost block is a real transaction (BEGIN ... COMMIT). Each
+        nested block is a SAVEPOINT, so a failure caught inside an outer
+        block undoes only the nested block's writes, matching the
+        in-memory store."""
+        savepoint = f"sp{self._depth}"
+        is_outer = self._depth == 0
+        self._conn.execute("BEGIN" if is_outer else f"SAVEPOINT {savepoint}")
         self._depth += 1
         try:
             yield
         except BaseException:
             self._depth -= 1
-            if self._depth == 0:
-                self._conn.rollback()
+            if is_outer:
+                self._conn.execute("ROLLBACK")
+            else:
+                self._conn.execute(f"ROLLBACK TO {savepoint}")
+                self._conn.execute(f"RELEASE {savepoint}")
             raise
         self._depth -= 1
-        if self._depth == 0:
-            self._conn.commit()
+        self._conn.execute("COMMIT" if is_outer else f"RELEASE {savepoint}")
 
     def close(self) -> None:
         self._conn.close()
@@ -192,9 +203,8 @@ class SqliteGraphStore:
     # --- internals -----------------------------------------------------------
 
     def _write(self, sql: str, params: tuple[str, ...]) -> None:
+        """Outside a transaction() block each write commits on its own."""
         self._conn.execute(sql, params)
-        if self._depth == 0:
-            self._conn.commit()
 
     def _load_node(self, node_id: str) -> GraphRecord | None:
         row = self._conn.execute(

@@ -94,6 +94,8 @@ class MembershipService:
         edge = self._own_edge(edge_id, by_person_id)
         if not edge.is_current:
             raise DomainRuleError("membership has already ended")
+        if self._is_pending_claim(edge):
+            self._release_org(edge.target_id)  # withdrawing a claim reopens the org
         if edge.is_admin and len(self.admins(edge.target_id)) == 1:
             if not release_org:
                 raise DomainRuleError(
@@ -173,6 +175,15 @@ class MembershipService:
         self._store.save_node(org.with_claim_state(ClaimState.UNCLAIMED))
 
     def release_if_last_admin(self, edge: MemberOf) -> None:
-        """Used by account erasure so an org is never left adminless."""
-        if edge.is_admin and len(self.admins(edge.target_id)) == 1:
+        """Used by account erasure so an org is never left adminless, or
+        stuck waiting on a claim from someone who no longer exists."""
+        last_admin = edge.is_admin and len(self.admins(edge.target_id)) == 1
+        if last_admin or self._is_pending_claim(edge):
             self._release_org(edge.target_id)
+
+    def _is_pending_claim(self, edge: MemberOf) -> bool:
+        """The unapproved admin claim an org in CLAIM_PENDING is waiting on."""
+        if edge.role is not MemberRole.ADMIN or edge.org_confirmed or not edge.is_current:
+            return False
+        org = self._store.node(edge.target_id, Organization)
+        return org.claim_state is ClaimState.CLAIM_PENDING

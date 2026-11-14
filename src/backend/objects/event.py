@@ -43,6 +43,7 @@ class Event(GraphRecord):
     capacity: int | None = None
     is_demo: bool = False  # can never be cleared once set
     status: EventStatus = EventStatus.DRAFT
+    published_at: datetime | None = None  # first publication; never cleared
     change_log: tuple[EventChange, ...] = ()
     embedding: tuple[float, ...] | None = None  # Later
 
@@ -51,6 +52,7 @@ class Event(GraphRecord):
             raise DomainRuleError("title is required")
         require_aware(self.starts_at, "starts_at")
         require_aware(self.ends_at, "ends_at")
+        require_aware(self.published_at, "published_at")
         if self.ends_at <= self.starts_at:
             raise DomainRuleError("ends_at must be after starts_at")
         if self.capacity is not None and self.capacity <= 0:
@@ -61,13 +63,22 @@ class Event(GraphRecord):
             return EventStatus.ENDED
         return self.status
 
+    @property
+    def was_published(self) -> bool:
+        """Whether the event was ever made public to its audience. A draft
+        that is cancelled before publishing was not, and stays hidden.
+        (Records stored before `published_at` existed count as published
+        if their status says so.)"""
+        return self.published_at is not None or self.status is EventStatus.PUBLISHED
+
     def has_ended(self, now: datetime) -> bool:
         return now >= self.ends_at
 
     def is_discoverable(self, now: datetime) -> bool:
-        """Cancelled events stay visible until their original end time."""
+        """Cancelled events stay visible until their original end time, so
+        people who planned to go find out; never-published ones never show."""
         if self.status in (EventStatus.PUBLISHED, EventStatus.CANCELLED):
-            return now < self.ends_at
+            return self.was_published and now < self.ends_at
         return False
 
     def published(self, now: datetime) -> Event:
@@ -75,7 +86,7 @@ class Event(GraphRecord):
             raise DomainRuleError("only draft events can be published")
         if self.starts_at <= now:
             raise DomainRuleError("an event in the past cannot be published as new")
-        return replace(self, status=EventStatus.PUBLISHED)
+        return replace(self, status=EventStatus.PUBLISHED, published_at=now)
 
     def revised(self, now: datetime, **changes: Any) -> Event:
         unknown = set(changes) - EDITABLE_FIELDS

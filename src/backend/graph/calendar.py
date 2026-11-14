@@ -5,9 +5,10 @@ and disappears from a co-host's calendar as soon as that co-host leaves.
 Pending invitations never appear.
 
 Results are split into `public` (visible to anyone) and `private`
-(members-only, connections-only, private, or unpublished drafts). The
-viewer only ever gets events they are allowed to see, and a host whose
-page the viewer can't see has no visible calendar at all.
+(members-only, connections-only, private, or never published, including
+drafts cancelled before publishing). The viewer only ever gets events
+they are allowed to see, and a host whose page the viewer can't see has
+no visible calendar at all.
 """
 
 from __future__ import annotations
@@ -76,7 +77,7 @@ class CalendarService:
 
 
 def _is_private(event: Event) -> bool:
-    return event.visibility is not Visibility.PUBLIC or event.status is EventStatus.DRAFT
+    return event.visibility is not Visibility.PUBLIC or not event.was_published
 
 
 def _in_window(event: Event, after: datetime | None, before: datetime | None) -> bool:

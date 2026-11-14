@@ -293,13 +293,7 @@ def test_outer_failure_rolls_back_nested_transactions(store):
     assert not store.has_node(inner.id)
 
 
-def test_caught_inner_failure_rolls_back_only_the_inner_block(store, request):
-    if isinstance(store, SqliteGraphStore):
-        request.applymarker(pytest.mark.xfail(
-            strict=True,
-            reason="BUG: SQLite nested transactions join the outer one, so a caught "
-                   "inner failure still commits; the in-memory store rolls it back",
-        ))
+def test_caught_inner_failure_rolls_back_only_the_inner_block(store):
     graph = CollectivizeGraph(store)
     with store.transaction():
         outer = make_org(graph, "Outer", OrgKind.CLUB)
@@ -308,6 +302,32 @@ def test_caught_inner_failure_rolls_back_only_the_inner_block(store, request):
             raise RuntimeError("boom")
     assert store.has_node(outer.id)
     assert not store.has_node(inner.id)
+
+
+def test_three_levels_of_nesting_roll_back_independently(store):
+    graph = CollectivizeGraph(store)
+    with store.transaction():
+        outer = make_org(graph, "Outer", OrgKind.CLUB)
+        with store.transaction():
+            middle = make_org(graph, "Middle", OrgKind.CLUB)
+            with pytest.raises(RuntimeError), store.transaction():
+                inner = make_org(graph, "Inner", OrgKind.CLUB)
+                raise RuntimeError("boom")
+            after = make_org(graph, "After", OrgKind.CLUB)
+    assert all(store.has_node(o.id) for o in (outer, middle, after))
+    assert not store.has_node(inner.id)
+
+
+def test_sqlite_commits_nested_work_durably(tmp_path):
+    path = tmp_path / "t.db"
+    store = SqliteGraphStore(path, Environment.TEST)
+    graph = CollectivizeGraph(store)
+    with store.transaction(), store.transaction():
+        org = make_org(graph, "Kept", OrgKind.CLUB)
+    store.close()
+    reopened = SqliteGraphStore(path, Environment.TEST)
+    assert reopened.has_node(org.id)
+    reopened.close()
 
 
 # --- sqlite edge cases -------------------------------------------------------

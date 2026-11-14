@@ -324,8 +324,6 @@ def test_publish_occurrences_rejects_past_start(world):
         world.graph.series.publish_occurrences(series.id, starts, world.alice.id, NOW)
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: publish_occurrences is not wrapped in a "
-                   "transaction, so earlier occurrences stay published")
 def test_failed_publish_occurrences_leaves_nothing_behind(world):
     series = make_series(world)
     starts = [NOW + timedelta(days=7), NOW - timedelta(days=1)]
@@ -387,8 +385,6 @@ def test_draft_visible_to_co_host_admins_only_after_accepting(world):
     assert p.can_view(world.bob.id, event)
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: cancelling a never-published draft makes it "
-                   "public and discoverable")
 def test_cancelled_draft_stays_hidden(world):
     ev, p = world.graph.events, world.graph.privacy
     event = ev.create(make_event(), world.chapter.id, world.alice.id)
@@ -396,6 +392,24 @@ def test_cancelled_draft_stays_hidden(world):
     assert cancelled.status is EventStatus.CANCELLED
     assert not p.can_view(None, cancelled)
     assert not cancelled.is_discoverable(NOW)
+
+
+def test_cancelled_draft_stays_off_public_calendars_but_hosts_still_see_it(world):
+    ev = world.graph.events
+    event = ev.create(make_event(), world.chapter.id, world.alice.id)
+    ev.cancel(event.id, world.alice.id)
+    outsider = world.graph.calendar.host_events(world.chapter.id, world.carol.id)
+    assert outsider.public == outsider.private == ()
+    host = world.graph.calendar.host_events(world.chapter.id, world.alice.id)
+    assert [e.id for e in host.private] == [event.id]
+
+
+def test_cancelled_published_event_is_still_shown_until_it_ends(world):
+    ev, p = world.graph.events, world.graph.privacy
+    event = create_published(world)
+    cancelled = ev.cancel(event.id, world.alice.id)
+    assert p.can_view(None, cancelled)
+    assert cancelled.is_discoverable(NOW)
 
 
 def test_erasure_keeps_org_claimed_when_another_admin_remains(world):
@@ -425,10 +439,17 @@ def test_erasure_also_deletes_ended_and_removed_edges(world):
     assert store.edges(MemberOf, target_id=world.national.id, include_inactive=True) != []
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: release_if_last_admin ignores unconfirmed "
-                   "claims, so the org is stuck in CLAIM_PENDING")
 def test_erasing_a_pending_claimant_reopens_the_org(world):
     world.graph.membership.claim_org(world.carol.id, world.council.id, NOW)
     world.graph.privacy.erase_person(world.carol.id)
     state = world.graph.store.node(world.council.id, Organization).claim_state
     assert state is ClaimState.UNCLAIMED
+
+
+def test_withdrawing_a_pending_claim_reopens_the_org(world):
+    m = world.graph.membership
+    claim = m.claim_org(world.carol.id, world.council.id, NOW)
+    m.leave(claim.id, world.carol.id, NOW)
+    state = world.graph.store.node(world.council.id, Organization).claim_state
+    assert state is ClaimState.UNCLAIMED
+    m.claim_org(world.bob.id, world.council.id, NOW)  # someone else can now claim it

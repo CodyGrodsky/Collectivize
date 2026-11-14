@@ -2,7 +2,8 @@
 
 - An edge's effective visibility is the most restrictive of its own level
   and both endpoints', so no party can expose another more than they chose.
-- Draft events are visible only to admins of their host orgs.
+- Events that were never published (drafts, and drafts cancelled before
+  publishing) are visible only to the people who can edit them.
 - Deleting an account truly erases the person's edges (not just hides them).
 - People who host an event own it: they can always see it, and a
   connections-only event is visible to their connections.
@@ -13,7 +14,6 @@ from __future__ import annotations
 from backend.objects import (
     Edge,
     Event,
-    EventStatus,
     GraphRecord,
     MemberOf,
     Organization,
@@ -51,7 +51,7 @@ class PrivacyService:
         )
 
     def can_view(self, viewer_id: str | None, record: GraphRecord) -> bool:
-        if isinstance(record, Event) and record.status is EventStatus.DRAFT:
+        if isinstance(record, Event) and not record.was_published:
             return viewer_id is not None and self._events.can_edit(viewer_id, record.id)
         owners = self._owner_ids(record)
         if viewer_id is not None and viewer_id in owners:

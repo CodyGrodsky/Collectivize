@@ -77,18 +77,22 @@ class SeriesService:
         by_person_id: str,
         now: datetime,
     ) -> list[Event]:
-        """Publish e.g. a semester of meetings in one action."""
+        """Publish e.g. a semester of meetings in one action. All or
+        nothing: if any occurrence is rejected, none are created."""
         series = self._store.node(series_id, EventSeries)
         self._membership.require_admin(by_person_id, series.owner_org_id)
         published = []
-        for starts_at in starts:
-            provenance = Provenance(
-                created_by=by_person_id, method=ProvenanceMethod.ORG_ADMIN, created_at=now
-            )
-            draft = series.instantiate(starts_at, provenance)
-            self._events.create(draft, series.owner_org_id, by_person_id)
-            self.add_instance(draft.id, series_id, by_person_id, now)
-            published.append(self._events.publish(draft.id, by_person_id, now))
+        with self._store.transaction():
+            for starts_at in starts:
+                provenance = Provenance(
+                    created_by=by_person_id,
+                    method=ProvenanceMethod.ORG_ADMIN,
+                    created_at=now,
+                )
+                draft = series.instantiate(starts_at, provenance)
+                self._events.create(draft, series.owner_org_id, by_person_id)
+                self.add_instance(draft.id, series_id, by_person_id, now)
+                published.append(self._events.publish(draft.id, by_person_id, now))
         return published
 
     def update_defaults(
