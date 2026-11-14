@@ -25,6 +25,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from backend.config import ALLOWED_EMAIL_DOMAINS
 from backend.objects import (
     Connected,
     DomainRuleError,
@@ -38,7 +39,7 @@ from .connections import ConnectionService
 from .errors import NotFoundError, PermissionDeniedError
 from .store import GraphStore
 
-DEFAULT_EMAIL_DOMAINS = ("northeastern.edu",)
+DEFAULT_EMAIL_DOMAINS = ALLOWED_EMAIL_DOMAINS
 INVITE_LIFETIME = timedelta(days=14)
 MAX_OPEN_INVITES = 20
 CODE_BYTES = 12  # 16 url-safe characters

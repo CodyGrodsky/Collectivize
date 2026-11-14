@@ -24,6 +24,7 @@ from backend.server import (
     resolve_static,
     serve,
 )
+from backend.sessions import COOKIE_NAME, SessionStore
 
 from .conftest import NOW
 
@@ -217,18 +218,30 @@ def test_static_files_inside_the_allowed_folders_are_served(site):
 # --- over HTTP -----------------------------------------------------------------------
 
 
+SESSIONS = SessionStore()
+
+
 @pytest.fixture(scope="module")
-def server(api):
-    srv = serve(api, port=0)
+def server(api, seeded):
+    srv = serve(api, port=0, sessions=SESSIONS)
     thread = threading.Thread(target=srv.serve_forever, daemon=True)
     thread.start()
+    signed_in["token"] = SESSIONS.create(seeded[1].people["drew"])
     yield f"http://127.0.0.1:{srv.server_address[1]}"
     srv.shutdown()
     srv.server_close()
 
 
-def fetch(url, data=None, headers=None):
-    request = urllib.request.Request(url, data=data, headers=headers or {})
+signed_in: dict[str, str] = {}
+
+
+def fetch(url, data=None, headers=None, *, token=None):
+    """Requests are signed in as Drew unless `token` says otherwise ("" = signed out)."""
+    headers = dict(headers or {})
+    token = signed_in.get("token", "") if token is None else token
+    if token:
+        headers["Cookie"] = f"{COOKIE_NAME}={token}"
+    request = urllib.request.Request(url, data=data, headers=headers)
     opener = urllib.request.build_opener(NoRedirect)
     try:
         with opener.open(request) as response:
@@ -269,15 +282,17 @@ def test_bad_requests_get_clear_json_errors(server, data, headers, expected):
     assert status == expected and "error" in json.loads(body)
 
 
-def test_unknown_routes_and_input_errors(server):
+def test_unknown_routes_and_a_viewer_parameter_is_ignored(server):
     assert fetch(f"{server}/api/nope")[0] == 404
-    status, _, body = fetch(f"{server}/api/discover?viewer=ghost")
-    assert status == 400 and json.loads(body) == {"error": "unknown person"}
+    status, _, body = fetch(f"{server}/api/discover?viewer=ghost")  # the session decides
+    assert status == 200 and "items" in json.loads(body)
 
 
-def test_home_redirects_to_the_home_page(server):
-    status, headers, _ = fetch(f"{server}/")
+def test_home_redirects_to_sign_in_or_discover(server):
+    status, headers, _ = fetch(f"{server}/", token="")
     assert status == 302 and headers["Location"] == "/src/frontend/index.html"
+    status, headers, _ = fetch(f"{server}/")
+    assert status == 302 and headers["Location"] == "/src/frontend/discover.html"
 
 
 def test_the_real_discover_page_is_served(server):
@@ -294,10 +309,12 @@ def test_server_errors_do_not_leak_details(seeded):
     @contextmanager
     def factory():
         yield seeded[0]
-    srv = serve(Broken(factory), port=0)
+    sessions = SessionStore()
+    token = sessions.create(seeded[1].people["drew"])
+    srv = serve(Broken(factory), port=0, sessions=sessions)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
-        status, _, body = fetch(f"http://127.0.0.1:{srv.server_address[1]}/api/tags")
+        status, _, body = fetch(f"http://127.0.0.1:{srv.server_address[1]}/api/tags", token=token)
     finally:
         srv.shutdown()
         srv.server_close()

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#f5f4f0">
+    <title>Admin · Collectivize</title>
+    <link rel="icon" href="../../app/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="app.css">
+    <link rel="stylesheet" href="nav.css">
+    <script src="nav.js"></script>
+    <script src="shared.js" defer></script>
+    <script src="admin.js" defer></script>
+</head>
+<body>
+    <main class="page" id="admin" hidden>
+        <h1 class="page-title">Platform admin</h1>
+        <p class="page-subtitle">For investigating reports. Viewing as someone is read-only and every session is logged.</p>
+
+        <section class="panel" aria-labelledby="users-title">
+            <h2 class="panel-title" id="users-title">Find a user</h2>
+            <form class="row" id="user-search" role="search">
+                <label class="sr-only" for="user-query">Name or email</label>
+                <input class="input" id="user-query" type="search" placeholder="Name or email" maxlength="100" autocomplete="off">
+                <button class="button button-solid" type="submit">Search</button>
+            </form>
+            <p class="status" id="users-status" role="status" aria-live="polite"></p>
+            <ul class="list" id="users"></ul>
+        </section>
+
+        <section class="panel" aria-labelledby="debug-title">
+            <h2 class="panel-title" id="debug-title">Debugging</h2>
+            <label class="row">
+                <input type="checkbox" id="show-scores">
+                <span>Show ranking scores on Discover (this browser only)</span>
+            </label>
+        </section>
+
+        <section class="panel" aria-labelledby="audit-title">
+            <h2 class="panel-title" id="audit-title">View-as log</h2>
+            <ul class="list" id="audit"></ul>
+            <p class="muted" id="audit-empty">No view-as sessions since the server started.</p>
+        </section>
+    </main>
+</body>
+</html>

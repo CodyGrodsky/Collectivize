@@ -20,6 +20,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
 ENV_VAR = "COLLECTIVIZE_ENV"
+# Who may sign in (v1.1 spec 4.10): campus-only for now. Change it here.
+ALLOWED_EMAIL_DOMAINS: tuple[str, ...] = ("northeastern.edu",)
 DB_PATH_VAR = "COLLECTIVIZE_DB_PATH"
 
 

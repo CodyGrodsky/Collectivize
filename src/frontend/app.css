@@ -1,0 +1,156 @@
+/* Shared look for the v1.1 pages (admin, org, My Events, network, invite):
+   the house palette and type used by Discover and the calendar. Page
+   stylesheets add only what is specific to them. */
+
+:root {
+    --ink: #202b29;
+    --muted: #5f6b67;
+    --faint: #a3aca8;
+    --paper: #f5f4f0;
+    --card: #fbfaf7;
+    --line: #e6e5df;
+    --hover: rgba(32, 43, 41, .05);
+    --green: #266956;
+    --green-soft: #e8f2ed;
+    --amber: #8a5a12;
+    --amber-soft: #f6ecd9;
+    --red: #9b3b32;
+    --red-soft: #f6e4e1;
+    --blue: #1e3a9e;
+    --blue-soft: #e6ecfa;
+    --radius: 14px;
+}
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 28px 32px 48px;
+}
+
+.page-title { margin: 0; font-size: 26px; font-weight: 650; letter-spacing: -.01em; }
+
+.page-subtitle { margin: 2px 0 18px; color: var(--muted); }
+
+.panel {
+    margin: 0 0 16px;
+    padding: 16px 18px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--card);
+}
+
+.panel-title { margin: 0 0 10px; font-size: 15px; font-weight: 650; }
+
+.muted { color: var(--muted); }
+
+.status { min-height: 1.45em; margin: 8px 0; color: var(--muted); }
+.status.is-error { color: var(--red); }
+
+.button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 14px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: #fff;
+    color: var(--ink);
+    font-weight: 550;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.button:hover { border-color: #cfcdc4; }
+.button:disabled { opacity: .5; cursor: not-allowed; }
+.button-solid { border-color: var(--ink); background: var(--ink); color: #fff; }
+.button-solid:hover { background: #33403d; }
+.button-danger { color: var(--red); }
+
+.input {
+    min-height: 38px;
+    padding: 0 12px;
+    border: 1px solid #cfcdc4;
+    border-radius: 9px;
+    background: #fff;
+}
+
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.row > .input { flex: 1; min-width: 0; }
+
+.list { margin: 0; padding: 0; list-style: none; }
+
+.list-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-top: 1px solid var(--line);
+}
+
+.list-item:first-child { border-top: 0; }
+
+.list-main { flex: 1; min-width: 0; }
+.list-title { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.list-title a { color: inherit; text-decoration: none; }
+.list-title a:hover { text-decoration: underline; }
+.list-meta { margin: 1px 0 0; color: var(--muted); font-size: 13px; }
+
+.avatar {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    overflow: hidden;
+    border-radius: 50%;
+    background: var(--green-soft);
+    color: var(--green);
+    font-weight: 700;
+}
+
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--hover);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.pill-green { background: var(--green-soft); color: var(--green); }
+.pill-amber { background: var(--amber-soft); color: var(--amber); }
+.pill-blue { background: var(--blue-soft); color: var(--blue); }
+
+@media (max-width: 640px) {
+    .page { padding: 18px 16px 40px; }
+}

@@ -9,65 +9,37 @@
 // HTML, so event titles or descriptions can't inject markup.
 
 (() => {
-    const STORE_KEY = "collectivize.discover";
     const DATE = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
     const TIME = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
     const PART = (options) => new Intl.DateTimeFormat(undefined, options);
 
     const $ = (id) => document.getElementById(id);
 
-    const { Api, Viewer, PersonaPicker, EventActions } = window.Collectivize;
-
-    class Settings {
-        static load() {
-            try {
-                return JSON.parse(localStorage.getItem(STORE_KEY)) || {};
-            } catch {
-                return {};
-            }
-        }
-
-        static save(values) {
-            try {
-                localStorage.setItem(STORE_KEY, JSON.stringify(values));
-            } catch {
-                // Private mode or storage blocked: settings just won't persist.
-            }
-        }
-    }
+    const { Api, EventActions } = window.Collectivize;
 
     class DiscoverPage {
         constructor() {
-            this.state = { viewer: "", near: true, page: 1, tag: "", query: "" };
+            this.state = { page: 1, tag: "", query: "" };
             this.request = 0; // ignore answers to requests that were superseded
             this.template = $("card-template");
         }
 
         async start() {
-            const saved = Settings.load();
             const url = new URLSearchParams(location.search);
-            this.state.near = saved.near ?? true;
             this.state.query = url.get("q") || "";
             this.state.page = Math.max(1, parseInt(url.get("page"), 10) || 1);
             this.bindControls();
             try {
-                const [viewer] = await Promise.all([PersonaPicker.fill($("persona")), this.loadTopics()]);
-                this.state.viewer = viewer;
+                await this.loadTopics();
             } catch (error) {
                 this.showError(error);
                 return;
             }
-            $("near").checked = this.state.near;
             $("search-input").value = this.state.query;
             this.refresh();
         }
 
         bindControls() {
-            $("persona").addEventListener("change", (e) => {
-                Viewer.set(e.target.value);
-                this.update({ viewer: e.target.value, page: 1 });
-            });
-            $("near").addEventListener("change", (e) => this.update({ near: e.target.checked, page: 1 }));
             $("search-form").addEventListener("submit", (e) => {
                 e.preventDefault();
                 const query = $("search-input").value.trim();
@@ -82,7 +54,6 @@
 
         update(changes) {
             Object.assign(this.state, changes);
-            Settings.save({ near: this.state.near });
             const url = new URL(location.href);
             this.state.query ? url.searchParams.set("q", this.state.query) : url.searchParams.delete("q");
             this.state.page > 1 ? url.searchParams.set("page", this.state.page) : url.searchParams.delete("page");
@@ -121,8 +92,7 @@
             this.showLoading("Loading events…", false);
             try {
                 const data = await Api.get("/api/discover", {
-                    viewer: this.state.viewer, page: this.state.page,
-                    near: this.state.near ? "1" : "0", tag: this.state.tag,
+                    page: this.state.page, tag: this.state.tag,
                 });
                 if (id !== this.request) return;
                 if (data.page > data.pages && data.total > 0) {
@@ -143,7 +113,7 @@
             this.showLoading("Searching — working out what you're after. This can take a few seconds.", true);
             try {
                 const data = await Api.post("/api/search", {
-                    viewer: this.state.viewer || null, query: this.state.query, near: this.state.near,
+                    query: this.state.query,
                 });
                 if (id !== this.request) return;
                 this.renderSummary(data);
@@ -242,8 +212,7 @@
             this.badges(q(".dc-badges"), item, trust);
 
             q(".dc-card-title").textContent = item.title;
-            const where = [item.location, item.distance_km != null ? DiscoverPage.distance(item.distance_km) : ""]
-                .filter(Boolean).join(" · ");
+            const where = item.location || "";
             q(".dc-meta").textContent = [`${DATE.format(start)}, ${TIME.format(start)}–${TIME.format(end)}`, where]
                 .filter(Boolean).join(" · ");
             q(".dc-host").textContent = `Hosted by ${DiscoverPage.cleanName(item.host.name)}`;
@@ -280,7 +249,6 @@
                 eventId: item.id,
                 myRsvp: item.my_rsvp,
                 starred: item.starred,
-                viewer: this.state.viewer,
                 cancelled: item.is_cancelled,
                 onChange: (state) => {
                     const updated = { ...item, my_rsvp: state.my_rsvp, starred: state.starred,
@@ -405,11 +373,6 @@
 
         static cleanName(name) {
             return name.replace(/^\[Demo\]\s*/, "").replace(/\s*\(demo[^)]*\)$/, "");
-        }
-
-        static distance(km) {
-            if (km < 0.05) return "on campus";
-            return km < 1 ? `${Math.round(km * 1000 / 50) * 50} m away` : `${km.toFixed(1)} km away`;
         }
     }
 

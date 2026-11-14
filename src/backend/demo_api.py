@@ -6,7 +6,8 @@ Every input is validated here; problems raise `ApiError` with a status code
 and a message that is safe to show.
 
 Demo only: `demo_graph_factory` refuses the production database, because
-there is no login yet and "viewing as" anyone is a demo feature.
+sign-in has no email verification yet. The server passes the signed-in
+viewer in `viewer`; it never comes from the browser.
 """
 
 from __future__ import annotations
@@ -85,7 +86,7 @@ def demo_graph_factory(config: DatabaseConfig, *, use_ai: bool) -> GraphFactory:
     shared across the server's threads)."""
     if config.environment is not Environment.TEST:
         raise PermissionError(
-            "the demo server only runs on the test database: there is no login yet"
+            "the demo server only runs on the test database: sign-in isn't verified yet"
         )
 
     @contextmanager
@@ -114,6 +115,10 @@ class DiscoverApi:
         self._clock = clock
         self._search_lock = threading.Lock()
         self._cache: OrderedDict[tuple[str | None, str, bool], dict[str, Any]] = OrderedDict()
+
+    @property
+    def graphs(self) -> GraphFactory:
+        return self._graphs
 
     # --- endpoints ---------------------------------------------------------------
 

@@ -166,3 +166,44 @@ html[data-nav="closed"] .sidebar-link:focus-visible .sidebar-label {
     body,
     .sidebar { transition: none; }
 }
+
+/* Sign out sits at the bottom of the rail. */
+.sidebar-signout {
+    margin-top: auto;
+    border: 0;
+    background: none;
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+}
+
+/* Platform admin "view as" (v1.1 spec 4.9): always visible, one-click exit. */
+.viewas-banner {
+    position: sticky;
+    top: 0;
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: #7a1f12;
+    color: #fff;
+    font: 600 13px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.viewas-banner button {
+    padding: 4px 12px;
+    border: 1px solid rgba(255, 255, 255, .7);
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+@media (max-width: 640px) {
+    html[data-nav="closed"] .sidebar-signout { display: none; }
+    .viewas-banner { top: var(--nav-bar); }
+}

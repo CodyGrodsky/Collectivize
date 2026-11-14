@@ -19,8 +19,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from backend.config import load_config
+from backend.config import DATA_DIR, load_config
 from backend.server import DiscoverApi, demo_graph_factory, serve
+from backend.sessions import SessionStore
 
 log = logging.getLogger("serve")
 
@@ -41,9 +42,10 @@ def main(argv: list[str] | None = None) -> int:
     except PermissionError as error:
         log.error("%s", error)
         return 1
-    server = serve(DiscoverApi(graphs), args.port)
-    log.info("Collectivize demo on http://127.0.0.1:%d/  (Discover: /src/frontend/discover.html)",
-             args.port)
+    server = serve(DiscoverApi(graphs), args.port,
+                   sessions=SessionStore(audit_path=DATA_DIR / "view_as.log"))
+    log.info("Collectivize demo on http://127.0.0.1:%d/  (sign in with e.g. drew.demo@northeastern.edu;"
+             " platform admin: pat.demo@northeastern.edu)", args.port)
     log.info("AI search: %s", "off (keywords only)" if args.no_ai else "on")
     try:
         server.serve_forever()

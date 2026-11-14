@@ -12,7 +12,7 @@
 // trimmed with "+N more"; server text is only ever inserted as text.
 
 (() => {
-    const { Api, Viewer, PersonaPicker, EventActions } = window.Collectivize;
+    const { Api, EventActions } = window.Collectivize;
 
     const MONTH_FORMAT = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" });
     const DAY_FORMAT = new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric" });
@@ -70,7 +70,6 @@
             const start = MonthCalendar.dateFromUrl() || new Date();
             this.selected = start;
             this.shown = new Date(start.getFullYear(), start.getMonth(), 1);
-            this.viewer = "";
             this.byDay = new Map(); // day key -> entries
             this.request = 0;
 
@@ -78,21 +77,10 @@
             $("cal-next").addEventListener("click", () => this.step(1));
             $("cal-today").addEventListener("click", () => this.select(new Date()));
             $("cal-retry").addEventListener("click", () => this.load());
-            $("cal-persona").addEventListener("change", (event) => {
-                this.viewer = event.target.value;
-                Viewer.set(this.viewer);
-                this.load();
-            });
         }
 
         async start() {
             this.render();
-            try {
-                this.viewer = await PersonaPicker.fill($("cal-persona"));
-            } catch (error) {
-                this.viewer = Viewer.get();
-                this.showBanner(error);
-            }
             this.load();
         }
 
@@ -126,7 +114,7 @@
             this.setDayStatus("Loading events…");
             try {
                 const data = await Api.get("/api/calendar", {
-                    viewer: this.viewer, start: MonthCalendar.iso(start), end: MonthCalendar.iso(end),
+                    start: MonthCalendar.iso(start), end: MonthCalendar.iso(end),
                 });
                 if (id !== this.request) return; // a newer request has started
                 this.byDay = MonthCalendar.index(data, start, end);
@@ -229,7 +217,7 @@
                 chips.setAttribute("aria-hidden", "true");
                 for (const entry of mine.slice(0, CHIPS_PER_CELL)) chips.append(MonthCalendar.chip(entry));
                 const hidden = Math.max(0, mine.length - CHIPS_PER_CELL);
-                const extra = [hidden ? `+${hidden} more` : "", others ? `${others} on campus` : ""]
+                const extra = [hidden ? `+${hidden} more` : "", others ? `+${others}` : ""]
                     .filter(Boolean).join(" · ");
                 if (extra) {
                     const more = document.createElement("span");
@@ -293,7 +281,6 @@
                     eventId: entry.id,
                     myRsvp: entry.myRsvp,
                     starred: entry.starred,
-                    viewer: this.viewer,
                     cancelled: entry.cancelled,
                     onChange: () => this.load(), // moves it in or out of "My events"
                     onError: (message) => this.setDayStatus(message, { error: true }),

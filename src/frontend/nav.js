@@ -1,4 +1,6 @@
-// Shared sidebar navigation, built on every page that loads it.
+// Shared sidebar navigation, built on every page that loads it. With
+// shared.js on the page it also adds the Admin link (platform admins only),
+// Sign out, and the "Viewing as … (admin)" banner during view-as.
 //
 // Usage: in a page's <head>, after its own stylesheet, add
 //     <link rel="stylesheet" href="nav.css">
@@ -8,13 +10,13 @@
 
 (() => {
     const PAGES = [
-        { label: "Home", href: "index.html", icon: "home" },
-        { label: "Calendar", href: "calendar.html", icon: "calendar" },
         { label: "Discover", href: "discover.html", icon: "discover" },
+        { label: "Calendar", href: "calendar.html", icon: "calendar" },
+        { label: "My Events", href: "my-events.html", icon: "bookmark" },
         { label: "Network", href: "network.html", icon: "graph" },
         { label: "Profile", href: "profile.html", icon: "profile" },
-        { label: "Demo", href: "main.html", icon: "demo" },
     ];
+    const ADMIN_PAGE = { label: "Admin", href: "admin.html", icon: "shield" };
 
     // Inline icon paths (24x24, stroked) so the nav needs no extra files.
     const ICONS = {
@@ -25,7 +27,10 @@
         calendar: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
         discover: '<circle cx="12" cy="12" r="8.5"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>',
         profile: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.5 3.6-5.5 7-5.5s6.2 2 7 5.5"/>',
-        demo: '<path d="M9.5 3.5h5M10.5 3.5v5.5L5.3 18.2A1.5 1.5 0 0 0 6.6 20.5h10.8a1.5 1.5 0 0 0 1.3-2.3L13.5 9V3.5M7.8 14.5h8.4"/>',
+        bookmark: '<path d="M7 4h10a1 1 0 0 1 1 1v15l-6-4-6 4V5a1 1 0 0 1 1-1z"/>',
+        shield: '<path d="M12 3.5 19 6v5.5c0 4.3-2.9 7.6-7 9-4.1-1.4-7-4.7-7-9V6z"/>',
+        signout: '<path d="M14 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 8l-4 4 4 4M6 12h10"/>',
+
     };
 
     const STORAGE_KEY = "collectivize.nav.open";
@@ -73,8 +78,20 @@
             scrim.className = "sidebar-scrim";
             scrim.addEventListener("click", () => this.setOpen(false));
 
-            nav.append(this.toggle, list);
+            this.list = list;
+            const signOut = document.createElement("button");
+            signOut.type = "button";
+            signOut.className = "sidebar-link sidebar-signout";
+            signOut.innerHTML = Sidebar.icon("signout");
+            const signOutLabel = document.createElement("span");
+            signOutLabel.className = "sidebar-label";
+            signOutLabel.textContent = "Sign out";
+            signOut.append(signOutLabel);
+            signOut.addEventListener("click", () => window.Collectivize?.Session.signOut());
+
+            nav.append(this.toggle, list, signOut);
             document.body.prepend(nav, scrim);
+            this.showAccount();
             this.setOpen(this.isOpen, { save: false });
 
             document.addEventListener("keydown", (event) => {
@@ -86,6 +103,43 @@
             PHONE.addEventListener("change", () => {
                 this.setOpen(!PHONE.matches && Sidebar.loadOpen(), { save: false });
             });
+        }
+
+        /** The Admin link for platform admins, and the view-as banner. */
+        async showAccount() {
+            const session = window.Collectivize?.Session;
+            if (!session) return;
+            let me;
+            try {
+                me = await session.current();
+            } catch {
+                return; // signed out: the page's own calls redirect to sign-in
+            }
+            if (me.is_platform_admin) this.list.append(this.makeLink(ADMIN_PAGE));
+            if (me.viewing_as) Sidebar.banner(me.viewing_as.name);
+        }
+
+        /** Persistent while a platform admin views the app as someone. */
+        static banner(name) {
+            const bar = document.createElement("div");
+            bar.className = "viewas-banner";
+            bar.setAttribute("role", "status");
+            const text = document.createElement("span");
+            text.textContent = `Viewing as ${name} (admin) · read-only`;
+            const exit = document.createElement("button");
+            exit.type = "button";
+            exit.textContent = "Exit";
+            exit.addEventListener("click", async () => {
+                exit.disabled = true;
+                try {
+                    await window.Collectivize.Api.post("/api/admin/view-as", { person_id: null });
+                } finally {
+                    location.href = "admin.html";
+                }
+            });
+            bar.append(text, exit);
+            document.body.prepend(bar);
+            document.documentElement.classList.add("has-viewas");
         }
 
         makeLink(page) {

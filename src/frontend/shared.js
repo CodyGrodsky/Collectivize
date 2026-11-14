@@ -1,34 +1,37 @@
-// Shared by the Discover and Calendar pages (load before the page script):
+// Shared by every page (load before the page script):
 //   Collectivize.Api           JSON calls to the local demo server
-//   Collectivize.Viewer        who you're viewing as (remembered across pages)
-//   Collectivize.PersonaPicker fills a <select> with the demo people
-//   Collectivize.EventActions  the "I'm going" / "Maybe" / star buttons
+//   Collectivize.Session       who is signed in (GET /api/me), sign-out
+//   Collectivize.EventActions  the "I'm going" / "Maybe" / save buttons
+//
+// Who you are comes from your sign-in session on the server; pages never
+// send a viewer id.
 //
 // Server text is always inserted with textContent, never as HTML.
 
 "use strict";
 
 (() => {
-    const VIEWER_KEY = "collectivize.viewer";
-    const OLD_DISCOVER_KEY = "collectivize.discover";
+    const LANDING = "/src/frontend/index.html";
+    const HOME = "/src/frontend/discover.html";
 
     class Api {
-        static async get(path, params = {}) {
+        static async get(path, params = {}, settings = {}) {
             const query = new URLSearchParams(
                 Object.entries(params).filter(([, v]) => v !== "" && v != null),
             );
-            return Api.send(`${path}?${query}`, { headers: { Accept: "application/json" } });
+            return Api.send(`${path}?${query}`, { headers: { Accept: "application/json" } }, settings);
         }
 
-        static async post(path, body) {
+        static async post(path, body, settings = {}) {
             return Api.send(path, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Accept: "application/json" },
                 body: JSON.stringify(body),
-            });
+            }, settings);
         }
 
-        static async send(url, options) {
+        /** Signed out (401): go to the sign-in page, then come back here. */
+        static async send(url, options, { redirectOnSignOut = true } = {}) {
             let response;
             try {
                 response = await fetch(url, options);
@@ -41,6 +44,10 @@
             } catch {
                 // Not JSON: usually the page was opened without the demo server.
             }
+            if (response.status === 401 && redirectOnSignOut) {
+                Session.toSignIn();
+                throw new Error("Signed out. Taking you to sign in…");
+            }
             if (!response.ok || data === null || typeof data !== "object") {
                 throw new Error(data?.error || "The server didn't answer properly. Start it with scripts/serve.py.");
             }
@@ -48,47 +55,36 @@
         }
     }
 
-    class Viewer {
-        static get() {
+    class Session {
+        static me = null;
+        static pending = null;
+
+        /** The signed-in person: {id, name, is_platform_admin, viewing_as}. */
+        static async current() {
+            if (!Session.pending) Session.pending = Api.get("/api/me").then((me) => (Session.me = me));
+            return Session.pending;
+        }
+
+        static async signOut() {
             try {
-                const saved = localStorage.getItem(VIEWER_KEY);
-                if (saved !== null) return saved;
-                return JSON.parse(localStorage.getItem(OLD_DISCOVER_KEY) || "{}").viewer || "";
-            } catch {
-                return "";
+                await Api.post("/api/signout", {}, { redirectOnSignOut: false });
+            } finally {
+                location.replace(LANDING);
             }
         }
 
-        static set(id) {
-            try {
-                localStorage.setItem(VIEWER_KEY, id || "");
-            } catch {
-                // Storage blocked: the choice just won't be remembered.
-            }
+        static toSignIn() {
+            const here = location.pathname + location.search;
+            location.replace(`${LANDING}?${new URLSearchParams({ next: here })}`);
         }
-    }
 
-    class PersonaPicker {
-        /** Fill `select` with the demo people; returns the chosen id. */
-        static async fill(select) {
-            const { personas } = await Api.get("/api/personas");
-            if (!Array.isArray(personas)) throw new Error("The list of people didn't load.");
-            const group = (label) => Object.assign(document.createElement("optgroup"), { label });
-            const featured = group("Suggested");
-            const others = group("Everyone else");
-            select.replaceChildren(new Option("Logged out", ""));
-            for (const person of personas) {
-                if (!person || typeof person.id !== "string") continue;
-                const label = `${person.name} — ${person.description || "no orgs yet"}`;
-                (person.featured ? featured : others).append(new Option(label, person.id));
+        /** Where to go after signing in: a page of this app, else Discover. */
+        static nextPage(next) {
+            if (typeof next === "string" && next.startsWith("/src/frontend/") && !next.includes("//")
+                && !next.startsWith(LANDING)) {
+                return next;
             }
-            select.append(featured, others);
-            const saved = Viewer.get();
-            const known = personas.some((p) => p && p.id === saved);
-            const chosen = known ? saved : (personas[0]?.id ?? "");
-            select.value = chosen;
-            Viewer.set(chosen);
-            return chosen;
+            return HOME;
         }
     }
 
@@ -99,7 +95,7 @@
             ["circle", { cx: "12", cy: "12", r: "8.5" }],
             ["path", { d: "M9.6 9.4a2.5 2.5 0 1 1 3.4 2.4c-.6.3-1 .8-1 1.5v.5M12 16.8v.1" }],
         ],
-        star: [["path", { d: "m12 3.8 2.5 5.1 5.6.8-4 4 .9 5.6L12 16.6l-5 2.7.9-5.6-4-4 5.6-.8z" }]],
+        star: [["path", { d: "M7 4h10a1 1 0 0 1 1 1v15l-6-4-6 4V5a1 1 0 0 1 1-1z" }]], // bookmark ("Saved")
     };
     const SVG = "http://www.w3.org/2000/svg";
 
@@ -121,11 +117,11 @@
      * the server says no (for example when the event is full).
      */
     class EventActions {
-        constructor({ eventId, myRsvp = null, starred = false, viewer, cancelled = false, onChange, onError }) {
+        constructor({ eventId, myRsvp = null, starred = false, cancelled = false, full = false, onChange, onError }) {
             this.eventId = eventId;
             this.state = { my_rsvp: myRsvp, starred: Boolean(starred) };
-            this.viewer = viewer;
             this.cancelled = cancelled;
+            this.full = full;
             this.onChange = onChange || (() => {});
             this.onError = onError || (() => {});
             this.busy = false;
@@ -163,19 +159,23 @@
 
         paint() {
             const rsvp = this.state.my_rsvp;
-            const noViewer = !this.viewer;
-            const why = noViewer ? "Choose who you are in “Viewing as” first" : "";
+            const why = "";
             this.going.setAttribute("aria-pressed", String(rsvp === "going"));
             this.maybe.setAttribute("aria-pressed", String(rsvp === "interested"));
             this.star.setAttribute("aria-pressed", String(this.state.starred));
-            this.star.setAttribute("aria-label", this.state.starred ? "Remove star" : "Star this event");
+            this.star.setAttribute("aria-label", this.state.starred ? "Remove from saved" : "Save this event");
             this.going.title = why || (rsvp === "going" ? "You're going — click to undo" : "");
             this.maybe.title = why || (rsvp === "interested" ? "Marked maybe — click to undo" : "");
-            this.star.title = why || (this.state.starred ? "Starred — click to remove" : "Save to your calendar");
+            this.star.title = why || (this.state.starred ? "Saved — click to remove" : "Save to your calendar");
             for (const button of [this.going, this.maybe]) {
-                button.disabled = this.busy || noViewer || (this.cancelled && button.getAttribute("aria-pressed") !== "true");
+                button.disabled = this.busy || (this.cancelled && button.getAttribute("aria-pressed") !== "true");
             }
-            this.star.disabled = this.busy || noViewer;
+            // A full event takes no new "going" (you can still undo yours).
+            if (this.full && rsvp !== "going") {
+                this.going.disabled = true;
+                this.going.title = "This event is full";
+            }
+            this.star.disabled = this.busy;
             this.element.classList.toggle("is-busy", this.busy);
         }
 
@@ -193,13 +193,13 @@
         }
 
         async save(path, body, optimistic) {
-            if (this.busy || !this.viewer) return;
+            if (this.busy) return;
             const before = { ...this.state };
             this.state = { ...this.state, ...optimistic };
             this.busy = true;
             this.paint();
             try {
-                const result = await Api.post(path, { viewer: this.viewer, event_id: this.eventId, ...body });
+                const result = await Api.post(path, { event_id: this.eventId, ...body });
                 this.state = { my_rsvp: result.my_rsvp ?? null, starred: Boolean(result.starred) };
                 this.busy = false;
                 this.paint();
@@ -213,5 +213,47 @@
         }
     }
 
-    window.Collectivize = Object.freeze({ Api, Viewer, PersonaPicker, EventActions });
+    /** Small DOM helpers for the v1.1 pages. Text always goes in through
+     *  textContent, so server data can never inject markup. */
+    const Ui = Object.freeze({
+        el(tag, options = {}, children = []) {
+            const node = document.createElement(tag);
+            if (options.className) node.className = options.className;
+            if (options.text != null) node.textContent = options.text;
+            for (const [name, value] of Object.entries(options.attrs || {})) {
+                if (value === true) node.setAttribute(name, "");
+                else if (value !== false && value != null) node.setAttribute(name, value);
+            }
+            for (const child of children) if (child) node.append(child);
+            return node;
+        },
+
+        /** Demo names without their "[Demo]" / "(demo …)" labels. */
+        cleanName(name) {
+            return String(name || "").replace(/^\[Demo\]\s*/, "").replace(/\s*\(demo[^)]*\)$/, "");
+        },
+
+        /** A round photo, or the person's initial. */
+        avatar(person, className = "avatar") {
+            const box = Ui.el("span", { className, attrs: { "aria-hidden": "true" } });
+            if (person.has_photo) {
+                box.append(Ui.el("img", { attrs: {
+                    src: `/api/photo?${new URLSearchParams({ id: person.id, slot: "0" })}`, alt: "",
+                } }));
+            } else {
+                box.textContent = Ui.cleanName(person.name).charAt(0).toUpperCase() || "?";
+            }
+            return box;
+        },
+
+        profileHref(id) {
+            return `profile.html?${new URLSearchParams({ id })}`;
+        },
+
+        orgHref(id) {
+            return `org.html?${new URLSearchParams({ id })}`;
+        },
+    });
+
+    window.Collectivize = Object.freeze({ Api, Session, EventActions, Ui, icon });
 })();

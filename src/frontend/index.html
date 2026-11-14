@@ -7,15 +7,30 @@
     <title>Collectivize</title>
     <link rel="icon" href="../../app/icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="landing.css">
-    <link rel="stylesheet" href="nav.css">
-    <script src="nav.js"></script>
+    <script src="shared.js" defer></script>
+    <script src="landing.js" defer></script>
 </head>
 <body>
     <main class="cover">
-        <img class="cover-logo" src="../../public/brand/logo-on-paper.svg" alt="" width="490" height="482">
-        <h1 class="cover-title">
-            <img class="cover-wordmark" src="../../public/brand/wordmark-on-paper.svg" alt="Collectivize" width="1004" height="106">
-        </h1>
+        <div class="cover-hero" id="hero">
+            <img class="cover-logo" src="../../public/brand/logo-on-paper.svg" alt="" width="490" height="482">
+            <h1 class="cover-title">
+                <img class="cover-wordmark" src="../../public/brand/wordmark-on-paper.svg" alt="Collectivize" width="1004" height="106">
+            </h1>
+        </div>
+        <p class="cover-line">Find your people on campus, then go meet them.</p>
+
+        <form class="signin" id="signin" novalidate>
+            <label class="signin-label" for="signin-email">Northeastern email</label>
+            <div class="signin-row">
+                <input class="signin-input" id="signin-email" type="email" autocomplete="email"
+                       inputmode="email" maxlength="254" required placeholder="you@northeastern.edu"
+                       aria-describedby="signin-message">
+                <button class="signin-button" type="submit" id="signin-button">Sign in</button>
+            </div>
+            <p class="signin-message" id="signin-message" role="alert" aria-live="polite"></p>
+            <p class="signin-note">Campus-only for now. Demo accounts: <code>drew.demo@northeastern.edu</code>, <code>alice.demo@northeastern.edu</code>.</p>
+        </form>
     </main>
 </body>
 </html>
