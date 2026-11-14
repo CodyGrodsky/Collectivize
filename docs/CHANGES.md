@@ -4,6 +4,27 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-13 — Edge-case unit tests
+
+**Request:** "Add more edge cases and test them."
+
+The suite grew from 71 to 228 tests: 221 pass and 7 are marked as known bugs. No source code changed. Run the tests with `.venv/bin/python -m pytest`, or with `uv run pytest` if uv is installed.
+
+### Added
+- **`tests/backend/test_objects.py`:** validation boundaries: slug and blank-name rules, malformed URLs, self-loop edges, naive timestamps, and exact freshness and staleness cutoffs. Also the event lifecycle: publishing at the start time, publishing twice, editing frozen or ended events, and when changes are logged.
+- **`tests/backend/test_membership_and_hierarchy.py`:** duplicate requests, rejoining after leaving, leaving twice, roles for unconfirmed members, and admin hand-off. For claims: pending claims grant no rights, double claims, and approving the wrong edge. For PART_OF: duplicates, one-sided acceptance, parent-side proposals, staff verification, pending ancestors, more disallowed kinds, and the cycle guard (exercised by loosening the kind table).
+- **`tests/backend/test_events_and_privacy.py`:** co-host invite, accept, decline and removal permissions, re-inviting, who gets credit for a publish, tagging rules, and series permissions and defaults. Also every visibility level (NETWORK, MEMBERS, CONNECTIONS, PRIVATE) and the erasure cases.
+- **`tests/backend/test_storage.py`:** config trimming and reading from the process environment, a codec round trip for each edge type, timezone offsets, re-validation on decode, store parity between the two backends, nested transactions, `:memory:` SQLite, Unicode, and the environment guard keeping data intact.
+
+### Known bugs (marked `xfail(strict=True)`)
+Each test flags itself as soon as its bug is fixed, so the marker can be removed.
+1. **`SeriesService.publish_occurrences` is not atomic.** If one start time is invalid, the earlier occurrences stay published.
+2. **Cancelling a never-published draft makes it public.** The draft becomes visible and discoverable, which breaks the "drafts are visible only to host admins" rule.
+3. **Erasing a person with a pending claim leaves the org stuck in `CLAIM_PENDING`.** `release_if_last_admin` only counts confirmed admins, and no one is left to approve the claim.
+4. **The two stores handle nested transactions differently.** With SQLite, a caught failure in an inner `transaction()` still commits; the in-memory store rolls it back.
+
+---
+
 ## 2026-11-13 — Genuine connections: graph audit and fixes
 
 **Request:** "Check that the logic is the graph and make sure that it is genuine connections between people and organizations."
