@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#f5f4f0">
+    <title>Calendar · Collectivize</title>
+    <link rel="icon" href="../../app/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="calendar.css">
+    <link rel="stylesheet" href="nav.css">
+    <script src="nav.js"></script>
+    <script src="calendar.js" defer></script>
+</head>
+<body>
+    <main class="calendar-page">
+        <header class="cal-header">
+            <h1 class="cal-title" id="cal-title" aria-live="polite">Calendar</h1>
+            <div class="cal-controls">
+                <button type="button" class="cal-button" id="cal-today">Today</button>
+                <div class="cal-step">
+                    <button type="button" class="cal-icon-button" id="cal-prev" aria-label="Previous month">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 6-6 6 6 6"/></svg>
+                    </button>
+                    <button type="button" class="cal-icon-button" id="cal-next" aria-label="Next month">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg>
+                    </button>
+                </div>
+                <div class="cal-views" role="group" aria-label="Calendar view">
+                    <button type="button" class="cal-view" aria-pressed="true">Month</button>
+                    <button type="button" class="cal-view" disabled title="Coming soon">Week</button>
+                    <button type="button" class="cal-view" disabled title="Coming soon">Day</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="cal-layout">
+            <section class="cal-month" aria-labelledby="cal-title">
+                <div class="cal-weekdays" aria-hidden="true">
+                    <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+                </div>
+                <div class="cal-grid" id="cal-grid"></div>
+            </section>
+
+            <aside class="cal-day" aria-labelledby="day-title">
+                <p class="day-eyebrow" id="day-eyebrow"></p>
+                <h2 class="day-title" id="day-title"></h2>
+
+                <section class="day-section" aria-labelledby="mine-title">
+                    <h3 class="day-section-title" id="mine-title">My events</h3>
+                    <p class="day-empty">Nothing you're hosting or going to.</p>
+                </section>
+
+                <section class="day-section" aria-labelledby="community-title">
+                    <h3 class="day-section-title" id="community-title">Community events</h3>
+                    <p class="day-empty">No community events this day.</p>
+                </section>
+            </aside>
+        </div>
+    </main>
+</body>
+</html>

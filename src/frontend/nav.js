@@ -9,7 +9,11 @@
 (() => {
     const PAGES = [
         { label: "Home", href: "index.html", icon: "home" },
-        { label: "Demo", href: "main.html", icon: "graph" },
+        { label: "Calendar", href: "calendar.html", icon: "calendar" },
+        { label: "Discover", href: "discover.html", icon: "discover" },
+        { label: "Network", href: "network.html", icon: "graph" },
+        { label: "Profile", href: "profile.html", icon: "profile" },
+        { label: "Demo", href: "main.html", icon: "demo" },
     ];
 
     // Inline icon paths (24x24, stroked) so the nav needs no extra files.
@@ -18,6 +22,10 @@
         home: '<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>',
         graph: '<circle cx="6" cy="7" r="2.5"/><circle cx="18" cy="7" r="2.5"/>'
             + '<circle cx="12" cy="17.5" r="2.5"/><path d="M8.5 7h7M7.1 9.3l3.8 6M16.9 9.3l-3.8 6"/>',
+        calendar: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+        discover: '<circle cx="12" cy="12" r="8.5"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>',
+        profile: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.5 3.6-5.5 7-5.5s6.2 2 7 5.5"/>',
+        demo: '<path d="M9.5 3.5h5M10.5 3.5v5.5L5.3 18.2A1.5 1.5 0 0 0 6.6 20.5h10.8a1.5 1.5 0 0 0 1.3-2.3L13.5 9V3.5M7.8 14.5h8.4"/>',
     };
 
     const STORAGE_KEY = "collectivize.nav.open";
