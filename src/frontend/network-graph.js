@@ -38,28 +38,28 @@
 
     const firstName = (label) => cleanName(label).split(" ")[0];
 
-    /** Positions on rings around the centre: people first (inner rings),
-     *  then orgs on the next ring out. */
+    /** Positions on rings around the centre, people first (inner rings)
+     *  then orgs. Small networks share one ring, so they never collapse
+     *  into a line. */
     function layout(people, orgs) {
+        const nodes = [...people, ...orgs];
         const placed = [];
         let ring = 0;
-        const fill = (nodes) => {
-            let i = 0;
-            while (i < nodes.length) {
-                const radius = FIRST_RING + ring * RING_GAP;
-                const capacity = Math.max(6, Math.floor((2 * Math.PI * radius) / NODE_SPACING));
-                const batch = nodes.slice(i, i + capacity);
-                const offset = ring % 2 ? Math.PI / batch.length : 0; // stagger rings
-                batch.forEach((node, k) => {
-                    const angle = -Math.PI / 2 + offset + (2 * Math.PI * k) / batch.length;
-                    placed.push({ node, x: radius * Math.cos(angle), y: radius * Math.sin(angle) });
-                });
-                i += batch.length;
-                ring += 1;
-            }
-        };
-        fill(people);
-        fill(orgs);
+        let i = 0;
+        while (i < nodes.length) {
+            const radius = FIRST_RING + ring * RING_GAP;
+            const capacity = Math.max(6, Math.floor((2 * Math.PI * radius) / NODE_SPACING));
+            const batch = nodes.slice(i, i + capacity);
+            const n = batch.length;
+            // Two nodes sit side by side; rings after the first are staggered.
+            const start = -Math.PI / 2 + (n === 2 ? Math.PI / 2 : 0) + (ring % 2 ? Math.PI / n : 0);
+            batch.forEach((node, k) => {
+                const angle = start + (2 * Math.PI * k) / n;
+                placed.push({ node, x: radius * Math.cos(angle), y: radius * Math.sin(angle) });
+            });
+            i += n;
+            ring += 1;
+        }
         return { placed, radius: FIRST_RING + Math.max(0, ring - 1) * RING_GAP };
     }
 
@@ -81,7 +81,7 @@
             this.svg.append(this.scene);
             this.circle = el("div", { className: "ng-circle" }, [this.svg]);
             this.recenter = el("button", { className: "ng-recenter", text: "Re-center", attrs: { type: "button" } });
-            this.recenter.addEventListener("click", () => this.setView({ x: 0, y: 0, zoom: 1 }));
+            this.recenter.addEventListener("click", () => this.setView({ x: 0, y: 0, zoom: this.fitZoom || 1 }));
             this.more = el("button", { className: "button", text: "Show more", attrs: { type: "button" } });
             this.more.addEventListener("click", () => this.showMore());
             this.count = el("p", { className: "ng-count" });
@@ -146,6 +146,10 @@
                 : `${data.people_total} connection${data.people_total === 1 ? "" : "s"} · ${data.orgs_total} org${data.orgs_total === 1 ? "" : "s"}`
                   + (shown < total ? ` · showing ${shown}` : "");
             this.more.hidden = shown >= total;
+            // Small networks are zoomed in to fill the circle; big ones pan.
+            this.fitZoom = Math.min(MAX_ZOOM, Math.max(1, (VIEW / 2 - 30) / (radius + 34)));
+            if (!this.viewed) this.view = { x: 0, y: 0, zoom: this.fitZoom };
+            this.viewed = true;
             this.setView(this.view);
             if (this.selected) {
                 const again = [data.center, ...data.people, ...data.orgs].find((n) => n.id === this.selected.id);
@@ -288,7 +292,7 @@
             };
             const { x: vx, y: vy, zoom: z } = this.view;
             this.scene.setAttribute("transform", `scale(${z}) translate(${-vx} ${-vy})`);
-            this.recenter.hidden = Math.abs(vx) < 1 && Math.abs(vy) < 1 && Math.abs(z - 1) < 0.01;
+            this.recenter.hidden = Math.abs(vx) < 1 && Math.abs(vy) < 1 && Math.abs(z - (this.fitZoom || 1)) < 0.01;
         }
 
         bindPan() {
