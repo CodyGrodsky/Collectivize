@@ -497,3 +497,6 @@ select.edit-input { height: 38px; cursor: pointer; }
 /* The Connect button and, under it, why a request didn't send. */
 .p-connect-box { display: grid; gap: 6px; width: 100%; }
 .p-connect-error { margin: 0; color: var(--p-ink); font-size: 13px; font-weight: 600; }
+
+/* The network has its own tab: a link to it under the profile. */
+.profile-network-link { margin: 16px 0 0; text-align: center; }

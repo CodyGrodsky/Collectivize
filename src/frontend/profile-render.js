@@ -8,8 +8,8 @@
 //
 // A profile is a card (name, badge, bio, site) beside a column of sections.
 // The person chooses which sections show and in what order (`sections`):
-// about, top3, network, orgs, events. The "network" section is a slot: the
-// page passes in the graph bubble to put there.
+// about, top3, orgs, events. The network is not part of a profile: it has
+// the Network page to itself (a "network" entry in `sections` is ignored).
 
 (() => {
     // --- small DOM helper ------------------------------------------------------
@@ -145,13 +145,12 @@
         weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
     });
     const SVG = "http://www.w3.org/2000/svg";
-    const SECTION_LABELS = { about: "About", top3: "Top 3", network: "Network", orgs: "Orgs", events: "Events" };
+    // The profile's own sections. The network lives on the Network page only.
+    const SECTION_LABELS = { about: "About", top3: "Top 3", orgs: "Orgs", events: "Events" };
 
     // Draws a profile. Used for the pages and for the editor's live preview.
     // mode: "self" (your own page), "visitor", or "preview" (inert visitor view).
     // slots.onConnection: called after Connect / Accept succeeds, to redraw.
-    // slots.network: the element to show in the "network" section (the graph
-    // bubble). Without it, the section is a placeholder (preview) or skipped.
     class ProfileRenderer {
         render(view, mode, slots = {}) {
             const surface = el("section", { className: "profile-surface", attrs: { "aria-label": "Profile" } });
@@ -160,8 +159,6 @@
                 surface.classList.add("is-locked");
                 surface.append(el("div", { className: "profile-grid" }, [
                     this.card(view, mode, true, slots),
-                    // A locked profile still shows the network you share with them.
-                    el("div", { className: "p-sections" }, [slots.network ? this.section("Network", slots.network) : null]),
                 ]));
                 return surface;
             }
@@ -273,12 +270,6 @@
                     ? this.section(view.top3.title, el("ol", { className: "p-top3" },
                         view.top3.items.map((item) => el("li", { text: item }))))
                     : null),
-                network: () => {
-                    if (slots.network) return this.section("Network", slots.network);
-                    return mode === "preview"
-                        ? this.section("Network", this.empty("Your network bubble shows here."))
-                        : null;
-                },
                 orgs: () => this.section("Orgs", view.orgs.length
                     ? el("ul", { className: "p-orgs" }, view.orgs.map((org) => el("li", { text: org.name })))
                     : this.empty(own ? "Orgs you join will show up here." : "No orgs to show.")),
