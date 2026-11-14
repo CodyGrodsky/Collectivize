@@ -11,6 +11,7 @@ import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
+from functools import lru_cache
 from pathlib import Path
 from typing import TypeVar
 
@@ -25,6 +26,8 @@ N = TypeVar("N", bound=GraphRecord)
 E = TypeVar("E", bound=Edge)
 
 IN_MEMORY = ":memory:"
+# How many decoded records to remember (see `_decode_cached`).
+DECODE_CACHE_SIZE = 100_000
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -257,4 +260,15 @@ def _dump(record: GraphRecord) -> str:
 
 def _load(row: tuple[str, str]) -> GraphRecord:
     type_name, data = row
+    return _decode_cached(type_name, data)
+
+
+@lru_cache(maxsize=DECODE_CACHE_SIZE)
+def _decode_cached(type_name: str, data: str) -> GraphRecord:
+    """Decoding is the slow part of reading (one search reads the same
+    hosts, RSVPs and tags thousands of times), so each distinct stored text
+    is decoded once and the record reused. This is safe because records are
+    frozen, and it can never serve stale data: the key is the stored text
+    itself, so a record that changes is a different key. Text that fails
+    validation raises every time (errors are not remembered)."""
     return decode_record(type_name, json.loads(data))

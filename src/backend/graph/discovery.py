@@ -22,8 +22,8 @@ from __future__ import annotations
 
 import math
 import unicodedata
-from collections.abc import Mapping
-from dataclasses import dataclass, field
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 
 from backend.objects import (
@@ -66,6 +66,8 @@ MAX_TEXT_LENGTH = 200
 DEFAULT_TRAVEL_KM = 2.0  # campus scale, until someone has travel history
 HOST_TRUST = {ClaimState.CLAIMED: 1.0, ClaimState.CLAIM_PENDING: 0.4, ClaimState.UNCLAIMED: 0.0}
 SECONDS_PER_DAY = 86400.0
+# (event, its main host, its tag ids) -> keep it? See DiscoveryService.rank_all.
+EventFilter = Callable[["Event", "Organization | Person", set[str]], bool]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -161,6 +163,7 @@ class _SearchContext:
     taste: dict[str, float]  # tag id -> weight
     travel_scale_km: float
     request_matches: Mapping[str, RequestMatch] = field(default_factory=dict)
+    keep: EventFilter | None = None
 
 
 class DiscoveryService:
@@ -205,10 +208,14 @@ class DiscoveryService:
         now: datetime,
         *,
         request_matches: Mapping[str, RequestMatch] | None = None,
+        keep: EventFilter | None = None,
     ) -> list[DiscoveryItem]:
         """Every matching event, ranked (the query's limit and offset are
-        ignored). Unified search combines these with people and orgs."""
-        ctx = self._context(query, now, request_matches or {})
+        ignored). Unified search combines these with people and orgs.
+        `keep(event, host, tag_ids)` is one more filter, asked only about
+        events the viewer may see and before the costly ranking, so events
+        it turns down are never ranked."""
+        ctx = replace(self._context(query, now, request_matches or {}), keep=keep)
         items = [
             item
             for event in self._store.nodes(Event)
@@ -268,6 +275,8 @@ class DiscoveryService:
             return None
         tags = self._tag_ids(event.id, host_ids)
         if query.tag_ids and not tags & set(query.tag_ids):
+            return None
+        if ctx.keep is not None and not ctx.keep(event, host, tags):
             return None
         return self._rank(event, host, host_ids, tags, distance, ctx, is_cancelled)
 
