@@ -27,6 +27,7 @@ from .search_agent import AgentSearchResult, SearchAgentService
 from .series import SeriesService
 from .stars import StarService
 from .store import GraphStore, InMemoryGraphStore
+from .visibility import VisibilityService
 
 
 class CollectivizeGraph:
@@ -95,6 +96,7 @@ class CollectivizeGraph:
             client=agent_client,  # None: a real client is made on first use
         )
         self.integrity = IntegrityService(self.store)
+        self.visibility = VisibilityService(self.store, self.connections, self.membership)
 
 
 __all__ = [
@@ -146,4 +148,5 @@ __all__ = [
     "SeriesService",
     "StarService",
     "TasteProfile",
+    "VisibilityService",
 ]

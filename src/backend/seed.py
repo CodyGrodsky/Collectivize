@@ -34,6 +34,7 @@ from backend.objects import (
 )
 from backend.seed_bulk import BulkScale, BulkSeedResult, seed_bulk
 from backend.seed_network import seed_network
+from backend.seed_profiles import seed_profiles
 
 SEED_STAFF_ID = "seed-staff"
 DEMO_INVITE_CODE = "demo-join-from-drew"  # fixed so the demo can type it in
@@ -179,6 +180,7 @@ class _MockWorld:
             self.g, orgs, people, ADMINS, self.now, self._person,
             event_ids=events.values(), tag_ids=tags.values(), campus=CAMPUS,
         )
+        people |= seed_profiles(self.g, orgs, people, ADMINS, self.now, self._person)
         invite = self.g.invites.create(people["drew"], self.now, code=DEMO_INVITE_CODE)
         return SeedResult(
             orgs=orgs, people=people, tags=tags, events=events, invite_code=invite.code
