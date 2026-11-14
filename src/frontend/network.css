@@ -1,0 +1,324 @@
+/* Network page: a map of one person's communities and connections, with a
+   panel that says what you share with them. Only what is directly linked
+   to the node in the middle is drawn. Shares the Discover and
+   Calendar palette and type.
+
+   Only nodes you can open are drawn. Squares are communities, circles are
+   people. A bold line joins two people who accepted a connection, a light
+   dashed line joins two who are only close in the network, and a green
+   line joins a community to the middle. */
+
+:root {
+    --ink: #202b29;
+    --muted: #5f6b67;
+    --faint: #a3aca8;
+    --paper: #f5f4f0;
+    --card: #fbfaf7;
+    --line: #e6e5df;
+    --green: #266956;
+    --green-soft: #e8f2ed;
+    --amber: #8a5a12;
+    --amber-soft: #f6ecd9;
+    --red: #9b3b32;
+    --red-soft: #f6e4e1;
+    --shadow: 0 1px 2px rgba(32, 43, 41, .05), 0 6px 18px rgba(32, 43, 41, .05);
+    --radius: 14px;
+    --duration-fast: 150ms;
+    --duration-normal: 320ms;
+    --ease-out: cubic-bezier(.16, 1, .3, 1);
+}
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+button, select { font: inherit; color: inherit; }
+
+:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+.network-page { max-width: 1240px; margin: 0 auto; padding: 28px 32px 48px; }
+
+/* --- header ------------------------------------------------------------- */
+
+.nw-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px 24px;
+    margin-bottom: 18px;
+}
+
+.nw-title { margin: 0; font-size: 26px; font-weight: 650; letter-spacing: -.01em; }
+
+.nw-subtitle { margin: 2px 0 0; color: var(--muted); }
+
+.nw-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+
+.nw-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 34px;
+    padding: 0 14px 0 8px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--card);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--duration-fast);
+}
+
+.nw-button:hover { background: #fff; }
+
+.nw-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+.nw-persona { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 13px; }
+
+.nw-persona select {
+    height: 34px;
+    max-width: 280px;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--card);
+    color: var(--ink);
+    font-size: 13px;
+}
+
+.nw-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding: 10px 12px 10px 16px;
+    border: 1px solid #ecc9c4;
+    border-radius: 10px;
+    background: var(--red-soft);
+    color: var(--red);
+}
+
+.nw-banner .nw-button { padding: 0 14px; color: var(--ink); }
+
+.nw-notice {
+    margin: 0 0 14px;
+    padding: 10px 16px;
+    border: 1px solid #ead9b8;
+    border-radius: 10px;
+    background: var(--amber-soft);
+    color: var(--amber);
+}
+
+/* --- layout ------------------------------------------------------------- */
+
+.nw-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 20px; align-items: start; }
+
+.nw-map-card {
+    position: relative;
+    padding: 14px 16px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background:
+        radial-gradient(circle at 50% 46%, #fff 0, rgba(255, 255, 255, 0) 58%),
+        var(--card);
+    box-shadow: var(--shadow);
+}
+
+.nw-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    margin: 0 0 4px;
+    padding: 0;
+    list-style: none;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.nw-legend li { display: flex; align-items: center; gap: 6px; }
+
+.nw-key { width: 12px; height: 12px; border: 1.5px solid var(--green); border-radius: 50%; background: #fff; }
+.nw-key.is-org { border-radius: 3px; background: var(--green-soft); }
+.nw-key.is-line { width: 22px; height: 0; border: 0; border-top: 2.2px solid #5f6b67; border-radius: 0; background: none; }
+.nw-key.is-line.is-near { border-top: 1.5px dashed #b4bbb7; }
+.nw-key.is-line.is-org { border-top: 2px solid var(--green); opacity: .6; }
+
+.nw-map-scroll { overflow-x: auto; }
+
+.nw-map { display: block; width: 100%; min-width: 480px; height: auto; }
+
+.nw-empty { margin: 0; padding: 90px 24px; color: var(--muted); text-align: center; }
+
+.nw-privacy { margin: 6px 0 0; color: var(--faint); font-size: 12px; text-align: center; }
+
+/* --- the map ------------------------------------------------------------ */
+
+/* Bold: a connection both people accepted, whoever is in the middle.
+   Light: not connected, but close in the network. No line: no real tie. */
+.nw-link { stroke: #5f6b67; stroke-width: 2.2; }
+.nw-link.is-near { stroke: #c2c8c4; stroke-width: 1.1; stroke-dasharray: 3 5; }
+.nw-link.is-org { stroke: var(--green); stroke-width: 2; opacity: .6; }
+
+.nw-node { transition: opacity var(--duration-fast); }
+
+.nw-node-inner {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: nw-pop var(--duration-normal) var(--ease-out) both;
+    animation-delay: calc(var(--order, 0) * 18ms);
+}
+
+@keyframes nw-pop {
+    /* Scale only: a node is never invisible, even if the animation doesn't run. */
+    from { transform: scale(.55); }
+    to { transform: scale(1); }
+}
+
+.nw-shape { fill: #fff; stroke: var(--faint); stroke-width: 1.5; transition: stroke-width var(--duration-fast), fill var(--duration-fast); }
+
+.nw-initials {
+    fill: var(--ink);
+    font-size: 13px;
+    font-weight: 650;
+    letter-spacing: .02em;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    pointer-events: none;
+}
+
+.nw-label {
+    fill: var(--muted);
+    font-size: 13px;
+    text-anchor: middle;
+    pointer-events: none;
+    /* A paper-coloured halo keeps labels readable where a link passes behind. */
+    paint-order: stroke;
+    stroke: var(--card);
+    stroke-width: 4px;
+    stroke-linejoin: round;
+}
+
+.nw-node.is-center .nw-shape { fill: var(--ink); stroke: var(--ink); stroke-dasharray: none; }
+.nw-node.is-center .nw-initials { fill: #fff; font-size: 17px; }
+.nw-node.is-center .nw-label { fill: var(--ink); font-size: 14.5px; font-weight: 650; }
+
+.is-org .nw-label { fill: var(--ink); font-weight: 600; }
+.is-org .nw-shape { fill: var(--green-soft); stroke: var(--green); }
+.is-org .nw-initials { fill: var(--green); }
+
+.is-person .nw-shape { stroke: var(--green); stroke-width: 2; }
+.is-person.is-you .nw-shape { fill: var(--ink); stroke: var(--ink); }
+.is-person.is-you .nw-initials { fill: #fff; }
+.is-person.is-you .nw-label { fill: var(--ink); font-weight: 650; }
+
+.is-pressable { cursor: pointer; }
+.is-pressable:focus { outline: none; }
+.is-pressable:hover .nw-shape { stroke-width: 3; }
+.is-pressable:focus-visible .nw-shape { stroke: var(--green); stroke-width: 3.5; }
+.is-pressable:active .nw-shape { fill: var(--green-soft); }
+
+/* --- side panel --------------------------------------------------------- */
+
+.nw-panel {
+    padding: 20px 20px 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--card);
+    box-shadow: var(--shadow);
+}
+
+.nw-eyebrow { margin: 0; color: var(--green); font-size: 11px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+
+.nw-panel-title { margin: 2px 0 4px; font-size: 21px; font-weight: 650; letter-spacing: -.01em; }
+
+.nw-summary { margin: 0 0 6px; color: var(--muted); }
+
+.nw-section { margin: 0 -20px; padding: 14px 20px 12px; border-top: 1px solid var(--line); }
+
+.nw-section h3 { margin: 0 0 6px; font-size: 12px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+
+.nw-hint { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+
+.nw-list { margin: 0; padding: 0; list-style: none; }
+
+.nw-item + .nw-item { margin-top: 4px; }
+
+.nw-item.is-text { padding: 6px 4px 2px; color: var(--muted); font-size: 13px; }
+
+.nw-row { display: flex; align-items: center; gap: 10px; padding: 5px 8px; }
+
+.nw-row-text { display: grid; flex: 1; min-width: 0; }
+
+.nw-badge {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 1.5px solid var(--green);
+    border-radius: 8px;
+    background: var(--green-soft);
+    color: var(--green);
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.nw-item-name { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.nw-item-sub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.nw-avatar {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 1.5px solid var(--green);
+    border-radius: 50%;
+    background: #fff;
+    color: var(--ink);
+    font-size: 11px;
+    font-weight: 650;
+}
+
+
+.nw-open {
+    flex: none;
+    height: 28px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--duration-fast), color var(--duration-fast), border-color var(--duration-fast);
+}
+
+.nw-open:hover { border-color: var(--green); background: var(--green); color: #fff; }
+.nw-open:active { transform: translateY(1px); }
+
+/* --- small screens ------------------------------------------------------ */
+
+@media (max-width: 1020px) {
+    .nw-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 640px) {
+    .network-page { padding: 18px 16px 36px; }
+    .nw-persona select { max-width: 200px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nw-node-inner { animation: none; }
+    .nw-button, .nw-open, .nw-node, .nw-link, .nw-shape { transition: none; }
+}
