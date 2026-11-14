@@ -155,6 +155,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             "/api/discover": lambda: api.discover(own),
             "/api/calendar": lambda: api.calendar(own),
             "/api/org": lambda: app.org(viewer, params),
+            "/api/network": lambda: app.network(viewer, params),
+            "/api/requests": lambda: app.requests(viewer),
             "/api/admin/users": lambda: app.admin_users(session.person_id, params),
             "/api/admin/audit": lambda: self._audit(session),
         }
@@ -170,6 +172,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             "/api/rsvp": own(api.rsvp),
             "/api/star": own(api.star),
             "/api/org": lambda body: app.update_org(viewer, body),
+            "/api/connect": lambda body: app.connect(viewer, body),
+            "/api/connection": lambda body: app.connection(viewer, body),
             "/api/org/members": lambda body: app.org_members(viewer, body),
             "/api/admin/view-as": lambda body: self._view_as(session, body),
         }

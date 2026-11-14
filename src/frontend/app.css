@@ -154,3 +154,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @media (max-width: 640px) {
     .page { padding: 18px 16px 40px; }
 }
+
+/* Connection requests: the sender's card with Accept / Decline. */
+.requests { display: grid; gap: 14px; }
+.request-actions { justify-content: flex-end; margin-top: 8px; }

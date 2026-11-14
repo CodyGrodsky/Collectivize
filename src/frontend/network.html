@@ -6,14 +6,35 @@
     <meta name="theme-color" content="#f5f4f0">
     <title>Network · Collectivize</title>
     <link rel="icon" href="../../app/icon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="placeholder.css">
+    <link rel="stylesheet" href="app.css">
+    <link rel="stylesheet" href="network-graph.css">
+    <link rel="stylesheet" href="profile-card.css">
     <link rel="stylesheet" href="nav.css">
     <script src="nav.js"></script>
+    <script src="shared.js" defer></script>
+    <script src="profile-card.js" defer></script>
+    <script src="network-graph.js" defer></script>
+    <script src="network.js" defer></script>
 </head>
 <body>
-    <main class="placeholder">
-        <h1>Network</h1>
-        <p>Coming soon.</p>
+    <main class="page">
+        <h1 class="page-title">Network</h1>
+        <p class="page-subtitle">You, your connections and your organizations. Drag to look around; tap someone for their card.</p>
+
+        <section class="panel" id="requests-panel" aria-labelledby="requests-title" hidden>
+            <h2 class="panel-title" id="requests-title">Connection requests</h2>
+            <p class="status" id="requests-status" role="status" aria-live="polite"></p>
+            <ul class="list requests" id="requests"></ul>
+        </section>
+
+        <section class="panel" aria-label="Your network">
+            <div id="graph"></div>
+        </section>
+
+        <section class="panel" id="sent-panel" aria-labelledby="sent-title" hidden>
+            <h2 class="panel-title" id="sent-title">Requests you've sent</h2>
+            <ul class="list" id="sent"></ul>
+        </section>
     </main>
 </body>
 </html>

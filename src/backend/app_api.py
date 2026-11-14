@@ -20,7 +20,13 @@ from typing import Any
 from backend.config import ALLOWED_EMAIL_DOMAINS
 from backend.demo_api import ApiError, GraphFactory
 from backend.graph import CollectivizeGraph
+from backend.graph.visibility import (
+    NETWORK_ORG_CAP,
+    NETWORK_PEOPLE_CAP,
+    NetworkNode,
+)
 from backend.objects import (
+    Connected,
     Organization,
     Person,
     Provenance,
@@ -28,11 +34,14 @@ from backend.objects import (
     VerificationLevel,
 )
 from backend.objects.base import utc_now
+from backend.objects.person import BACKGROUND_PRESETS, OUTLINE_PRESETS
+from backend.objects.profile_image import PHOTO_SLOT, PICTURE_SLOTS, image_id
 
 EMAIL_SHAPE = re.compile(r"^[a-z0-9._%+-]+@([a-z0-9-]+(?:\.[a-z0-9-]+)+)$")
 MAX_EMAIL_LENGTH = 254
 MAX_ID_LENGTH = 64
 ADMIN_SEARCH_LIMIT = 20
+MAX_NETWORK_NODES = 500
 
 
 class AppApi:
@@ -122,6 +131,133 @@ class AppApi:
             return None
         with self._graphs() as graph:
             return _person(graph, _id(target, "person")).id
+
+    # --- connections and networks (spec 4.2) --------------------------------------
+
+    def network(self, viewer: str, params: dict[str, str]) -> dict[str, Any]:
+        """A network as the viewer may see it: their own, or a 1st-degree
+        connection's. `people` / `orgs` raise the caps for "Show more"."""
+        people = _bounded(params.get("people"), NETWORK_PEOPLE_CAP, MAX_NETWORK_NODES)
+        orgs = _bounded(params.get("orgs"), NETWORK_ORG_CAP, MAX_NETWORK_NODES)
+        with self._graphs() as graph:
+            subject = _person(graph, _id(params.get("id") or viewer, "person"))
+            view = graph.visibility.visible_network(
+                viewer, subject.id, people_limit=people, org_limit=orgs
+            )
+            if view is None:
+                return {"visible": False, "id": subject.id}
+            node = lambda n: _node_json(graph, n)  # noqa: E731
+            return {
+                "visible": True,
+                "id": subject.id,
+                "is_own": subject.id == viewer,
+                "center": node(view.center),
+                "people": [node(n) for n in view.people],
+                "orgs": [node(n) for n in view.orgs],
+                "links": [list(link) for link in view.links],
+                "people_total": view.people_total,
+                "orgs_total": view.orgs_total,
+                "connections_hidden": view.connections_hidden,
+            }
+
+    def connect(self, viewer: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Send a connection request. Anyone can ask anyone (spec 4.2 rule 1)."""
+        with self._graphs() as graph:
+            other = _person(graph, _id(body.get("person_id"), "person"))
+            state = graph.visibility.connection_state(viewer, other.id).value
+            if state == "pending_in":  # they already asked: asking back accepts
+                return self._answer(graph, viewer, other.id, "accept")
+            if state == "none":
+                graph.connections.request(viewer, other.id, self._clock())
+            return {"person_id": other.id,
+                    "connection": graph.visibility.connection_state(viewer, other.id).value}
+
+    def connection(self, viewer: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Answer or undo: `accept` or `decline` a request to you, `cancel`
+        your own request, or `remove` a connection."""
+        action = body.get("action")
+        if action not in ("accept", "decline", "cancel", "remove"):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "action must be accept, decline, cancel or remove")
+        with self._graphs() as graph:
+            other = _person(graph, _id(body.get("person_id"), "person"))
+            return self._answer(graph, viewer, other.id, action)
+
+    def _answer(
+        self, graph: CollectivizeGraph, viewer: str, other_id: str, action: str
+    ) -> dict[str, Any]:
+        edge = graph.connections.between(viewer, other_id)
+        state = graph.visibility.connection_state(viewer, other_id).value
+        allowed = {"accept": "pending_in", "decline": "pending_in",
+                   "cancel": "pending_out", "remove": "connected"}
+        if edge is None or state != allowed[action]:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "there's no request or connection to change")
+        if action == "accept":
+            graph.connections.accept(edge.id, viewer)
+        else:  # declined, cancelled and removed connections leave no record
+            graph.connections.remove(edge.id, viewer)
+        other = graph.store.node(other_id, Person)
+        result: dict[str, Any] = {
+            "person_id": other_id,
+            "connection": graph.visibility.connection_state(viewer, other_id).value,
+        }
+        if action == "accept":
+            result["notice"] = (
+                f"You're connected. Your connections will be able to see that you're "
+                f"connected to {other.display_name}."
+            )
+        return result
+
+    def requests(self, viewer: str) -> dict[str, Any]:
+        """Connection requests waiting for the viewer, each with the sender's
+        profile card (the preview, spec 4.11), and requests they've sent."""
+        with self._graphs() as graph:
+            incoming = graph.store.edges(Connected, target_id=viewer)
+            outgoing = graph.store.edges(Connected, source_id=viewer)
+            return {
+                "incoming": [
+                    self._card(graph, viewer, e.source_id, preview=True)
+                    for e in incoming if not e.is_established
+                ],
+                "outgoing": [
+                    _person_ref(graph, e.target_id, viewer)
+                    for e in outgoing if not e.is_established
+                ],
+            }
+
+    def _card(
+        self, graph: CollectivizeGraph, viewer: str | None, subject_id: str, *, preview: bool = False
+    ) -> dict[str, Any]:
+        """The profile card (the top of a profile, and the preview on a
+        request or invite), cut down to what the viewer may see."""
+        person = _person(graph, subject_id)
+        if viewer is None:  # invite landing page: the inviter's preview card
+            sections = graph.visibility.visible_profile_sections(subject_id, subject_id, preview=True)
+            connection = "none"
+        else:
+            sections = graph.visibility.visible_profile_sections(viewer, subject_id, preview=preview)
+            connection = graph.visibility.connection_state(viewer, subject_id).value
+        theme = person.theme
+        return {
+            "id": person.id,
+            "name": person.display_name,
+            "bio": person.bio,
+            "top3": None if person.top3 is None else {
+                "title": person.top3.title, "items": list(person.top3.items),
+            },
+            "theme": {
+                "outline": theme.outline,
+                "background": theme.background,
+                "outline_hex": OUTLINE_PRESETS[theme.outline],
+                "background_hex": BACKGROUND_PRESETS[theme.background],
+            },
+            "has_photo": _has_photo(graph, person.id),
+            "pictures": [
+                slot for slot in PICTURE_SLOTS
+                if graph.store.has_node(image_id(person.id, slot))
+            ] if sections.pictures else [],
+            "card": sections.card.value,
+            "connection": connection,
+        }
 
     # --- organizations (spec 4.9 org admins, 7.1 member lists) ---------------------
 
@@ -223,6 +359,27 @@ def _person(graph: CollectivizeGraph, person_id: str) -> Person:
     return node
 
 
+def _bounded(value: str | None, default: int, high: int) -> int:
+    if value is None or value == "":
+        return default
+    if not value.isdigit():
+        raise ApiError(HTTPStatus.BAD_REQUEST, "node counts must be whole numbers")
+    return max(1, min(int(value), high))
+
+
+def _node_json(graph: CollectivizeGraph, node: NetworkNode) -> dict[str, Any]:
+    return {
+        "id": node.id,
+        "kind": node.kind,
+        "label": node.label,
+        "is_center": node.is_center,
+        "is_viewer": node.is_viewer,
+        "viewer_connected": node.viewer_connected,
+        "connection": node.connection.value,
+        "has_photo": node.kind == "person" and _has_photo(graph, node.id),
+    }
+
+
 def _person_by_email(graph: CollectivizeGraph, email: str) -> Person:
     address = email.strip().lower()[:MAX_EMAIL_LENGTH]
     for person in graph.store.nodes(Person):
@@ -254,8 +411,6 @@ def _person_ref(
 
 
 def _has_photo(graph: CollectivizeGraph, person_id: str) -> bool:
-    from backend.objects.profile_image import PHOTO_SLOT, image_id
-
     return graph.store.has_node(image_id(person_id, PHOTO_SLOT))
 
 
