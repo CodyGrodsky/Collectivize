@@ -1,0 +1,450 @@
+/* Profile page. The page frame uses the house colors like every other page;
+   only the profile area (.profile-surface) takes the person's colors, set
+   by profile.js as --p-bg (background), --p-line (outline), --p-ink (text
+   that reads on the background) and --p-on-line (text that reads on the
+   outline). Outlined boxes only: no shadows or gradients. */
+
+:root {
+    --ink: #202b29;
+    --muted: #5f6b67;
+    --faint: #a3aca8;
+    --paper: #f5f4f0;
+    --card: #fbfaf7;
+    --line: #e6e5df;
+    --green: #266956;
+    --danger: #b3261e;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+button, input, textarea { font: inherit; color: inherit; }
+
+:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+.profile-page {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 28px 32px 40px;
+}
+
+/* --- page chrome (house colors) ------------------------------------------ */
+
+.page-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 34px;
+    padding: 0 14px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--card);
+    color: var(--ink);
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.page-button:hover { background: #fff; }
+.page-button[aria-pressed="true"] { border-color: var(--ink); }
+.page-button-solid { border-color: var(--ink); background: var(--ink); color: #fff; }
+.page-button-solid:hover { background: #33403d; }
+.page-button:disabled { opacity: .45; cursor: not-allowed; }
+
+.owner-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.owner-note { margin: 0; color: var(--muted); }
+.owner-actions { display: flex; gap: 8px; }
+
+.page-message {
+    max-width: 440px;
+    margin: 12vh auto 0;
+    text-align: center;
+}
+
+.page-message h1 { margin: 0 0 8px; font-size: 22px; font-weight: 650; }
+.page-message p { margin: 0 0 20px; color: var(--muted); }
+
+/* --- the profile area (the person's colors) ------------------------------- */
+
+.profile-surface {
+    --p-muted: color-mix(in srgb, var(--p-ink) 68%, var(--p-bg));
+    --p-soft: color-mix(in srgb, var(--p-line) 12%, var(--p-bg));
+    padding: 20px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--p-bg);
+    color: var(--p-ink);
+}
+
+.profile-surface :focus-visible { outline-color: var(--p-line); }
+
+.profile-grid {
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+}
+
+.p-box {
+    border: 1.5px solid var(--p-line);
+    border-radius: 12px;
+    padding: 20px;
+}
+
+.p-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+}
+
+.profile-surface.is-locked .p-card { max-width: 380px; margin: 0 auto; }
+
+.p-ring {
+    display: grid;
+    place-items: center;
+    width: 104px;
+    height: 104px;
+    margin-bottom: 6px;
+    border: 3px solid var(--p-line);
+    border-radius: 50%;
+    font-size: 34px;
+    font-weight: 650;
+    letter-spacing: .02em;
+}
+
+.p-name {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+}
+
+.p-username { margin: 0; color: var(--p-muted); overflow-wrap: anywhere; }
+
+.p-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0 0;
+    padding: 3px 10px 3px 4px;
+    border: 1px solid var(--p-line);
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.p-badge-icon {
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--p-line);
+    color: var(--p-on-line);
+}
+
+.p-badge-icon svg {
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.p-bio { margin: 8px 0 0; overflow-wrap: anywhere; }
+
+.p-locked-note { margin: 10px 0 0; color: var(--p-muted); }
+
+.p-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 38px;
+    margin-top: 10px;
+    padding: 6px 14px;
+    border: 1.5px solid var(--p-line);
+    border-radius: 10px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.p-button-solid { background: var(--p-line); color: var(--p-on-line); }
+.p-button-outline { background: transparent; color: var(--p-ink); }
+.p-button-outline:hover { background: var(--p-soft); }
+.p-button:disabled { cursor: default; opacity: .7; }
+
+.p-site { flex-wrap: wrap; }
+.p-site-domain { color: var(--p-muted); font-weight: 500; overflow-wrap: anywhere; }
+
+.p-share {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 8px;
+    width: 100%;
+    margin: 10px 0 0;
+    padding: 8px 12px;
+    border: 1px dashed var(--p-line);
+    border-radius: 10px;
+    font-size: 13px;
+}
+
+.p-share-label { font-weight: 600; }
+
+.p-sections { display: flex; flex-direction: column; gap: 16px; }
+
+.p-section-title {
+    margin: 0 0 10px;
+    font-size: 12px;
+    font-weight: 650;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    overflow-wrap: anywhere;
+}
+
+.p-about { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+
+.p-empty { margin: 0; color: var(--p-muted); }
+
+.p-top3 {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: top3;
+}
+
+.p-top3 li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    overflow-wrap: anywhere;
+    counter-increment: top3;
+}
+
+.p-top3 li::before {
+    content: counter(top3);
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 26px;
+    height: 26px;
+    border: 1.5px solid var(--p-line);
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.p-orgs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.p-orgs li {
+    padding: 4px 12px;
+    border: 1px solid var(--p-line);
+    border-radius: 999px;
+    font-weight: 500;
+}
+
+.p-events {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.p-event-heading {
+    margin: 0 0 8px;
+    color: var(--p-muted);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.p-event-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+
+.p-event {
+    display: grid;
+    gap: 2px;
+    padding: 10px 12px;
+    border: 1px solid var(--p-line);
+    border-radius: 10px;
+    overflow-wrap: anywhere;
+}
+
+.p-event-date { color: var(--p-muted); font-size: 12px; font-weight: 600; }
+.p-event-title { font-weight: 600; }
+.p-event-meta { color: var(--p-muted); font-size: 13px; }
+.p-event.is-cancelled .p-event-title { text-decoration: line-through; }
+
+.p-event-tag {
+    justify-self: start;
+    margin-top: 4px;
+    padding: 1px 8px;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 650;
+    text-transform: uppercase;
+}
+
+/* --- edit mode (house colors, preview uses the person's) ------------------ */
+
+.edit-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+}
+
+.edit-form { display: flex; flex-direction: column; gap: 16px; }
+
+.edit-group {
+    margin: 0;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--card);
+}
+
+.edit-legend { padding: 0 6px; font-weight: 650; }
+
+.edit-field + .edit-field { margin-top: 14px; }
+
+.edit-label-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.edit-count, .edit-hex { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.edit-count.is-over { color: var(--danger); font-weight: 600; }
+
+.edit-input {
+    display: block;
+    width: 100%;
+    min-height: 36px;
+    padding: 7px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+}
+
+textarea.edit-input { resize: vertical; line-height: 1.45; }
+
+.edit-input[aria-invalid="true"] { border-color: var(--danger); }
+
+.edit-prefixed {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.edit-prefixed:has([aria-invalid="true"]) { border-color: var(--danger); }
+.edit-prefix { padding-left: 10px; color: var(--muted); }
+.edit-prefixed .edit-input { border: 0; padding-left: 2px; background: transparent; }
+
+.edit-hint { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.edit-hint:empty, .edit-error:empty { display: none; }
+.edit-error { margin: 4px 0 0; color: var(--danger); font-size: 12px; font-weight: 500; }
+.edit-note { margin: 12px 0 0; color: var(--danger); font-size: 12px; }
+
+.edit-swatches { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+.edit-swatch {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid rgba(32, 43, 41, .25);
+    border-radius: 50%;
+    background: var(--swatch);
+    cursor: pointer;
+}
+
+.edit-swatch[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.edit-custom {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 10px 0 4px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.edit-picker {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    cursor: pointer;
+}
+
+.edit-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.edit-status { margin: 0; color: var(--danger); font-size: 13px; }
+
+.edit-preview { position: sticky; top: 20px; }
+
+.edit-preview-label {
+    margin: 0 0 8px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+/* The preview column is narrower than the page, so its profile stacks. */
+.edit-preview .profile-grid { grid-template-columns: minmax(0, 1fr); }
+
+/* --- one column at 768px and below ---------------------------------------- */
+
+@media (max-width: 1100px) {
+    .edit-preview .p-events { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 768px) {
+    .profile-page { padding: 20px 16px 32px; }
+    .profile-surface { padding: 14px; }
+    .profile-grid,
+    .edit-layout,
+    .p-events { grid-template-columns: minmax(0, 1fr); }
+    .edit-preview { position: static; }
+}

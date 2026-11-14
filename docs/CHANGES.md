@@ -1087,3 +1087,15 @@ All of these are immutable (frozen dataclasses). Changing one returns a new copy
 ### Not done yet
 - Rules for the "Later" edges (RSVP freezing, small-count suppression, attendance timing) aren't enforced.
 - There's no API layer, persistent database or authentication yet.
+
+---
+
+## 2026-11-14 — Profile page on sample data (UI only)
+
+**Request:** "Build a UI-only profile page on sample data, fully independent of Keaton's code."
+
+`src/frontend/profile.html` now shows a profile: full, locked (connections only) or not found. Owners get an edit mode with a live preview. The page runs on three fictional sample profiles (`profile-mock.js`) and saves edits in the browser. No backend code changed. The backend design for real profiles is written up in `docs/profile-backend-proposal.md` (not implemented).
+
+- **To view:** `profile.html?u=maya_r` (full), `?u=theo_k` (locked) or `?u=sam_2027` (mostly empty). Add `&as=self` to see your own page with **Edit page** and **View as visitor**.
+- **Connecting it to the backend:** `ProfileDataSource` in `profile.js` is the only place data comes from. It already returns the planned `GET /api/profile` shape, so connecting the real endpoint means changing only that class.
+- **Also:** `collectivize_plan.md` now names Keaton in the team list.
