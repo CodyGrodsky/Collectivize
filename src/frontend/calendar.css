@@ -222,6 +222,104 @@ button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 
 .day-empty { margin: 0; color: var(--faint); }
 
+/* Elements styled with display must still hide when [hidden]. */
+[hidden] { display: none !important; }
+
+/* Who you're viewing as (shared with Discover). */
+.cal-persona { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 13px; }
+
+.cal-persona select {
+    height: 34px;
+    max-width: 280px;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--card);
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+}
+
+/* Problems loading events: shown above the grid, which keeps working. */
+.cal-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding: 10px 12px 10px 16px;
+    border: 1px solid #ecc9c4;
+    border-radius: 10px;
+    background: #f6e4e1;
+    color: #9b3b32;
+}
+
+.cal-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; padding: 0; list-style: none; }
+
+/* Event chips inside day cells. */
+.cal-chips { display: grid; gap: 3px; width: 100%; margin-top: 6px; }
+
+.cal-chip {
+    display: block;
+    overflow: hidden;
+    padding: 2px 6px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: var(--hover);
+    color: var(--ink);
+    font-size: 11.5px;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cal-legend .cal-chip { display: inline-block; font-size: 12px; }
+
+.cal-chip.is-going { background: var(--green); color: #fff; }
+
+.cal-chip.is-maybe { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+
+.cal-chip.is-starred::before { content: "\2605 "; color: #d29b17; }
+
+.cal-chip.is-going.is-starred::before { color: #ffe08a; }
+
+.cal-chip.is-hosting { background: var(--ink); color: #fff; }
+
+.cal-chip.is-cancelled { opacity: .55; text-decoration: line-through; }
+
+.cal-more { color: var(--muted); font-size: 11px; }
+
+/* Day panel event list. */
+.day-status { min-height: 0; margin: -8px 0 10px; color: var(--muted); font-size: 13px; }
+
+.day-status:empty { display: none; }
+
+.day-status.is-error { color: #9b3b32; }
+
+.day-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+
+.day-list:empty { display: none; }
+
+.day-event { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+
+.day-event-time { color: var(--muted); font-size: 12px; }
+
+.day-event-title { margin: 2px 0 0; font-size: 14px; font-weight: 600; }
+
+.day-event-host { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+
+.day-event-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+
+.day-tag { padding: 1px 7px; border-radius: 999px; background: var(--green-soft); color: var(--green); font-size: 11px; font-weight: 600; }
+
+.day-tag.is-muted { background: var(--hover); color: var(--muted); }
+
+.day-event .ev-actions { margin-top: 8px; }
+
+.day-event .ev-action { height: 28px; padding: 0 10px; font-size: 12px; }
+
+.day-event .ev-action.is-star { width: 28px; padding: 0; }
+
 /* Narrower screens: the day panel moves below the grid. */
 
 @media (max-width: 960px) {
@@ -234,4 +332,9 @@ button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
     .cal-title { font-size: 22px; }
     .cal-weekdays span { padding: 8px 0; text-align: center; }
     .cal-cell { min-height: 56px; align-items: center; padding: 6px 2px; }
+    .cal-chips { justify-items: center; }
+    .cal-chip { width: 8px; height: 8px; padding: 0; border-radius: 50%; font-size: 0; }
+    .cal-chip.is-starred::before { content: none; }
+    .cal-more { font-size: 10px; }
+    .cal-persona select { max-width: 200px; }
 }

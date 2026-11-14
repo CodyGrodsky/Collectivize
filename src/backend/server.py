@@ -26,280 +26,32 @@ from __future__ import annotations
 import json
 import logging
 import mimetypes
-import threading
-from collections import OrderedDict
-from collections.abc import Callable, Iterator
-from contextlib import AbstractContextManager, contextmanager
-from datetime import datetime
+import sqlite3
+from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from backend.config import DatabaseConfig, Environment
-from backend.graph import (
-    CollectivizeGraph,
-    DiscoveryQuery,
-    NotFoundError,
-    PermissionDeniedError,
+from backend.demo_api import (  # re-exported: callers import these from here
+    PER_PAGE,
+    ApiError,
+    DiscoverApi,
+    demo_graph_factory,
 )
-from backend.graph.ai_search import InterpreterError
-from backend.graph.discovery import DiscoveryItem
-from backend.graph.search_agent import AgentStep
-from backend.graph.sqlite_store import SqliteGraphStore
-from backend.objects import (
-    DomainRuleError,
-    MemberOf,
-    Organization,
-    Person,
-    Tag,
-)
-from backend.objects.base import utc_now
-from backend.seed import CAMPUS
+from backend.graph import NotFoundError, PermissionDeniedError
+from backend.objects import DomainRuleError
 
 log = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC_DIRS = ("src/frontend", "public", "app")
 HOME_PAGE = "/src/frontend/index.html"
-PER_PAGE = 10  # collectivize_plan.md: numbered pages of 10, no infinite scroll
 MAX_BODY_BYTES = 4096
-CACHE_SIZE = 64
-FEATURED = ("drew", "avery", "casey", "kai")  # suggested personas, by first name
 
-GraphFactory = Callable[[], AbstractContextManager[CollectivizeGraph]]
-
-
-class ApiError(Exception):
-    def __init__(self, status: HTTPStatus, message: str) -> None:
-        super().__init__(message)
-        self.status = status
-        self.message = message
-
-
-class _NoAiInterpreter:
-    """Used with --no-ai: always 'unavailable', so search uses keywords."""
-
-    name = "none"
-
-    def interpret(self, request: Any) -> Any:
-        raise InterpreterError("AI search is turned off on this server")
-
-
-class _NoAiClient:
-    """Used with --no-ai: the agent can't reach the API and falls back."""
-
-    @property
-    def beta(self) -> Any:
-        import anthropic
-
-        raise anthropic.AnthropicError("AI search is turned off on this server")
-
-
-def demo_graph_factory(config: DatabaseConfig, *, use_ai: bool) -> GraphFactory:
-    """Each request opens its own connection (SQLite connections can't be
-    shared across the server's threads)."""
-    if config.environment is not Environment.TEST:
-        raise PermissionError(
-            "the demo server only runs on the test database: there is no login yet"
-        )
-
-    @contextmanager
-    def factory() -> Iterator[CollectivizeGraph]:
-        store = SqliteGraphStore(config.path, config.environment)
-        try:
-            if use_ai:
-                yield CollectivizeGraph(store)
-            else:
-                yield CollectivizeGraph(
-                    store, search_interpreter=_NoAiInterpreter(), agent_client=_NoAiClient()
-                )
-        finally:
-            store.close()
-
-    return factory
-
-
-class DiscoverApi:
-    """The API's behaviour, independent of HTTP (so it can be tested directly)."""
-
-    def __init__(
-        self, graphs: GraphFactory, *, clock: Callable[[], datetime] = utc_now
-    ) -> None:
-        self._graphs = graphs
-        self._clock = clock
-        self._search_lock = threading.Lock()
-        self._cache: OrderedDict[tuple[str | None, str, bool], dict[str, Any]] = OrderedDict()
-
-    # --- endpoints ---------------------------------------------------------------
-
-    def personas(self) -> dict[str, Any]:
-        """Every demo person you can view Discover as, suggested ones first."""
-        with self._graphs() as graph:
-            people = []
-            for person in graph.store.nodes(Person):
-                orgs = [
-                    (graph.store.node(m.target_id, Organization).name, m.is_admin)
-                    for m in graph.store.edges(MemberOf, source_id=person.id)
-                    if m.is_confirmed_current
-                ]
-                first = person.display_name.split(" ")[0]
-                people.append({
-                    "id": person.id,
-                    "name": first,
-                    "description": _describe(person.display_name, orgs),
-                    "friends": len(graph.connections.connections_of(person.id)),
-                    "featured": first.lower() in FEATURED,
-                })
-        rank = {name: i for i, name in enumerate(FEATURED)}
-        people.sort(key=lambda p: (rank.get(p["name"].lower(), len(FEATURED)), p["name"]))
-        return {"personas": people}
-
-    def tags(self) -> dict[str, Any]:
-        """All topic tags, by label (for the topic filter)."""
-        with self._graphs() as graph:
-            tags = sorted(graph.store.nodes(Tag), key=lambda t: t.label)
-        return {"tags": [{"slug": t.slug, "label": t.label} for t in tags]}
-
-    def discover(self, params: dict[str, str]) -> dict[str, Any]:
-        """One page of Discover for a viewer: `viewer`, `page`, `near=1`, `tag`."""
-        page = _int_param(params.get("page", "1"), "page", 1, 1000)
-        near = params.get("near", "0") == "1"
-        with self._graphs() as graph:
-            viewer = self._viewer(graph, params.get("viewer"))
-            tag_ids = self._tag_ids(graph, params.get("tag"))
-            query = DiscoveryQuery(
-                viewer_id=viewer, tag_ids=tag_ids, origin=CAMPUS if near else None,
-                limit=PER_PAGE, offset=(page - 1) * PER_PAGE,
-            )
-            result = graph.discovery.search(query, self._clock())
-            items = [_item_json(i) for i in result.items]
-        return {"items": items, "total": result.total, "page": page, "per_page": PER_PAGE,
-                "pages": max(1, -(-result.total // PER_PAGE))}
-
-    def search(self, body: dict[str, Any]) -> dict[str, Any]:
-        """AI search via the search agent: `query`, `viewer`, `near`. Repeat
-        searches come from the cache; one runs at a time."""
-        text = body.get("query")
-        if not isinstance(text, str):
-            raise ApiError(HTTPStatus.BAD_REQUEST, "say what you're looking for")
-        near = body.get("near") is True
-        viewer_param = body.get("viewer")
-        if viewer_param is not None and not isinstance(viewer_param, str):
-            raise ApiError(HTTPStatus.BAD_REQUEST, "unknown person")
-        key = (viewer_param or None, " ".join(text.split()).casefold(), near)
-        with self._search_lock:  # one AI search at a time
-            if key in self._cache:
-                self._cache.move_to_end(key)
-                return {**self._cache[key], "cached": True}
-            with self._graphs() as graph:
-                viewer = self._viewer(graph, viewer_param)
-                result = graph.search_agent.search(
-                    viewer, text, self._clock(), origin=CAMPUS if near else None
-                )
-                answer = {
-                    "goal": result.goal,
-                    "used_ai": result.used_agent,
-                    "note": result.note,
-                    "steps": [_step_json(s) for s in result.steps],
-                    "items": [_item_json(i) for i in result.page.items],
-                }
-            self._cache[key] = answer
-            if len(self._cache) > CACHE_SIZE:
-                self._cache.popitem(last=False)
-        return {**answer, "cached": False}
-
-    # --- helpers -------------------------------------------------------------------
-
-    @staticmethod
-    def _viewer(graph: CollectivizeGraph, viewer_id: str | None) -> str | None:
-        if not viewer_id:
-            return None
-        if not graph.store.has_node(viewer_id) or not isinstance(
-            graph.store.any_node(viewer_id), Person
-        ):
-            raise ApiError(HTTPStatus.BAD_REQUEST, "unknown person")
-        return viewer_id
-
-    @staticmethod
-    def _tag_ids(graph: CollectivizeGraph, slug: str | None) -> tuple[str, ...]:
-        if not slug:
-            return ()
-        found = [t.id for t in graph.store.nodes(Tag) if t.slug == slug]
-        if not found:
-            raise ApiError(HTTPStatus.BAD_REQUEST, "unknown topic")
-        return tuple(found)
-
-
-# --- JSON shapes -------------------------------------------------------------------
-
-
-def _item_json(item: DiscoveryItem) -> dict[str, Any]:
-    event = item.event
-    host_is_org = isinstance(item.host, Organization)
-    return {
-        "id": event.id,
-        "title": event.title,
-        "description": event.description,
-        "starts_at": event.starts_at.isoformat(),
-        "ends_at": event.ends_at.isoformat(),
-        "location": event.location,
-        "host": {
-            "name": item.host.name if host_is_org else item.host.display_name,
-            "kind": "org" if host_is_org else "person",
-        },
-        "score": round(item.score, 3),
-        "reasons": list(item.reasons),
-        "friends_going": [p.display_name for p in item.friends_going],
-        "going_count": item.going_count,
-        "my_rsvp": item.my_rsvp.value if item.my_rsvp else None,
-        "distance_km": None if item.distance_km is None else round(item.distance_km, 2),
-        "is_cancelled": item.is_cancelled,
-    }
-
-
-STEP_TEXT = {
-    "get_person_overview": "Looked at your interests and the kinds of events you go to",
-    "get_active_orgs": "Checked the orgs you're most active in",
-    "get_recent_events": "Looked at events you've been to lately",
-    "list_tags": "Checked which topics events can have",
-    "submit_picks": "Picked the best matches",
-}
-
-
-def _step_json(step: AgentStep) -> dict[str, Any]:
-    text = STEP_TEXT.get(step.tool, step.tool.replace("_", " "))
-    if step.tool == "search_events":
-        parts = []
-        if step.input.get("keywords"):
-            parts.append(f"“{step.input['keywords']}”")
-        if step.input.get("tags"):
-            parts.append("topics: " + ", ".join(step.input["tags"]))
-        if step.input.get("org_name"):
-            parts.append(f"from {step.input['org_name']}")
-        if step.input.get("within_days"):
-            parts.append(f"in the next {step.input['within_days']} days")
-        if step.input.get("max_distance_km"):
-            parts.append(f"within {step.input['max_distance_km']} km")
-        text = "Searched events" + (": " + ", ".join(parts) if parts else "")
-    return {"tool": step.tool, "text": text, "error": step.is_error}
-
-
-def _describe(display_name: str, orgs: list[tuple[str, bool]]) -> str:
-    role = display_name.split("(", 1)[1].rstrip(")") if "(" in display_name else ""
-    names = [name.removeprefix("[Demo] ") for name, _ in orgs]
-    where = ", ".join(names[:2]) + (f" +{len(names) - 2}" if len(names) > 2 else "")
-    return " · ".join(part for part in (role.removeprefix("demo "), where) if part)
-
-
-def _int_param(value: str, name: str, low: int, high: int) -> int:
-    if not value.isdigit():
-        raise ApiError(HTTPStatus.BAD_REQUEST, f"{name} must be a whole number")
-    number = int(value)
-    if not low <= number <= high:
-        raise ApiError(HTTPStatus.BAD_REQUEST, f"{name} must be between {low} and {high}")
-    return number
+__all__ = ["PER_PAGE", "ApiError", "DemoServer", "DiscoverApi", "RequestHandler",
+           "demo_graph_factory", "resolve_static", "serve"]
 
 
 # --- HTTP ----------------------------------------------------------------------------
@@ -327,6 +79,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "/api/personas": lambda: self.server.api.personas(),
                 "/api/tags": lambda: self.server.api.tags(),
                 "/api/discover": lambda: self.server.api.discover(params),
+                "/api/calendar": lambda: self.server.api.calendar(params),
             }
             self._api(routes.get(url.path))
         elif url.path == "/":
@@ -335,11 +88,14 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._static(url.path)
 
     def do_POST(self) -> None:
-        """POST /api/search only."""
-        if urlsplit(self.path).path != "/api/search":
-            self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
-            return
-        self._api(lambda: self.server.api.search(self._read_json()))
+        """POST /api/search, /api/rsvp and /api/star."""
+        routes = {
+            "/api/search": self.server.api.search,
+            "/api/rsvp": self.server.api.rsvp,
+            "/api/star": self.server.api.star,
+        }
+        handler = routes.get(urlsplit(self.path).path)
+        self._api(None if handler is None else lambda: handler(self._read_json()))
 
     def log_message(self, format: str, *args: Any) -> None:
         """One short log line per request (method and path, no query)."""
@@ -355,8 +111,15 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.OK, handler())
         except ApiError as error:
             self._json(error.status, {"error": error.message})
-        except (DomainRuleError, NotFoundError, PermissionDeniedError) as error:
+        except NotFoundError:
+            self._json(HTTPStatus.NOT_FOUND, {"error": "that isn't available (it may have been removed)"})
+        except PermissionDeniedError as error:
+            self._json(HTTPStatus.FORBIDDEN, {"error": str(error)})
+        except DomainRuleError as error:  # a rule said no: full, ended, bad input...
             self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+        except sqlite3.OperationalError:  # e.g. "database is locked" by another save
+            log.warning("database busy", exc_info=True)
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "busy right now, please try again"})
         except Exception:  # never leak internals to the page
             log.exception("API request failed")
             self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "something went wrong"})

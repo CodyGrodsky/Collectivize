@@ -211,6 +211,9 @@ class Hosts(Edge):
     role: HostRole
     accepted: bool = False
     origin: HostOrigin = HostOrigin.INVITED
+    # 1, 2, 3... in the order co-hosts accepted; 0 for links saved before
+    # this existed. Decides who takes over if the primary host is erased.
+    accept_order: int = 0
 
     @property
     def is_effective(self) -> bool:
@@ -307,4 +310,19 @@ class InterestedIn(PersonOwnedEdge):
     SOURCE_TYPES = (Person,)
     TARGET_TYPES = (Tag,)
 
+    visibility: Visibility = Visibility.PRIVATE
+
+
+@dataclass(frozen=True, kw_only=True)
+class Starred(PersonOwnedEdge):
+    """Person (source) bookmarked Event (target): a private "save this".
+
+    Unlike an RSVP it says nothing to anyone else: always PRIVATE, never
+    counted, never shown as "friends going". It puts the event on the
+    person's own calendar."""
+
+    SOURCE_TYPES = (Person,)
+    TARGET_TYPES = (Event,)
+
+    starred_at: datetime
     visibility: Visibility = Visibility.PRIVATE

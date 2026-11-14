@@ -5,8 +5,14 @@
 - Exactly one primary host. Combined events: an existing host invites
   another person or org, and that party must accept before it counts.
   An event can have any number of co-hosts.
-- Anyone acting for an accepted host may edit the event.
-- A co-host can decline or leave at any time; the primary can remove it.
+- Anyone acting for an accepted host may edit the event; only someone
+  acting for the primary host may cancel or archive it. Cancelling or
+  archiving closes every pending invitation and request.
+- No new co-hosts once an event is cancelled, archived or over.
+- A co-host can decline or leave at any time; the primary can remove it,
+  and whoever sent a pending invitation can withdraw it.
+- Nobody approves their own request to join.
+- If the primary host is erased, the co-host that accepted first takes over.
 """
 
 from __future__ import annotations
@@ -33,6 +39,8 @@ from backend.objects import (
 from .errors import NotFoundError, PermissionDeniedError
 from .membership import MembershipService
 from .store import GraphStore
+
+CLOSED_STATUSES = frozenset({EventStatus.CANCELLED, EventStatus.ARCHIVED})
 
 
 class EventService:
@@ -115,11 +123,13 @@ class EventService:
         return self._store.save_node(event.revised(now, **changes))
 
     def cancel(self, event_id: str, by_person_id: str) -> Event:
-        event = self._editable(event_id, by_person_id)
+        event = self._primary_only(event_id, by_person_id)
+        self._close_pending_links(event_id)
         return self._store.save_node(event.cancelled())
 
     def archive(self, event_id: str, by_person_id: str) -> Event:
-        event = self._editable(event_id, by_person_id)
+        event = self._primary_only(event_id, by_person_id)
+        self._close_pending_links(event_id)
         return self._store.save_node(event.archived())
 
     # --- co-hosting ----------------------------------------------------------
@@ -129,7 +139,9 @@ class EventService:
     ) -> Hosts:
         """An existing host asks a person or org to co-host. Nothing changes
         for the invited party until it accepts."""
-        self._editable(event_id, by_person_id)
+        event = self._editable(event_id, by_person_id)
+        if event.status in CLOSED_STATUSES or event.status_at(now) is EventStatus.ENDED:
+            raise DomainRuleError("co-hosts can't be added to a cancelled, archived or past event")
         self.host_node(host_id)
         if any(h.source_id == host_id for h in self._store.edges(Hosts, target_id=event_id)):
             raise DomainRuleError("already a host or invited")
@@ -146,12 +158,22 @@ class EventService:
         invited person (or an admin of the invited org); a request to join
         is approved by anyone acting for a current host of the event."""
         edge = self._store.edge(edge_id, Hosts)
+        if self._store.node(edge.target_id, Event).status in CLOSED_STATUSES:
+            raise DomainRuleError("the event was cancelled or archived")
+        if not edge.is_active:
+            raise DomainRuleError("this invitation or request was withdrawn or declined")
         if edge.origin is HostOrigin.REQUESTED:
             if not self.can_edit(by_person_id, edge.target_id):
                 raise PermissionDeniedError("only the event's hosts can approve a request")
+            if self.acts_for(by_person_id, edge.source_id):
+                raise PermissionDeniedError("another host has to approve your own request")
         else:
             self._require_acts_for(by_person_id, edge.source_id)
-        return self._store.save_edge(replace(edge, accepted=True))
+        if edge.accepted:
+            return edge
+        return self._store.save_edge(
+            replace(edge, accepted=True, accept_order=self._next_accept_order(edge.target_id))
+        )
 
     def remove_co_host(self, edge_id: str, by_person_id: str) -> Hosts:
         """Decline, withdraw, leave or remove. The co-host itself and the
@@ -167,18 +189,27 @@ class EventService:
             and not edge.accepted
             and self.can_edit(by_person_id, edge.target_id)
         )
-        if not (is_self or is_primary or declines_request):
+        withdraws_invite = (
+            edge.origin is HostOrigin.INVITED
+            and not edge.accepted
+            and edge.provenance.created_by == by_person_id
+        )
+        if not (is_self or is_primary or declines_request or withdraws_invite):
             raise PermissionDeniedError("only the co-host or primary host can remove it")
         return self._store.save_edge(edge.removed())
 
     def release_host(self, host_id: str) -> None:
         """Called when a host's account is erased. Events they were primary
         host of pass to the earliest accepted co-host, or are deleted when
-        nobody else is hosting them."""
+        nobody else is hosting them. Links saved before acceptance was
+        ordered (`accept_order` 0) come last."""
         for edge in self._store.edges(Hosts, source_id=host_id):
             if edge.role is not HostRole.PRIMARY:
                 continue
-            co_hosts = [h for h in self.host_edges(edge.target_id) if h.id != edge.id]
+            co_hosts = sorted(
+                (h for h in self.host_edges(edge.target_id) if h.id != edge.id),
+                key=lambda h: (h.accept_order <= 0, h.accept_order),
+            )
             if co_hosts:
                 self._store.save_edge(replace(co_hosts[0], role=HostRole.PRIMARY))
             else:
@@ -213,6 +244,21 @@ class EventService:
         if not self.can_edit(by_person_id, event_id):
             raise PermissionDeniedError("only the event's hosts can edit it")
         return event
+
+    def _primary_only(self, event_id: str, by_person_id: str) -> Event:
+        event = self._store.node(event_id, Event)
+        if not self.acts_for(by_person_id, self.primary_host_id(event_id)):
+            raise PermissionDeniedError("only the primary host can cancel or archive")
+        return event
+
+    def _close_pending_links(self, event_id: str) -> None:
+        for edge in self._store.edges(Hosts, target_id=event_id):
+            if not edge.accepted:
+                self._store.save_edge(edge.removed())
+
+    def _next_accept_order(self, event_id: str) -> int:
+        orders = [h.accept_order for h in self._store.edges(Hosts, target_id=event_id)]
+        return max(orders, default=0) + 1
 
     def _require_acts_for(self, person_id: str, host_id: str) -> None:
         if not self.acts_for(person_id, host_id):

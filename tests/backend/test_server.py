@@ -312,6 +312,8 @@ def test_the_server_only_listens_on_this_machine(api):
         srv.server_close()
 
 
-def test_frontend_never_renders_server_text_as_html():
-    script = (Path(__file__).resolve().parents[2] / "src/frontend/discover.js").read_text()
-    assert "innerHTML" not in script and "insertAdjacentHTML" not in script
+@pytest.mark.parametrize("name", ["discover.js", "shared.js", "calendar.js"])
+def test_frontend_never_renders_server_text_as_html(name):
+    script = (Path(__file__).resolve().parents[2] / "src/frontend" / name).read_text()
+    for risky in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
+        assert risky not in script

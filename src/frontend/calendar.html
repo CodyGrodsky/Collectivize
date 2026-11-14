@@ -7,8 +7,10 @@
     <title>Calendar · Collectivize</title>
     <link rel="icon" href="../../app/icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="calendar.css">
+    <link rel="stylesheet" href="event-actions.css">
     <link rel="stylesheet" href="nav.css">
     <script src="nav.js"></script>
+    <script src="shared.js" defer></script>
     <script src="calendar.js" defer></script>
 </head>
 <body>
@@ -16,6 +18,10 @@
         <header class="cal-header">
             <h1 class="cal-title" id="cal-title" aria-live="polite">Calendar</h1>
             <div class="cal-controls">
+                <label class="cal-persona">
+                    <span>Viewing as</span>
+                    <select id="cal-persona"></select>
+                </label>
                 <button type="button" class="cal-button" id="cal-today">Today</button>
                 <div class="cal-step">
                     <button type="button" class="cal-icon-button" id="cal-prev" aria-label="Previous month">
@@ -33,6 +39,18 @@
             </div>
         </header>
 
+        <div class="cal-banner" id="cal-banner" role="alert" hidden>
+            <span id="cal-banner-text"></span>
+            <button type="button" class="cal-button" id="cal-retry">Retry</button>
+        </div>
+
+        <ul class="cal-legend" aria-label="Key">
+            <li><span class="cal-chip is-going">Going</span></li>
+            <li><span class="cal-chip is-maybe">Maybe</span></li>
+            <li><span class="cal-chip is-starred">Starred</span></li>
+            <li><span class="cal-chip is-hosting">Hosting</span></li>
+        </ul>
+
         <div class="cal-layout">
             <section class="cal-month" aria-labelledby="cal-title">
                 <div class="cal-weekdays" aria-hidden="true">
@@ -45,14 +63,18 @@
                 <p class="day-eyebrow" id="day-eyebrow"></p>
                 <h2 class="day-title" id="day-title"></h2>
 
+                <p class="day-status" id="day-status" role="status" aria-live="polite"></p>
+
                 <section class="day-section" aria-labelledby="mine-title">
                     <h3 class="day-section-title" id="mine-title">My events</h3>
-                    <p class="day-empty">Nothing you're hosting or going to.</p>
+                    <ul class="day-list" id="day-mine"></ul>
+                    <p class="day-empty" id="day-mine-empty">Nothing you're hosting, going to, or starred.</p>
                 </section>
 
                 <section class="day-section" aria-labelledby="community-title">
                     <h3 class="day-section-title" id="community-title">Community events</h3>
-                    <p class="day-empty">No community events this day.</p>
+                    <ul class="day-list" id="day-community"></ul>
+                    <p class="day-empty" id="day-community-empty">No community events this day.</p>
                 </section>
             </aside>
         </div>

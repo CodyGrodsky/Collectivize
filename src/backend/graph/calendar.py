@@ -81,6 +81,8 @@ def _is_private(event: Event) -> bool:
 
 
 def _in_window(event: Event, after: datetime | None, before: datetime | None) -> bool:
-    if after is not None and event.starts_at < after:
+    """Whether the event overlaps the window, so one already under way at
+    `after` still shows."""
+    if after is not None and event.ends_at <= after:
         return False
     return before is None or event.starts_at < before

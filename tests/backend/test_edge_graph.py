@@ -424,17 +424,18 @@ def test_erasure_promotes_the_first_accepted_co_host_not_a_pending_one(world):
 # --- calendars ----------------------------------------------------------------------
 
 
-def test_calendar_window_is_inclusive_start_exclusive_end(world):
+def test_calendar_window_keeps_events_that_overlap_it(world):
     event = chapter_event(world, days_ahead=5)
     cal = world.graph.calendar
-    start = event.starts_at
+    start, end = event.starts_at, event.ends_at
 
     def ids(**window):
         listing = cal.host_events(world.chapter.id, world.bob.id, **window)
         return {e.id for e in listing.public}
 
     assert event.id in ids(starts_after=start)
-    assert event.id not in ids(starts_after=start + timedelta(microseconds=1))
+    assert event.id in ids(starts_after=start + timedelta(microseconds=1))  # under way
+    assert event.id not in ids(starts_after=end)
     assert event.id not in ids(starts_before=start)
     assert event.id in ids(starts_before=start + timedelta(microseconds=1))
     assert ids(starts_after=start, starts_before=start) == set()

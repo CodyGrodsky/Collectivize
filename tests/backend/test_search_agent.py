@@ -133,7 +133,7 @@ def test_requests_use_the_right_settings(world):
     graph, client = agent_graph(world, [[search()], [submit("x", ("e1", 0.5, "ok"))]])
     graph.search_agent.search(world.carol.id, "x", NOW)
     req = client.calls[0]
-    assert req["model"] == "claude-opus-5-5"
+    assert req["model"] == "claude-sonnet-5-5"
     assert req["fallbacks"] == "default" and req["betas"] == ["server-side-fallback-2026-07-01"]
     assert req["output_config"] == {"effort": "medium"}
     assert req["cache_control"] == {"type": "ephemeral"}

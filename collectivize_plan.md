@@ -2,7 +2,7 @@
 
 **Version:** 0.2 (hackathon working doc), November 13, 2026
 **Domain:** collectivize.co
-**Team:** James (frontend + UX + narrative), CS cofounder (backend + data + graph logic), three business teammates (seed data, validation, pitch)
+**Team:** James (frontend + UX), Keaton (backend + data + graph logic), three business teammates (seed data, validation, pitch)
 
 > This is a working plan for a weekend build, not a product spec. Everything here is a hypothesis we're choosing to demo, not something users have validated yet. When this doc and a teammate disagree, talk, then update the doc.
 

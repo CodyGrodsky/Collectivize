@@ -16,33 +16,7 @@
 
     const $ = (id) => document.getElementById(id);
 
-    class Api {
-        static async get(path, params) {
-            const query = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== "" && v != null));
-            return Api.handle(await fetch(`${path}?${query}`, { headers: { Accept: "application/json" } }));
-        }
-
-        static async post(path, body) {
-            return Api.handle(await fetch(path, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Accept: "application/json" },
-                body: JSON.stringify(body),
-            }));
-        }
-
-        static async handle(response) {
-            let data = null;
-            try {
-                data = await response.json();
-            } catch {
-                // Not JSON: usually the page was opened without the demo server.
-            }
-            if (!response.ok || data === null) {
-                throw new Error(data?.error || "The Discover server isn't responding. Start it with scripts/serve.py.");
-            }
-            return data;
-        }
-    }
+    const { Api, Viewer, PersonaPicker, EventActions } = window.Collectivize;
 
     class Settings {
         static load() {
@@ -77,7 +51,8 @@
             this.state.page = Math.max(1, parseInt(url.get("page"), 10) || 1);
             this.bindControls();
             try {
-                await Promise.all([this.loadPersonas(saved.viewer), this.loadTopics()]);
+                const [viewer] = await Promise.all([PersonaPicker.fill($("persona")), this.loadTopics()]);
+                this.state.viewer = viewer;
             } catch (error) {
                 this.showError(error);
                 return;
@@ -88,7 +63,10 @@
         }
 
         bindControls() {
-            $("persona").addEventListener("change", (e) => this.update({ viewer: e.target.value, page: 1 }));
+            $("persona").addEventListener("change", (e) => {
+                Viewer.set(e.target.value);
+                this.update({ viewer: e.target.value, page: 1 });
+            });
             $("near").addEventListener("change", (e) => this.update({ near: e.target.checked, page: 1 }));
             $("search-form").addEventListener("submit", (e) => {
                 e.preventDefault();
@@ -104,7 +82,7 @@
 
         update(changes) {
             Object.assign(this.state, changes);
-            Settings.save({ viewer: this.state.viewer, near: this.state.near });
+            Settings.save({ near: this.state.near });
             const url = new URL(location.href);
             this.state.query ? url.searchParams.set("q", this.state.query) : url.searchParams.delete("q");
             this.state.page > 1 ? url.searchParams.set("page", this.state.page) : url.searchParams.delete("page");
@@ -117,27 +95,6 @@
         }
 
         // --- data ---------------------------------------------------------------
-
-        async loadPersonas(savedViewer) {
-            const { personas } = await Api.get("/api/personas", {});
-            const select = $("persona");
-            const groups = { featured: this.group("Suggested"), others: this.group("Everyone else") };
-            select.append(new Option("Logged out", ""));
-            for (const person of personas) {
-                const option = new Option(`${person.name} — ${person.description || "no orgs yet"}`, person.id);
-                (person.featured ? groups.featured : groups.others).append(option);
-            }
-            select.append(groups.featured, groups.others);
-            const known = personas.some((p) => p.id === savedViewer);
-            this.state.viewer = known ? savedViewer : (personas[0]?.id ?? "");
-            select.value = this.state.viewer;
-        }
-
-        group(label) {
-            const group = document.createElement("optgroup");
-            group.label = label;
-            return group;
-        }
 
         async loadTopics() {
             const { tags } = await Api.get("/api/tags", {});
@@ -313,7 +270,36 @@
             q(".dc-match-bar span").style.width = `${item.is_cancelled ? 0 : percent}%`;
             q(".dc-match").setAttribute("aria-label", item.is_cancelled ? "Cancelled" : `${percent}% likely for you`);
             this.going(q(".dc-going"), item);
+            q(".dc-actions-slot").replaceWith(this.actions(item, isPick, node));
             return node;
+        }
+
+        /** I'm going / Maybe / star. The card redraws itself from the server's answer. */
+        actions(item, isPick, node) {
+            const controls = new EventActions({
+                eventId: item.id,
+                myRsvp: item.my_rsvp,
+                starred: item.starred,
+                viewer: this.state.viewer,
+                cancelled: item.is_cancelled,
+                onChange: (state) => {
+                    const updated = { ...item, my_rsvp: state.my_rsvp, starred: state.starred,
+                                      going_count: state.going_count };
+                    node.replaceWith(this.card(updated, isPick));
+                    this.setStatus(DiscoverPage.savedText(updated));
+                },
+                onError: (message) => this.setStatus(message, { error: true }),
+            });
+            return controls.element;
+        }
+
+        static savedText(item) {
+            const parts = [];
+            if (item.my_rsvp === "going") parts.push("you're going");
+            else if (item.my_rsvp === "interested") parts.push("marked maybe");
+            if (item.starred) parts.push("starred");
+            const what = parts.length ? parts.join(" and ") : "removed from your plans";
+            return `\u201c${item.title}\u201d: ${what}. Your calendar is updated.`;
         }
 
         badges(container, item, trust) {

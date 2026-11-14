@@ -16,6 +16,7 @@ from .hierarchy import ALLOWED_PART_OF, HierarchyService
 from .integrity import IntegrityIssue, IntegrityService
 from .invites import DEFAULT_EMAIL_DOMAINS, InviteService, IssuedInvite, Redemption
 from .membership import MembershipService
+from .my_calendar import PersonalCalendar, PersonalCalendarService, Relation
 from .network import NetworkService
 from .preferences import PreferenceService, TasteProfile
 from .privacy import PrivacyService
@@ -24,6 +25,7 @@ from .roster import DEFAULT_ROSTER_POLICY, RosterEntry, RosterPolicy, RosterServ
 from .rsvps import RsvpService
 from .search_agent import AgentSearchResult, SearchAgentService
 from .series import SeriesService
+from .stars import StarService
 from .store import GraphStore, InMemoryGraphStore
 
 
@@ -42,8 +44,10 @@ class CollectivizeGraph:
     ) -> None:
         self.store: GraphStore = store or InMemoryGraphStore()
         self.membership = MembershipService(self.store)
-        self.roster = RosterService(self.store, self.membership, roster_policy)
         self.connections = ConnectionService(self.store)
+        self.roster = RosterService(
+            self.store, self.membership, self.connections, roster_policy
+        )
         self.invites = InviteService(self.store, self.connections, invite_email_domains)
         self.hierarchy = HierarchyService(self.store, self.membership)
         self.events = EventService(self.store, self.membership)
@@ -67,6 +71,10 @@ class CollectivizeGraph:
         )
         self.co_hosting = CoHostingService(self.store, self.events, self.privacy)
         self.calendar = CalendarService(self.store, self.events, self.privacy)
+        self.stars = StarService(self.store, self.privacy)
+        self.my_calendar = PersonalCalendarService(
+            self.store, self.events, self.privacy, self.stars
+        )
         self.network = NetworkService(self.store, self.privacy, self.roster)
         self.activity = ActivityService(self.store)
         self.ai_search = AiSearchService(
@@ -121,10 +129,13 @@ __all__ = [
     "NetworkService",
     "NotFoundError",
     "PermissionDeniedError",
+    "PersonalCalendar",
+    "PersonalCalendarService",
     "PreferenceService",
     "PrivacyService",
     "RankingWeights",
     "Redemption",
+    "Relation",
     "RequestInterpreter",
     "RequestMatch",
     "RosterEntry",
@@ -133,5 +144,6 @@ __all__ = [
     "RsvpService",
     "SearchAgentService",
     "SeriesService",
+    "StarService",
     "TasteProfile",
 ]
