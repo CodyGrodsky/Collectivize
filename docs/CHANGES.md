@@ -4,6 +4,53 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-13 — Genuine connections: graph audit and fixes
+
+**Request:** "Check that the logic is the graph and make sure that it is genuine connections between people and organizations."
+
+### What the check found
+- **The services were sound, but the storage layer wasn't.** Every rule (two-sided membership, admin-only confirmation, staff-approved claims) lived in the services. `save_edge` only checked that both endpoints existed, so storage accepted an org being a "member of" another org, a person "hosting" a tag, or a person "part of" an org. A probe script saved all of these without error.
+- **Confirmations left no trail.** A confirmed membership didn't record who confirmed it. A hand-written `MemberOf(role=ADMIN, org_confirmed=True)` made someone an admin, and nothing could tell it apart from a real one.
+- **People couldn't connect at all.** The `Connected` edge existed, but no code path created it. The only way to make one was to write it directly with both sides already "accepted".
+- An ended membership could still be confirmed.
+
+### Added
+- **Endpoint rules on every edge type** (`SOURCE_TYPES` / `TARGET_TYPES` in `objects/edges.py`), taken from `user_Orgs.md`:
+  - MEMBER_OF and FOLLOWS: Person → Org
+  - PART_OF and PARTNERS_WITH: Org → Org
+  - HOSTS: Org → Event
+  - INSTANCE_OF: Event → EventSeries
+  - RSVP and ATTENDED: Person → Event
+  - CONNECTED: Person → Person
+  - TAGGED: Org or Event → Tag
+  - INTERESTED_IN: Person → Tag
+
+  Both stores enforce these in `save_edge` through `check_edge_endpoints`, so nothing can bypass them.
+- **`MemberOf.confirmed_by`:** records the admin who confirmed the membership, or the staff member who approved the claim. A confirmed membership without a confirmer can't be constructed, and nobody can confirm their own membership.
+- **`ConnectionService`** (`graph.connections`): `request` and `accept` (only the recipient can accept), `remove` (either person can decline or disconnect), `between`, `are_connected` and `connections_of`. There is one edge per pair, and declining or removing hard-deletes it, so no record remains that two people were linked. `PrivacyService.are_connected` now delegates here.
+- **`IntegrityService`** (`graph.integrity.audit()`) is read-only. It reports:
+  - edges between the wrong kinds of node or pointing at missing nodes;
+  - memberships confirmed by someone who was never an admin of that org and that staff didn't approve;
+  - claimed orgs with no admin, and admins of unclaimed orgs;
+  - connections that neither person requested;
+  - PART_OF links between disallowed org kinds;
+  - listed events without exactly one primary host.
+- **`scripts/check_graph.py`:** runs the audit against the configured database. It exits with 1 if it finds problems.
+- **Tests:** `tests/backend/test_connections_and_integrity.py` adds 48 test runs (counting both stores). In total, 148 tests pass and ruff is clean.
+
+### Changed
+- `MembershipService.confirm` records the admin and rejects ended memberships. `approve_claim` records the staff id.
+- `data/test.db` was re-seeded. The old file failed the audit because its confirmations predate `confirmed_by`. The fresh seed passes, and every confirmed membership traces back to staff or a chapter admin.
+
+### Not done
+- The audit can't tell who accepted a co-host invite or a PART_OF link. It only checks the end state. Recording `accepted_by` on those edges would close that gap.
+- Per-person visibility of a connection ("visible only if both people allow it") still uses one visibility field per edge.
+- There's no way to reject a pending org claim, so a bogus claim leaves the org stuck in `claim_pending`.
+- There's no "people closest to people the org knows" query from the README yet. These fixes make that query trustworthy, since it will only walk consented edges.
+- A database with old records can't be loaded until it's re-seeded or migrated. There are no migrations yet.
+
+---
+
 ## 2026-11-13 — Event discovery query
 
 **Request:** "Build the discovery query."

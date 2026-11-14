@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 from backend.objects import (
-    Connected,
     Edge,
     Event,
     EventStatus,
@@ -21,6 +20,7 @@ from backend.objects import (
     most_restrictive,
 )
 
+from .connections import ConnectionService
 from .events import EventService
 from .membership import MembershipService
 from .store import GraphStore
@@ -28,11 +28,16 @@ from .store import GraphStore
 
 class PrivacyService:
     def __init__(
-        self, store: GraphStore, membership: MembershipService, events: EventService
+        self,
+        store: GraphStore,
+        membership: MembershipService,
+        events: EventService,
+        connections: ConnectionService,
     ) -> None:
         self._store = store
         self._membership = membership
         self._events = events
+        self._connections = connections
 
     def effective_visibility(self, record: GraphRecord) -> Visibility:
         if not isinstance(record, Edge):
@@ -66,12 +71,7 @@ class PrivacyService:
         return False
 
     def are_connected(self, a: str, b: str) -> bool:
-        return any(
-            {e.source_id, e.target_id} == {a, b}
-            for e in self._store.edges(Connected, source_id=a)
-            + self._store.edges(Connected, source_id=b)
-            if e.is_established
-        )
+        return self._connections.are_connected(a, b)
 
     def erase_person(self, person_id: str) -> None:
         """True erasure: hard-delete every edge touching the person, then the

@@ -19,6 +19,7 @@ from backend.objects import Edge, GraphRecord
 
 from .codec import decode_record, encode_record, type_names_for
 from .errors import NotFoundError
+from .store import check_edge_endpoints
 
 N = TypeVar("N", bound=GraphRecord)
 E = TypeVar("E", bound=Edge)
@@ -105,9 +106,7 @@ class SqliteGraphStore:
     # --- edges ---------------------------------------------------------------
 
     def save_edge(self, edge: E) -> E:
-        for endpoint in (edge.source_id, edge.target_id):
-            if not self.has_node(endpoint):
-                raise NotFoundError(f"edge endpoint {endpoint!r} not found")
+        check_edge_endpoints(edge, self._load_node)
         self._write(
             "INSERT INTO edges (id, type, source_id, target_id, state, data) "
             "VALUES (?, ?, ?, ?, ?, ?) "

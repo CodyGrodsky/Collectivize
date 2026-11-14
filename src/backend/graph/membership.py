@@ -110,7 +110,9 @@ class MembershipService:
     def confirm(self, edge_id: str, by_person_id: str) -> MemberOf:
         edge = self._store.edge(edge_id, MemberOf)
         self.require_admin(by_person_id, edge.target_id)
-        return self._store.save_edge(edge.confirmed())
+        if not edge.is_current:
+            raise DomainRuleError("an ended membership cannot be confirmed")
+        return self._store.save_edge(edge.confirmed(by=by_person_id))
 
     def set_role(self, edge_id: str, role: MemberRole, by_person_id: str) -> MemberOf:
         """Only the org (an admin) can grant or change roles."""
@@ -151,7 +153,7 @@ class MembershipService:
             last_confirmed_at=now,
             verification=VerificationStatus.VERIFIED,
         )
-        edge = self._store.save_edge(edge.confirmed().with_provenance(verified))
+        edge = self._store.save_edge(edge.confirmed(by=staff_id).with_provenance(verified))
         org_provenance = replace(org.provenance, last_confirmed_at=now)
         self._store.save_node(
             org.with_claim_state(ClaimState.CLAIMED).with_provenance(org_provenance)

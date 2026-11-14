@@ -10,7 +10,7 @@ Records are immutable; a store maps ids to each record's latest version.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from typing import Protocol, TypeVar
 
@@ -43,6 +43,17 @@ class GraphStore(Protocol):
     def delete_edge(self, edge_id: str) -> None: ...
     def transaction(self) -> AbstractContextManager[None]: ...
     def close(self) -> None: ...
+
+
+def check_edge_endpoints(
+    edge: Edge, load: Callable[[str], GraphRecord | None]
+) -> None:
+    """Both endpoints must exist and be the node kinds the edge allows."""
+    source, target = load(edge.source_id), load(edge.target_id)
+    for endpoint_id, node in ((edge.source_id, source), (edge.target_id, target)):
+        if node is None:
+            raise NotFoundError(f"edge endpoint {endpoint_id!r} not found")
+    edge.check_endpoints(source, target)  # type: ignore[arg-type]
 
 
 class InMemoryGraphStore:
@@ -83,9 +94,7 @@ class InMemoryGraphStore:
     # --- edges ---------------------------------------------------------------
 
     def save_edge(self, edge: E) -> E:
-        for endpoint in (edge.source_id, edge.target_id):
-            if endpoint not in self._nodes:
-                raise NotFoundError(f"edge endpoint {endpoint!r} not found")
+        check_edge_endpoints(edge, self._nodes.get)
         self._edges[edge.id] = edge
         return edge
 
