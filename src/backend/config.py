@@ -22,6 +22,12 @@ DATA_DIR = PROJECT_ROOT / "data"
 ENV_VAR = "COLLECTIVIZE_ENV"
 # Who may sign in (v1.1 spec 4.10): campus-only for now. Change it here.
 ALLOWED_EMAIL_DOMAINS: tuple[str, ...] = ("northeastern.edu",)
+# TEMPORARILY OFF (2026-11-14): the .edu sign-in step. While this is False,
+# `scripts/serve.py` signs every visitor in automatically as the demo
+# account, so nobody is asked for their Northeastern email.
+# TO RE-ENABLE SIGN-IN: set this back to True. Nothing else needs to change.
+# (For one run only: `serve.py --login` forces it on, `--no-login` off.)
+LOGIN_REQUIRED: bool = False
 # The campus's time zone: "Saturday" in a search means Saturday here.
 CAMPUS_TIMEZONE = "America/New_York"
 DB_PATH_VAR = "COLLECTIVIZE_DB_PATH"

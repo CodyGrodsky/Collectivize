@@ -4,6 +4,25 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-14 — The .edu sign-in step is temporarily off (one switch turns it back on)
+
+**Request:** "can you temporarily disable the .edu sign in part, but make it so it is easy to re-enable."
+
+### What changed
+- **Sign-in is skipped by default.** Running `scripts/serve.py` no longer sends you to the page that asks for a Northeastern email: you're signed in automatically as the demo account (`drew.demo@northeastern.edu`; pick another with `--as <email>`). Everything else behaves as it does when signed in, and the sign-in form still works if you sign out and want to switch accounts.
+- **To turn sign-in back on:** set `LOGIN_REQUIRED = True` in `src/backend/config.py`. That one line is the whole change.
+- **For a single run:** `serve.py --login` asks for sign-in whatever the switch says, and `serve.py --no-login` skips it.
+- **The server prints a warning** at start-up while sign-in is off, with these instructions.
+
+### Not changed
+- **Who may sign in.** The form still only accepts `@northeastern.edu` addresses (`ALLOWED_EMAIL_DOMAINS`, same file).
+- **The gate itself** (`server.py`) and its tests. This reuses the existing development option; only the default moved into the config.
+
+### Tests
+- `test_access.py`: the switch decides when no flag is given, and a flag wins for that run.
+
+---
+
 ## 2026-11-14 — Search for people, organizations and events by name
 
 **Request:** "add people search, organization search, events search."

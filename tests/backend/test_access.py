@@ -256,3 +256,31 @@ def test_no_login_refuses_a_non_campus_account(world):
 
     with pytest.raises(Exception, match="Northeastern"):
         serve(DiscoverApi(factory), port=0, auto_login_email="me@gmail.com")
+
+
+# --- the sign-in switch (config.LOGIN_REQUIRED, serve.py --login / --no-login) -------
+
+
+def load_serve_script():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "serve.py"
+    spec = importlib.util.spec_from_file_location("serve_script", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize(("flag", "default", "expected"), [
+    (None, True, True), (None, False, False),  # no flag: the config decides
+    (True, False, True), (False, True, False),  # a flag wins for that run
+])
+def test_sign_in_follows_the_config_switch_unless_a_flag_overrides_it(flag, default, expected):
+    assert load_serve_script().login_is_on(flag, default) is expected
+
+
+def test_the_config_switch_is_what_serve_uses_by_default():
+    from backend import config
+
+    assert load_serve_script().login_is_on(None) is config.LOGIN_REQUIRED

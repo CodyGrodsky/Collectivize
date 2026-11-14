@@ -19,11 +19,13 @@ page, the invite page, their assets and POST /api/signin answer; every
 other page redirects to the landing page and every other API call is 401.
 The viewer is always the session's person, never a request parameter.
 
-Development: `serve.py --no-login` turns the gate off. Anyone without a
-session is signed in automatically (as drew.demo@northeastern.edu, or
-`--as <email>`), with a real session, so everything else behaves exactly
-as with login on; sign out and use the sign-in form to switch accounts.
-Drop the flag to turn login back on; nothing else changes.
+Development: the gate can be turned off. Anyone without a session is then
+signed in automatically (as drew.demo@northeastern.edu, or `--as <email>`),
+with a real session, so everything else behaves exactly as with login on;
+sign out and use the sign-in form to switch accounts. Whether `serve.py`
+asks for sign-in by default is `LOGIN_REQUIRED` in config.py (temporarily
+False); `serve.py --login` / `--no-login` override it for one run. This
+module itself always has the gate on unless `auto_login_email` is passed.
 
 Platform admins can "view as" someone from /admin: read-only (every change
 is refused), with a banner on every page, and logged (see sessions.py).
