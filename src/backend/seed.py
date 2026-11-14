@@ -11,7 +11,7 @@ graph rule (claims, admin checks, hierarchy kinds, co-host acceptance).
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -32,6 +32,7 @@ from backend.objects import (
     Tag,
     VerificationLevel,
 )
+from backend.seed_bulk import BulkScale, BulkSeedResult, seed_bulk
 from backend.seed_network import seed_network
 
 SEED_STAFF_ID = "seed-staff"
@@ -126,16 +127,30 @@ class SeedResult:
     tags: dict[str, str]
     events: dict[str, str] = field(default_factory=dict)
     invite_code: str | None = None  # an open invite from Drew, for the join demo
+    bulk: BulkSeedResult | None = None  # the large generated world, if requested
 
 
 def seed_mock_data(
-    graph: CollectivizeGraph, environment: Environment, now: datetime
+    graph: CollectivizeGraph,
+    environment: Environment,
+    now: datetime,
+    bulk: BulkScale | None = None,
 ) -> SeedResult:
+    """Seed the hand-built demo, plus a large generated world at `bulk`
+    scale (see backend.seed_bulk) when given."""
     store_environment = getattr(graph.store, "environment", Environment.TEST)
     if environment is not Environment.TEST or store_environment is not Environment.TEST:
         raise ProductionSeedError("refusing to seed mock data outside the test database")
     with graph.store.transaction():
-        return _MockWorld(graph, now).build()
+        result = _MockWorld(graph, now).build()
+        if bulk is None:
+            return result
+        extra = seed_bulk(
+            graph, now, scale=bulk, staff_id=SEED_STAFF_ID, campus=CAMPUS,
+            tags=result.tags, institution_id=result.orgs["university"],
+            ifc_id=result.orgs["ifc"],
+        )
+        return replace(result, bulk=extra)
 
 
 class _MockWorld:

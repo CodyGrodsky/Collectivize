@@ -74,3 +74,37 @@ def test_seeded_demo_has_places_tastes_and_travel_habits():
     assert sum(typical_trip_km(p) is not None for p in people) >= 10
     assert len(graph.store.edges(InterestedIn)) >= 20
     assert all(p.travel_log_km is None or p.travel_samples > 0 for p in people)
+
+
+def test_bulk_world_is_large_fictional_and_rule_abiding():
+    from backend.objects import Person, Rsvp
+    from backend.seed_bulk import SMALL
+
+    graph = CollectivizeGraph()
+    result = seed_mock_data(graph, Environment.TEST, NOW, SMALL)
+    bulk = result.bulk
+    store = graph.store
+
+    assert graph.integrity.audit() == ()
+    orgs = store.nodes(Organization)
+    events = store.nodes(Event)
+    assert len(orgs) > len(result.orgs) + 15
+    assert len(store.nodes(Person)) > 40
+    assert all(o.name.startswith(DEMO_PREFIX) for o in orgs)
+    assert all(e.is_demo for e in events)
+    # The first generated campus shares the hand-built university.
+    assert result.orgs["university"] not in bulk.orgs.values()
+    statuses = {e.status_at(NOW) for e in events if e.id in set(bulk.events)}
+    assert {EventStatus.ENDED, EventStatus.PUBLISHED} <= statuses
+    assert any(store.edges(Rsvp, target_id=i) for i in bulk.events)
+
+
+def test_bulk_world_is_the_same_every_time():
+    from backend.seed_bulk import SMALL
+
+    def titles():
+        graph = CollectivizeGraph()
+        seed_mock_data(graph, Environment.TEST, NOW, SMALL)
+        return sorted((e.title, e.starts_at) for e in graph.store.nodes(Event))
+
+    assert titles() == titles()

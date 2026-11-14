@@ -4,6 +4,32 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-14 — Large generated mock world for the test database
+
+**Request:** "Create a large amount of mock up user organizations and events and all the data under them put into the data mock up base."
+
+**What changed:** `scripts/seed_test_db.py` now adds a large generated world on top of the hand-built demo by default. A full seed takes about 6 seconds and produces roughly:
+- **112 orgs** across three fictional campuses: Northbridge University (reusing the hand-built university and IFC), Riverside College and Harborview Institute. There are 10 national fraternities and sororities, 5 chapters per campus, an IFC, Panhellenic and Club Sports Council per campus, and 22 clubs per campus.
+- **~880 people**: org admins and 250 students per campus.
+- **~1,000 events**: months of past events (ended, some archived), upcoming events (some drafts, some cancelled, some members-only), weekly meeting series, events co-hosted by two orgs, and events hosted by students.
+- **~10,000 RSVPs, ~2,700 friendships, ~2,200 memberships, ~1,900 interests and ~1,400 tag links**, plus 18 new curated tags (music, tech, outdoors and others).
+
+Use `--size small` for a small world or `--size demo` for the hand-built demo only.
+
+**How:**
+- New `backend/seed_catalog.py` holds the invented content: campuses, buildings, club and chapter templates, event templates and names.
+- New `backend/seed_bulk.py` (`_BulkWorld`) builds the world. Every write goes through the normal services, so claims, admin checks, hierarchy kinds, co-host acceptance and RSVP rules all apply, and `check_graph.py` reports no problems.
+- `seed_mock_data` takes an optional `bulk: BulkScale` argument. Its default is `None`, so existing callers and tests get exactly the old demo.
+
+**Decisions:**
+- History is simulated by passing past times as `now`. Orgs are claimed months ago, publish events 4–21 days before they start, and students RSVP in between. As a result, freshness (some dormant clubs show as stale), ended events and learned travel habits come out the way they would from real use. Plans run in publish-time order, so each org's "last published" date is its newest event.
+- The world is deterministic: a fixed seed, and people are ordered by creation rather than by their random ids. A test checks this.
+- It follows the same labelling as the demo: orgs are "[Demo] …", people "(demo …)", and every event has `is_demo=True`. Org websites point at `example.org`.
+
+**Tests:** added `test_bulk_world_is_large_fictional_and_rule_abiding` and `test_bulk_world_is_the_same_every_time` to `tests/backend/test_seed.py`.
+
+---
+
 ## 2026-11-14 — Edge-case hunt: 26 bugs found and fixed
 
 **Requests:** "Can you make tests to test as many edge cases as possible and figure out where the bugs are", followed by "fix the bugs they find".
