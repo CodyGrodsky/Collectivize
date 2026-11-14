@@ -300,3 +300,43 @@ def test_calendar_shows_only_my_plans_and_my_orgs_events(fresh):
     assert event.id in {e["id"] for e in app.my_calendar(casey, window)["entries"]}  # Casey's org
     with pytest.raises(ApiError):
         app.my_calendar(drew, {**window, "start": "yesterday"})
+
+
+# --- 4.11 invite preview card ------------------------------------------------------
+
+
+def test_invite_link_shows_the_inviters_card_to_anyone(fresh):
+    app, _, r = fresh
+    link = app.create_invite(r.people["alice"])
+    assert link["path"] == f"/invite/{link['code']}"
+    preview = app.invite_preview({"code": link["code"]})["inviter"]
+    assert preview["id"] == r.people["alice"] and preview["card"] == "full"
+    assert preview["top3"]["title"] == "study spots"
+    assert "orgs" not in preview and "events" not in preview
+    with pytest.raises(ApiError):
+        app.invite_preview({"code": "not-a-real-invite-code"})
+
+
+def test_joining_by_invite_connects_with_the_inviter(fresh):
+    app, graph, r = fresh
+    code = app.create_invite(r.people["alice"])["code"]
+    newcomer = app.sign_in({"email": "nia.new@northeastern.edu", "invite": code})
+    assert graph.connections.are_connected(newcomer, r.people["alice"])
+    with pytest.raises(ApiError):  # single use
+        app.invite_preview({"code": code})
+
+
+def test_an_existing_account_accepting_an_invite_connects(fresh):
+    app, graph, r = fresh
+    alice, carol = r.people["alice"], r.people["carol"]
+    code = app.create_invite(alice)["code"]
+    assert app.sign_in({"email": "carol.demo@northeastern.edu", "invite": code}) == carol
+    assert graph.connections.are_connected(alice, carol)
+
+
+def test_a_bad_invite_never_blocks_sign_in(fresh):
+    app, graph, r = fresh
+    person = app.sign_in({"email": "zed.new@northeastern.edu", "invite": "nope-nope-nope"})
+    assert graph.connections.connections_of(person) == []
+    with pytest.raises(ApiError):
+        app.sign_in({"email": "someone@gmail.com", "invite": "x"})

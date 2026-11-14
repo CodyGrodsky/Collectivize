@@ -60,6 +60,7 @@ from backend.objects.profile_image import PHOTO_SLOT, PICTURE_SLOTS, image_id
 
 EMAIL_SHAPE = re.compile(r"^[a-z0-9._%+-]+@([a-z0-9-]+(?:\.[a-z0-9-]+)+)$")
 MAX_EMAIL_LENGTH = 254
+MAX_INVITE_CODE = 100
 MAX_ID_LENGTH = 64
 ADMIN_SEARCH_LIMIT = 20
 MAX_NETWORK_NODES = 500
@@ -153,10 +154,22 @@ class AppApi:
                 "Collectivize is campus-only for now: sign in with your Northeastern "
                 f"email (@{' or @'.join(ALLOWED_EMAIL_DOMAINS)})",
             )
+        invite = body.get("invite")
+        if invite is not None and (not isinstance(invite, str) or len(invite) > MAX_INVITE_CODE):
+            invite = None
         with self._graphs() as graph:
+            now = self._clock()
             for person in graph.store.nodes(Person):
                 if person.email == address:
+                    if invite:
+                        self._accept_invite(graph, invite, person.id, now)
                     return person.id
+            if invite:  # a new person joining by invite connects with the inviter
+                try:
+                    joined = graph.invites.redeem(invite, address, _name_from_email(address), now)
+                    return joined.person.id
+                except DomainRuleError:
+                    pass  # an unusable invite: just create the account
             # SPEC-ASSUMPTION: a valid address with no account creates one.
             person = graph.store.save_node(Person(
                 display_name=_name_from_email(address),
@@ -167,6 +180,35 @@ class AppApi:
                 ),
             ))
             return person.id
+
+    @staticmethod
+    def _accept_invite(graph: CollectivizeGraph, code: str, person_id: str, now: datetime) -> None:
+        try:
+            graph.invites.accept_as_existing(code, person_id, now)
+        except DomainRuleError:
+            pass  # unusable or their own: signing in still works
+
+    # --- invites (spec 4.11) -----------------------------------------------------
+
+    def invite_preview(self, params: dict[str, str]) -> dict[str, Any]:
+        """Public: the inviter's profile card for an invite link."""
+        code = params.get("code", "")
+        if not 0 < len(code) <= MAX_INVITE_CODE:
+            raise ApiError(HTTPStatus.NOT_FOUND, "this invite link isn't valid any more")
+        with self._graphs() as graph:
+            try:
+                inviter = graph.invites.inviter_of(code, self._clock())
+            except DomainRuleError:
+                raise ApiError(HTTPStatus.NOT_FOUND, "this invite link isn't valid any more") from None
+            return {"inviter": self._card(graph, None, inviter.id, preview=True)}
+
+    def create_invite(self, viewer: str) -> dict[str, Any]:
+        """A single-use invite link to share; whoever opens it sees your
+        profile card."""
+        with self._graphs() as graph:
+            issued = graph.invites.create(viewer, self._clock())
+            return {"code": issued.code, "path": f"/invite/{issued.code}",
+                    "expires_at": issued.invite.expires_at.isoformat()}
 
     def me(self, person_id: str, view_as: str | None) -> dict[str, Any]:
         with self._graphs() as graph:

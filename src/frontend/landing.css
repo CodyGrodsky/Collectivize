@@ -111,3 +111,8 @@ body {
     max-height: 52dvh;
     touch-action: pan-y;
 }
+
+/* Invite landing page (invite.html). */
+.invite { gap: 18px; }
+.invite-logo { width: min(70cqw, 360px); height: auto; }
+.invite-card { width: min(100%, 420px); }

@@ -21,6 +21,18 @@
         <h1 class="page-title">Network</h1>
         <p class="page-subtitle">You, your connections and your organizations. Drag to look around; tap someone for their card.</p>
 
+        <section class="panel" aria-labelledby="invite-title">
+            <div class="panel-head">
+                <h2 class="panel-title" id="invite-title">Invite someone</h2>
+                <button class="button" type="button" id="invite-button">Get an invite link</button>
+            </div>
+            <p class="muted" id="invite-help">They'll see your profile card and can join with their Northeastern email. Each link works once.</p>
+            <div class="row" id="invite-link-row" hidden>
+                <input class="input" id="invite-link" readonly aria-label="Invite link">
+                <button class="button button-solid" type="button" id="invite-copy">Copy</button>
+            </div>
+        </section>
+
         <section class="panel" id="requests-panel" aria-labelledby="requests-title" hidden>
             <h2 class="panel-title" id="requests-title">Connection requests</h2>
             <p class="status" id="requests-status" role="status" aria-live="polite"></p>

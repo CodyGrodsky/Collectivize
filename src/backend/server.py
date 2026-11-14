@@ -60,7 +60,8 @@ SIGNED_IN_HOME = "/src/frontend/discover.html"
 ADMIN_PAGE = "/src/frontend/admin.html"
 # Pages a signed-out visitor may open (v1.1 spec 4.10). Assets (CSS, JS,
 # images) are always served: they hold no one's data.
-PUBLIC_PAGES = frozenset({LANDING_PAGE, "/src/frontend/invite.html"})
+INVITE_PAGE = "/src/frontend/invite.html"
+PUBLIC_PAGES = frozenset({LANDING_PAGE, INVITE_PAGE})
 MAX_BODY_BYTES = 4096
 MAX_UPLOAD_BYTES = 300_000  # profile pictures, resized in the browser first
 UPLOAD_ROUTES = frozenset({"/api/profile/photo"})
@@ -104,6 +105,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._redirect(SIGNED_IN_HOME if self._session() else LANDING_PAGE)
         elif url.path == "/admin":
             self._redirect(ADMIN_PAGE)
+        elif url.path.startswith("/invite/"):  # shareable invite links
+            code = url.path.removeprefix("/invite/").strip("/")
+            self._redirect(INVITE_PAGE + "?" + urlencode({"code": code[:100]}))
         else:
             self._static(url.path)
 
@@ -180,6 +184,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             "/api/star": own(api.star),
             "/api/org": lambda body: app.update_org(viewer, body),
             "/api/connect": lambda body: app.connect(viewer, body),
+            "/api/invites": lambda body: app.create_invite(viewer),
             "/api/profile": lambda body: app.update_profile(viewer, body),
             "/api/profile/photo": lambda body: app.upload_photo(viewer, body),
             "/api/connection": lambda body: app.connection(viewer, body),

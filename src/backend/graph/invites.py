@@ -110,6 +110,32 @@ class InviteService:
             raise PermissionDeniedError("you can only see your own invites")
         return [i for i in self._store.nodes(Invite) if i.inviter_id == person_id]
 
+    # --- the person invited --------------------------------------------------
+
+    def inviter_of(self, code: str, now: datetime) -> Person:
+        """Who sent a usable invite (for the invite landing page's preview
+        card). Every unusable code gives the same error."""
+        invite = self._usable_invite(code, now)
+        return self._store.node(invite.inviter_id, Person)
+
+    def accept_as_existing(self, code: str, person_id: str, now: datetime) -> Connected | None:
+        """Someone who already has an account opens an invite: they connect
+        with the inviter (both agreed: one by inviting, one by accepting).
+        A request either way is completed; an existing connection leaves
+        the invite unused."""
+        invite = self._usable_invite(code, now)
+        if invite.inviter_id == person_id:
+            raise DomainRuleError("that's your own invite")
+        existing = self._connections.between(invite.inviter_id, person_id)
+        if existing is not None and existing.is_established:
+            return None
+        with self._store.transaction():
+            if existing is not None:
+                self._store.delete_edge(existing.id)
+            connection = self._connections.connect_via_invite(invite.inviter_id, person_id, now)
+            self._store.save_node(invite.used(person_id, now))
+        return connection
+
     # --- new person ----------------------------------------------------------
 
     def redeem(

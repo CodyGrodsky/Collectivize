@@ -66,6 +66,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .panel-title { margin: 0 0 10px; font-size: 15px; font-weight: 650; }
 
+.panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.panel-head .panel-title { margin: 0; }
+
 .muted { color: var(--muted); }
 
 .status { min-height: 1.45em; margin: 8px 0; color: var(--muted); }

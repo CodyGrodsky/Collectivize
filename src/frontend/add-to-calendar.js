@@ -5,7 +5,7 @@
 // - Outlook (Microsoft 365, what Northeastern accounts use): a compose link.
 // - Apple Calendar (and desktop Outlook): an .ics file made here (RFC 5545).
 // Times are sent in UTC, so each app shows them in the viewer's own zone
-// (America/New_York on campus). Every field is URL-encoded or escaped.
+// (America/New_York for Northeastern). Every field is URL-encoded or escaped.
 //
 // Usage: AddToCalendar.menu({ id, title, starts_at, ends_at, location, description })
 

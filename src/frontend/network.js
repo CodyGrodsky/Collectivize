@@ -21,6 +21,7 @@
         graph = new window.NetworkGraph($("graph"));
         graph.load(me.id);
         loadRequests();
+        bindInvite();
     }
 
     async function loadRequests() {
@@ -84,6 +85,30 @@
             ]),
             cancel,
         ]);
+    }
+
+    function bindInvite() {
+        $("invite-button").addEventListener("click", async () => {
+            $("invite-button").disabled = true;
+            try {
+                const { path } = await Api.post("/api/invites", {});
+                $("invite-link").value = new URL(path, location.origin).href;
+                $("invite-link-row").hidden = false;
+                $("invite-link").select();
+            } catch (error) {
+                $("invite-help").textContent = error.message;
+            } finally {
+                $("invite-button").disabled = false;
+            }
+        });
+        $("invite-copy").addEventListener("click", async () => {
+            try {
+                await navigator.clipboard.writeText($("invite-link").value);
+                $("invite-copy").textContent = "Copied";
+            } catch {
+                $("invite-link").select(); // copy by hand
+            }
+        });
     }
 
     start();

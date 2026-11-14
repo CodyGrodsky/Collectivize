@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#f5f4f0">
+    <title>You're invited · Collectivize</title>
+    <link rel="icon" href="../../app/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="app.css">
+    <link rel="stylesheet" href="profile-card.css">
+    <link rel="stylesheet" href="landing.css">
+    <script src="shared.js" defer></script>
+    <script src="profile-card.js" defer></script>
+    <script src="invite.js" defer></script>
+</head>
+<body>
+    <main class="cover invite">
+        <img class="invite-logo" src="../../public/brand/wordmark-on-paper.svg" alt="Collectivize" width="1004" height="106">
+        <p class="cover-line" id="invite-line">Loading your invite…</p>
+        <div class="invite-card" id="invite-card"></div>
+
+        <form class="signin" id="signin" novalidate>
+            <label class="signin-label" for="signin-email">Northeastern email</label>
+            <div class="signin-row">
+                <input class="signin-input" id="signin-email" type="email" autocomplete="email"
+                       inputmode="email" maxlength="254" required placeholder="you@northeastern.edu"
+                       aria-describedby="signin-message">
+                <button class="signin-button" type="submit" id="signin-button">Join and connect</button>
+            </div>
+            <p class="signin-message" id="signin-message" role="alert" aria-live="polite"></p>
+            <p class="signin-note">Campus-only for now: Collectivize needs a Northeastern email.</p>
+        </form>
+    </main>
+</body>
+</html>
