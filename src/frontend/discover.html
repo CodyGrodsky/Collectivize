@@ -6,14 +6,95 @@
     <meta name="theme-color" content="#f5f4f0">
     <title>Discover · Collectivize</title>
     <link rel="icon" href="../../app/icon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="placeholder.css">
+    <link rel="stylesheet" href="discover.css">
     <link rel="stylesheet" href="nav.css">
     <script src="nav.js"></script>
+    <script src="discover.js" defer></script>
 </head>
 <body>
-    <main class="placeholder">
-        <h1>Discover</h1>
-        <p>Coming soon.</p>
+    <main class="discover-page">
+        <header class="dc-header">
+            <div class="dc-heading">
+                <h1 class="dc-title">Discover</h1>
+                <p class="dc-subtitle">Events around campus, ranked for you.</p>
+            </div>
+            <div class="dc-context">
+                <label class="dc-persona">
+                    <span class="dc-label">Viewing as</span>
+                    <select id="persona" aria-describedby="persona-note"></select>
+                </label>
+                <label class="dc-switch">
+                    <input type="checkbox" id="near" checked>
+                    <span class="dc-switch-track" aria-hidden="true"></span>
+                    <span>On campus</span>
+                </label>
+            </div>
+            <p class="dc-persona-note" id="persona-note">Demo: switch people to see Discover through their eyes.</p>
+        </header>
+
+        <form class="dc-search" id="search-form" role="search">
+            <label class="dc-sr" for="search-input">Search events</label>
+            <svg class="dc-search-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/>
+            </svg>
+            <input type="search" id="search-input" maxlength="500" autocomplete="off"
+                   placeholder="Describe what you're in the mood for, like &ldquo;something fast-paced that makes me think&rdquo;">
+            <button type="submit" class="dc-search-button" id="search-button">Search</button>
+        </form>
+
+        <nav class="dc-topics" id="topics" aria-label="Topics"></nav>
+
+        <section class="dc-search-summary" id="search-summary" hidden aria-live="polite">
+            <div class="dc-summary-top">
+                <p class="dc-summary-goal" id="search-goal"></p>
+                <button type="button" class="dc-link-button" id="search-clear">Back to all events</button>
+            </div>
+            <p class="dc-summary-note" id="search-note" hidden></p>
+            <details class="dc-steps" id="search-steps" hidden>
+                <summary>How we searched</summary>
+                <ol id="search-steps-list"></ol>
+            </details>
+        </section>
+
+        <p class="dc-status" id="status" role="status" aria-live="polite"></p>
+
+        <ol class="dc-list" id="results" aria-label="Events"></ol>
+
+        <nav class="dc-pages" id="pages" aria-label="Pages" hidden>
+            <p class="dc-count" id="count"></p>
+            <div class="dc-page-buttons" id="page-buttons"></div>
+        </nav>
     </main>
+
+    <template id="card-template">
+        <li class="dc-card">
+            <div class="dc-date" aria-hidden="true">
+                <span class="dc-date-weekday"></span>
+                <span class="dc-date-day"></span>
+                <span class="dc-date-month"></span>
+            </div>
+            <div class="dc-body">
+                <div class="dc-badges"></div>
+                <h2 class="dc-card-title"></h2>
+                <p class="dc-meta"></p>
+                <p class="dc-host"></p>
+                <p class="dc-fit" hidden></p>
+                <p class="dc-description"></p>
+                <ul class="dc-reasons" aria-label="Why this event"></ul>
+                <div class="dc-friends" hidden>
+                    <span class="dc-avatars" aria-hidden="true"></span>
+                    <span class="dc-friends-text"></span>
+                </div>
+            </div>
+            <div class="dc-side">
+                <div class="dc-match">
+                    <span class="dc-match-value"></span>
+                    <span class="dc-match-label">likely for you</span>
+                    <span class="dc-match-bar" aria-hidden="true"><span></span></span>
+                </div>
+                <p class="dc-going"></p>
+            </div>
+        </li>
+    </template>
 </body>
 </html>

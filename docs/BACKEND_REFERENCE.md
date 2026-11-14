@@ -2,7 +2,7 @@
 
 Every public class and function in the Collectivize backend (`src/backend/`): what it does and where it lives. Each entry links to its line in the source, for example [L35](../src/backend/graph/membership.py#L35).
 
-Line numbers were current on 2026-11-14. If one has moved, search the file for the function name.
+Line numbers were current on 2026-11-14 (updated for the demo server and the generated demo world). If one has moved, search the file for the function name.
 
 ## Start here
 
@@ -72,6 +72,7 @@ In tests, use `CollectivizeGraph()` for an in-memory graph, or pass a store: `Co
 | [`seed_test_db.py`](../scripts/seed_test_db.py) | Fill the test database with the fictional demo world (`--reset` to start over; refuses production). |
 | [`check_graph.py`](../scripts/check_graph.py) | Run the integrity audit on the configured database. |
 | [`ai_search.py`](../scripts/ai_search.py) | Try a search from the terminal: the agent by default, or one AI call with `--single` (costs a little). |
+| [`serve.py`](../scripts/serve.py) | Run the local demo server: the frontend pages plus the JSON API behind Discover (`--no-ai` for keyword search only). |
 | [`export_ml_dataset.py`](../scripts/export_ml_dataset.py) | Export the consent-gated, pseudonymized dataset to `data/exports/` (needs `COLLECTIVIZE_EXPORT_KEY`). |
 
 ## Contents
@@ -84,7 +85,7 @@ In tests, use `CollectivizeGraph()` for an in-memory graph, or pass a store: `Co
 6. [Privacy, integrity and data access](#privacy-integrity-and-data-access)
 7. [Storage](#storage)
 8. [Domain objects (nodes and edges)](#domain-objects-nodes-and-edges)
-9. [Setup, configuration and demo data](#setup-configuration-and-demo-data)
+9. [Setup, configuration, demo server and demo data](#setup-configuration-demo-server-and-demo-data)
 
 In the lists below, **bold names** are classes, the indented items are their methods, and *(property)* marks a value read without calling it.
 
@@ -648,9 +649,9 @@ DataExport node: an audit record of every bulk export of user data.
 - **`DataExport`** (GraphRecord): Audit record of a bulk data export: who, why, how much. [L11](../src/backend/objects/data_export.py#L11)
   - Fields: `requested_by`, `purpose`, `people`, `rows`, `visibility`
 
-## Setup, configuration and demo data
+## Setup, configuration, demo server and demo data
 
-Choosing the test or production database, credentials, and the fictional demo world.
+Choosing the test or production database, credentials, the local demo web server (pages + JSON API), and the fictional demo world.
 
 ### `src/backend/config.py`
 
@@ -674,17 +675,52 @@ Where secrets come from. Never from source code or files in the repo.
 
 - `anthropic_api_key() -> str | None`: The Anthropic API key: `ANTHROPIC_API_KEY`, else the macOS Keychain, else `None`. [L29](../src/backend/credentials.py#L29)
 
+### `src/backend/server.py`
+
+A small local web server for the demo: the frontend pages plus a JSON API.
+
+- **`ApiError`** (Exception): [L74](../src/backend/server.py#L74)
+- `demo_graph_factory(config: DatabaseConfig, *, use_ai: bool) -> GraphFactory`: Each request opens its own connection (SQLite connections can't be shared across the server's threads). [L100](../src/backend/server.py#L100)
+- **`DiscoverApi`**: The API's behaviour, independent of HTTP (so it can be tested directly). [L124](../src/backend/server.py#L124)
+  - `personas() -> dict[str, Any]`: Every demo person you can view Discover as, suggested ones first. [L137](../src/backend/server.py#L137)
+  - `tags() -> dict[str, Any]`: All topic tags, by label (for the topic filter). [L159](../src/backend/server.py#L159)
+  - `discover(params: dict[str, str]) -> dict[str, Any]`: One page of Discover for a viewer: `viewer`, `page`, `near=1`, `tag`. [L165](../src/backend/server.py#L165)
+  - `search(body: dict[str, Any]) -> dict[str, Any]`: AI search via the search agent: `query`, `viewer`, `near`. Repeat searches come from the cache; one runs at a time. [L181](../src/backend/server.py#L181)
+- **`DemoServer`** (ThreadingHTTPServer): [L308](../src/backend/server.py#L308)
+- **`RequestHandler`** (BaseHTTPRequestHandler): [L316](../src/backend/server.py#L316)
+  - `do_GET() -> None`: API routes, the home redirect, or a static file. [L321](../src/backend/server.py#L321)
+  - `do_POST() -> None`: POST /api/search only. [L337](../src/backend/server.py#L337)
+  - `log_message(format: str, *args) -> None`: One short log line per request (method and path, no query). [L344](../src/backend/server.py#L344)
+- `resolve_static(url_path: str, root: Path = ROOT) -> Path | None`: The file a URL path refers to, or None unless it is a real file inside one of STATIC_DIRS. Blocks '..', encoded traversal, dotfiles and symlinks that lead outside. [L420](../src/backend/server.py#L420)
+- `serve(api: DiscoverApi, port: int = 8000) -> DemoServer`: Create the server on 127.0.0.1 (call .serve_forever() to run it). [L436](../src/backend/server.py#L436)
+
 ### `src/backend/seed.py`
 
 Fictional mock data for the test database.
 
-- `place(name: str) -> GeoPoint`: Coordinates of a named demo campus place. [L51](../src/backend/seed.py#L51)
-- **`ProductionSeedError`** (DomainRuleError): Raised when something tries to put mock data outside the test DB. [L116](../src/backend/seed.py#L116)
-- **`SeedResult`**: Ids of the seeded records, keyed by their short names above. [L121](../src/backend/seed.py#L121)
-- `seed_mock_data(graph: CollectivizeGraph, environment: Environment, now: datetime) -> SeedResult`: Fill a **test** store with the fictional demo world (refuses any other); returns the ids created. [L131](../src/backend/seed.py#L131)
+- `place(name: str) -> GeoPoint`: Coordinates of a named demo campus place. [L52](../src/backend/seed.py#L52)
+- **`ProductionSeedError`** (DomainRuleError): Raised when something tries to put mock data outside the test DB. [L117](../src/backend/seed.py#L117)
+- **`SeedResult`**: Ids of the seeded records, keyed by their short names above. [L122](../src/backend/seed.py#L122)
+- `seed_mock_data(graph: CollectivizeGraph, environment: Environment, now: datetime, bulk: BulkScale | None = None) -> SeedResult`: Seed the hand-built demo, plus a large generated world at `bulk` scale (see backend.seed_bulk) when given. [L133](../src/backend/seed.py#L133)
 
 ### `src/backend/seed_network.py`
 
 The fictional demo social network: students, memberships, friendships and RSVPs.
 
 - `seed_network(graph: CollectivizeGraph, orgs: dict[str, str], people: dict[str, str], admins: dict[str, str], now: datetime, make_person: Callable[[str], Person], event_ids: Iterable[str] = (), tag_ids: Iterable[str] = (), campus: GeoPoint | None = None) -> dict[str, str]`: Add students, their memberships, friendships and RSVPs to `event_ids`. `admins` maps a person key to the org key they administer. Returns the student ids. [L57](../src/backend/seed_network.py#L57)
+
+### `src/backend/seed_bulk.py`
+
+A large fictional world on top of the hand-built demo: several campuses, dozens of clubs and chapters, hundreds of students, and months of event history with RSVPs.
+
+- **`BulkScale`**: How big a world to build. [L97](../src/backend/seed_bulk.py#L97)
+- **`BulkSeedResult`**: [L116](../src/backend/seed_bulk.py#L116)
+- `seed_bulk(graph: CollectivizeGraph, now: datetime, *, scale: BulkScale = LARGE, staff_id: str, campus: GeoPoint, tags: dict[str, str], institution_id: str, ifc_id: str) -> BulkSeedResult`: Build the bulk world. The first campus reuses the hand-built `institution_id` and `ifc_id` so both demos share one university. [L169](../src/backend/seed_bulk.py#L169)
+
+### `src/backend/seed_catalog.py`
+
+Fictional content for the bulk mock data: campuses, org templates, event templates and names.
+
+- **`EventTemplate`**: [L15](../src/backend/seed_catalog.py#L15)
+- **`OrgTemplate`**: [L24](../src/backend/seed_catalog.py#L24)
+- **`CampusTemplate`**: [L33](../src/backend/seed_catalog.py#L33)

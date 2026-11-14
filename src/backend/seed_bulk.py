@@ -19,7 +19,7 @@ from __future__ import annotations
 import math
 import random
 from collections.abc import Iterator
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from backend.graph import CollectivizeGraph

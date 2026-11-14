@@ -4,6 +4,81 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-14 — Discover page with AI search, and a local demo server
+
+**Request:** "Can you now do the discover page using the mockup database and the users, events, and orgs in it? Then hook the search function to a search bar on the top of the discover page?"
+
+### Run it
+```
+uv run python scripts/seed_test_db.py --reset     # the large mock world (default --size large)
+uv run python scripts/serve.py                    # http://127.0.0.1:8000/src/frontend/discover.html
+uv run python scripts/serve.py --no-ai            # same, but search uses keywords (no API calls)
+```
+
+### Added
+- **`src/backend/server.py`:** a small local web server, standard library only. It serves the frontend pages and a JSON API (`scripts/serve.py` starts it):
+  - `GET /api/personas` lists the demo people you can view as, with Drew, Avery, Casey and Kai suggested first.
+  - `GET /api/tags` lists the topics.
+  - `GET /api/discover?viewer=&page=&near=1&tag=` returns one page of Discover, **10 per page** as in the plan.
+  - `POST /api/search {"query", "viewer", "near"}` runs the **search agent**. It returns the understood goal, the steps (in plain language) and the picks.
+  - `DiscoverApi` holds the API's logic without any HTTP, so it can be tested directly.
+- **The Discover page** (`src/frontend/discover.html`, `.css`, `.js`) replaces the "Coming soon" placeholder and shares the calendar's look:
+  - **The search bar at the top** sends what you type to the search agent. Results show "Looking for: …" with the agent's goal, a fold-out **"How we searched"** list of its steps, and its picks. Each pick has its fit reason highlighted, and "Back to all events" returns to browsing.
+  - **A "Viewing as" persona switcher** works on the demo data only, as in the plan's persona switcher. Next to it is an **"On campus" toggle** for distances.
+  - **Topic filters**, numbered pages with windowing (`‹ 1 … 4 5 [6] 7 8 … 42 ›`), loading placeholders, empty states and friendly errors.
+  - **Event cards** show:
+    - a date tile and the time and place, with distance;
+    - the host;
+    - badges such as You're going, Your org, Cancelled, Hosted by a student and Unverified listing;
+    - the description and up to three reasons;
+    - friends going, as initials with "Avery, Gale and 2 more going";
+    - a likelihood meter ("96% likely for you") and the going count, which is hidden below 5.
+  - The persona and the toggle are remembered (localStorage, with a fallback), and the search and page live in the URL (`?q=…&page=…`). The page works on phones: controls stack and the topics scroll sideways.
+
+### Safety decisions
+- **Demo only.** The server refuses to run on the production database. There's no login yet, so "viewing as" anyone is a demo feature, not authentication.
+- **Local only.** It listens on `127.0.0.1` only.
+- **Static files** come only from `src/frontend`, `public` and `app`:
+  - every path is resolved and checked;
+  - `..`, encoded traversal, NUL bytes, dotfiles and symlinks leading outside are refused;
+  - `data/`, the source code and `.git` all return 404 (checked over HTTP).
+- **Input validation:** every input is validated, including viewer, page, topic, query, JSON type and body size (4 KB). Errors are `{"error": …}`, and a 500 never shows internal details. Responses carry `nosniff`, `X-Frame-Options: DENY`, `no-referrer` and, for the API, `no-store`.
+- **No HTML injection:** the page inserts server data with `textContent` only. A test checks that `discover.js` never uses `innerHTML`.
+- **Cost control:**
+  - identical searches (tidied and case-folded) are answered from an in-memory cache of 64;
+  - only one AI search runs at a time;
+  - `--no-ai` makes no API calls at all.
+
+### Verified
+- **Tests:** `tests/backend/test_server.py` (50, all pass) covers:
+  - personas and topics;
+  - Discover ranking, logged-out visitors, distances, topics and paging;
+  - bad input of every kind;
+  - search through a fake agent, including the cache, with no real API calls;
+  - the production refusal;
+  - the static path checks (12 traversal cases);
+  - HTTP status codes, headers and error bodies, the redirect, serving the real page, no leaked internals, and listening on 127.0.0.1 only.
+- **On the large mock world** (110 orgs, 881 people, 995 events; re-seeded, integrity check clean):
+  - Drew's Discover lists 412 events and returns a page in about 0.5 s;
+  - the persona list loads in 0.3 s;
+  - a keyword search takes under 1 s.
+- **Screenshots in headless Chrome:**
+  - the browse view, the search view (with the fallback note) and page 6 of 42 at 1300–1440 px;
+  - a phone layout at 500 px (headless Chrome can't go narrower; the layout is fluid below that).
+- **Live AI search through the page hasn't been run**, to avoid paid calls. The same search agent ran live earlier.
+
+### Other changes
+- **Backend reference:** `docs/BACKEND_REFERENCE.md` was regenerated. It now has 357 entries, including the server and the new `seed_bulk.py` / `seed_catalog.py`, with every link checked.
+
+### Not done / noticed
+- ⚠️ **Teammate's tests failing:** the committed `tests/backend/test_cohosting_gaps.py` (from a teammate) has 28 failing tests out of 30. It reads like tests written ahead of fixes that haven't been made yet. It isn't caused by this change: everything else passes (1413 tests).
+- **RSVPing from a card** isn't built yet (the plan's demo step 5).
+- **Search speed:** a live agent search takes several seconds; the page says so while it works.
+- **Persona menu:** it lists all 881 demo people, which is long. A searchable picker would be better.
+- **Changelog repair:** the "Backend reference document" entry was dropped when the teammate's mock-data branch was merged (`e12f26f` kept their copy of this file). It's restored from commit `c13fa49`.
+
+---
+
 ## 2026-11-14 — Large generated mock world for the test database
 
 **Request:** "Create a large amount of mock up user organizations and events and all the data under them put into the data mock up base."
@@ -28,6 +103,41 @@ Use `--size small` for a small world or `--size demo` for the hand-built demo on
 
 **Tests:** added `test_bulk_world_is_large_fictional_and_rule_abiding` and `test_bulk_world_is_the_same_every_time` to `tests/backend/test_seed.py`.
 
+---
+
+## 2026-11-14 — Backend reference document
+
+**Request:** "Can you add a document that describes all the backend functions and where the functions are that have the functions?"
+
+### Added
+**`docs/BACKEND_REFERENCE.md`** (about 690 lines) lists every public class, method and function in `src/backend/`, with its signature, a one-line description and a link to its exact line, for example [L35](../src/backend/graph/membership.py#L35).
+
+**Hand-written sections at the top:**
+- **Start here:** how to get a `CollectivizeGraph` (`open_graph()`, or `CollectivizeGraph()` in tests), its constructor options, and a table mapping every `graph.<service>` to its class, file and job.
+- **Conventions:**
+  - the acting person and `now` are always passed in;
+  - records are immutable;
+  - which error means what (`NotFoundError` also covers "you may not know this exists");
+  - privacy is enforced in the backend;
+  - where AI calls happen.
+- **Scripts:** what each script in `scripts/` does.
+
+**The function lists** are grouped into nine areas:
+- membership and orgs;
+- people and the network;
+- events;
+- Discover and ranking;
+- AI search;
+- privacy, integrity and data access;
+- storage;
+- domain objects (with their fields);
+- setup and demo data.
+
+### How it was made
+- **Generated from the code:** signatures, line numbers and existing docstrings were read from the source, so they're exact.
+- **Descriptions written by hand:** 143 functions and 78 classes had no docstring, so their descriptions were written from reading the code.
+- **Checked:** every one of the 337 entries links to the right line (the named `def`/`class` is there), and every contents link resolves.
+- **No source files changed.** The generator was a throwaway script, so line numbers will drift as the code changes.
 ---
 
 ## 2026-11-14 — Edge-case hunt: 26 bugs found and fixed
