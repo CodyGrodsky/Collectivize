@@ -179,7 +179,7 @@ class PartnersWith(Edge):
         return self.is_active and self.source_confirmed and self.target_confirmed
 
 
-# --- Org -> Event, Event -> Series -------------------------------------------
+# --- Org/Person -> Event, Event -> Series -------------------------------------------
 
 
 class HostRole(Enum):
@@ -187,15 +187,26 @@ class HostRole(Enum):
     CO_HOST = "co_host"
 
 
+class HostOrigin(Enum):
+    """How a co-host link started, which decides who must approve it."""
+
+    INVITED = "invited"  # a host invited this party; the party approves
+    REQUESTED = "requested"  # this party asked to join; a host approves
+
+
 @dataclass(frozen=True, kw_only=True)
 class Hosts(Edge):
-    """Org (source) is responsible for Event (target)."""
+    """Org or Person (source) is responsible for Event (target). An event
+    has one primary host and any number of co-hosts, people or orgs. A
+    co-host counts only once the other side approves: the invited party
+    for an invitation, or a current host for a request to join."""
 
-    SOURCE_TYPES = (Organization,)
+    SOURCE_TYPES = (Organization, Person)
     TARGET_TYPES = (Event,)
 
     role: HostRole
     accepted: bool = False
+    origin: HostOrigin = HostOrigin.INVITED
 
     @property
     def is_effective(self) -> bool:

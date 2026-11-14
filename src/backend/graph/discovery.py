@@ -7,7 +7,8 @@ Which events can appear:
 
 Ranking (higher first; ties broken by start time). Every factor that moves
 an event adds a plain-language reason, so ranking is never opaque:
-- Host trust: claimed (verified) > claim pending > unclaimed listing.
+- Host trust: claimed (verified) org > claim pending > unclaimed listing.
+  Events hosted by a person get no trust bonus and say so.
 - Host freshness: quiet and stale hosts are pushed down.
 - Event provenance: verified details up, disputed details down.
 - Interests: each matching tag the viewer chose ("preferred") boosts.
@@ -27,6 +28,7 @@ from backend.objects import (
     EventStatus,
     Freshness,
     Organization,
+    Person,
     Tag,
     Tagged,
     VerificationStatus,
@@ -68,6 +70,8 @@ PROVENANCE_REASON = {
     VerificationStatus.VERIFIED: "Event details verified",
     VerificationStatus.DISPUTED: "Event details are disputed",
 }
+PERSON_HOST_SCORE = 0.0
+PERSON_HOST_REASON = "Hosted by a person"
 INTEREST_MATCH_SCORE = 2.5
 SOONNESS_MAX_SCORE = 2.0
 CANCELLED_SCORE = -100.0
@@ -102,10 +106,10 @@ class DiscoveryQuery:
 @dataclass(frozen=True)
 class DiscoveryItem:
     event: Event
-    host: Organization  # primary host
+    host: Organization | Person  # primary host
     score: float
     reasons: tuple[str, ...]
-    host_freshness: Freshness
+    host_freshness: Freshness | None  # None when a person hosts
     is_cancelled: bool
 
 
@@ -184,13 +188,15 @@ class DiscoveryService:
             scope |= self._hierarchy.descendant_ids(query.org_id)
         return scope
 
-    def _primary_host(self, event: Event) -> Organization | None:
+    def _primary_host(self, event: Event) -> Organization | Person | None:
         try:
-            return self._store.node(self._events.primary_host_id(event.id), Organization)
+            return self._events.host_node(self._events.primary_host_id(event.id))
         except (DomainRuleError, LookupError):
             return None  # malformed hosting data never surfaces in discovery
 
-    def _visible(self, viewer_id: str | None, event: Event, host: Organization) -> bool:
+    def _visible(
+        self, viewer_id: str | None, event: Event, host: Organization | Person
+    ) -> bool:
         """An event is never more visible than the org hosting it."""
         return self._privacy.can_view(viewer_id, event) and self._privacy.can_view(
             viewer_id, host
@@ -210,25 +216,18 @@ class DiscoveryService:
     def _rank(
         self,
         event: Event,
-        host: Organization,
+        host: Organization | Person,
         tags: set[str],
         query: DiscoveryQuery,
         now: datetime,
         tag_labels: dict[str, str],
         is_cancelled: bool,
     ) -> DiscoveryItem:
-        freshness = host.freshness(now)
         verification = event.provenance.verification
-        score = (
-            HOST_TRUST_SCORE[host.claim_state]
-            + FRESHNESS_SCORE[freshness]
-            + PROVENANCE_SCORE[verification]
-            + _soonness(event, now)
-        )
-        reasons = [HOST_TRUST_REASON[host.claim_state]]
-        for lookup, key in ((FRESHNESS_REASON, freshness), (PROVENANCE_REASON, verification)):
-            if key in lookup:
-                reasons.append(lookup[key])
+        freshness, score, reasons = _host_signals(host, now)
+        score += PROVENANCE_SCORE[verification] + _soonness(event, now)
+        if verification in PROVENANCE_REASON:
+            reasons.append(PROVENANCE_REASON[verification])
         for tag_id in sorted(tags & set(query.preferred_tag_ids)):
             score += INTEREST_MATCH_SCORE
             reasons.append(f"Matches your interest: {tag_labels.get(tag_id, tag_id)}")
@@ -245,6 +244,20 @@ class DiscoveryService:
             host_freshness=freshness,
             is_cancelled=is_cancelled,
         )
+
+
+def _host_signals(
+    host: Organization | Person, now: datetime
+) -> tuple[Freshness | None, float, list[str]]:
+    """Trust and freshness of the primary host: (freshness, score, reasons)."""
+    if isinstance(host, Person):
+        return None, PERSON_HOST_SCORE, [PERSON_HOST_REASON]
+    freshness = host.freshness(now)
+    reasons = [HOST_TRUST_REASON[host.claim_state]]
+    if freshness in FRESHNESS_REASON:
+        reasons.append(FRESHNESS_REASON[freshness])
+    score = HOST_TRUST_SCORE[host.claim_state] + FRESHNESS_SCORE[freshness]
+    return freshness, score, reasons
 
 
 def _in_window(event: Event, query: DiscoveryQuery) -> bool:

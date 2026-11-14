@@ -17,7 +17,7 @@ from backend.objects import (
     Visibility,
 )
 
-from .conftest import NOW, STAFF, make_admin, make_event, make_person, staff_provenance
+from .conftest import NOW, make_admin, make_event, make_person, staff_provenance
 
 
 def create_published(world) -> Event:
@@ -192,10 +192,10 @@ def test_primary_or_duplicate_co_host_invites_are_rejected(world):
         ev.invite_co_host(event.id, world.national.id, world.alice.id, NOW)
 
 
-def test_co_host_invite_must_target_an_org(world):
+def test_co_host_invite_must_target_an_existing_host(world):
     ev = world.graph.events
     event = create_published(world)
-    for bad_id in ("missing", world.carol.id):
+    for bad_id in ("missing", event.id):
         with pytest.raises(NotFoundError):
             ev.invite_co_host(event.id, bad_id, world.alice.id, NOW)
 

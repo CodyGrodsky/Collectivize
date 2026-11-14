@@ -4,6 +4,71 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-13 — Requesting to co-host an event
+
+**Request:** "Add the ability to request to join an event as co-host."
+
+### How it works
+- `graph.co_hosting.request(event_id, host_id, by_person_id, now)` lets a person ask for themselves, or an org admin ask for their org. The request stays pending, and the event doesn't appear on the requester's calendar until it's approved.
+- **Approving:** a request is approved by anyone acting for a current host of the event, through the same `events.accept_co_host`. That includes co-hosts who were accepted earlier. Invitations still need the invited party to approve.
+- **Declining or withdrawing:** the same `events.remove_co_host` covers both. Any current host can decline, and the requester can withdraw. A declined request can be sent again.
+- **What's waiting:** `co_hosting.pending(event_id, by)` shows hosts all unanswered invitations and requests on an event. `co_hosting.pending_for(host_id, by)` shows a person or org what it's been invited to or has asked to join. Each side sees only its own.
+
+### Decisions
+- **Recording the direction:** `Hosts` gained `origin: HostOrigin` (`INVITED` or `REQUESTED`), which decides who must approve. Older stored links default to `INVITED`, which matches how they were created.
+- **Hidden events:** a request about an event the requester can't see fails exactly like a missing event. That covers drafts, members-only events of other orgs and bad ids. It means requests can't be used to probe for hidden events.
+- **Event status:** only published events that haven't ended take requests. Cancelled, ended and archived events don't.
+- **Separate service:** request lives in a new `CoHostingService` (`graph/cohosting.py`) because it needs the privacy check, and the privacy service already depends on the event service.
+
+### Seed and tests
+- **Seed:** Emery has asked to co-host "Robot demo day", and the request is left pending for Casey. The test database passes the integrity check.
+- **Tests:** added `tests/backend/test_cohost_requests.py` (24 runs). In total, 363 pass and the 7 known-bug xfails are unchanged. Ruff is clean.
+
+### Not done
+- Nobody is notified when a request arrives or is answered. There's no notification system yet.
+- The integrity audit can't tell which host approved a request. It only sees that the link was accepted.
+
+---
+
+## 2026-11-13 — People can host, combined events, host calendars, public member lists
+
+**Request:** "The stack can be put off until the frontend is actually made. The people who can post/host events are both individual people and organizations. Add a function to allow more than one person and organization to throw the same event (if it is a combined event, the event must be requested by one party to another and the other accepts). The event should be shown on both organizations' calendars and under their events [public/private]. Member list should be public (for now, but make it easy to change who can see people for any future decision changes)."
+
+### Decisions
+- **Stack:** postponed until the frontend exists. No API work has been done.
+- **Hosts:** both people and orgs can host. This overrides `user_Orgs.md`, which says HOSTS is Org → Event, and follows the hackathon plan. The spec file itself hasn't been edited.
+- **Member lists:** public, controlled by one policy setting. The spec says only the person can make their membership public, so anyone who set their own membership or profile to private stays off the list. One flag (`hide_private_memberships=False`) turns that off.
+
+### Added
+- **People as hosts.** A HOSTS edge can start at a Person or an Org. `EventService.acts_for(person, host)` holds the one rule: a person acts for themselves, and for orgs they are an admin of. Creating, editing, inviting, accepting and removing all go through it. Nobody can create an event in someone else's name.
+- **Combined events.** `invite_co_host(event, host, by, now)` lets any current host invite a person or an org. Only the invited person, or an admin of the invited org, can `accept_co_host`. The invited party can decline, and either the co-host or the primary host can later remove it with `remove_co_host`. There's no limit on co-hosts, and they can be any mix of people and orgs. New queries: `host_ids` (all accepted hosts) and `host_node`.
+- **Host calendars** (`graph.calendar.host_events(host_id, viewer_id, starts_after=, starts_before=)`) return a `HostEvents` with `public` and `private` lists, sorted by start time.
+  - **Which events appear:** an event shows on every host that accepted it. Pending invites don't appear, and an event disappears from a co-host's calendar when that co-host leaves.
+  - **Private list:** members-only, connections-only or private events, plus drafts. Drafts are shown only to the hosts.
+  - **Viewer filtering:** the viewer only sees events they're allowed to see. If the viewer can't see the host, they can't see its calendar either.
+- **Member lists** (`graph.roster.members(org_id, viewer_id)`) list confirmed, current members only, ordered by role and then name.
+  - `RosterPolicy(audience=...)` decides who can see the list: PUBLIC (the default), NETWORK, MEMBERS or PRIVATE (admins only). To change it, edit `DEFAULT_ROSTER_POLICY` in `graph/roster.py`, or pass `CollectivizeGraph(roster_policy=...)`.
+  - A member list is never more visible than the org itself.
+- **Discovery:** handles events hosted by a person. They get no trust bonus, show the reason "Hosted by a person", and have `host_freshness=None`.
+- **Privacy:** people who host an event can always see it. A connections-only event is visible to the host's connections.
+- **Erasing a host:** when a person who was primary host is erased, each of their events passes to the earliest accepted co-host. Events with no other host are deleted along with their edges.
+- **Seed:** added "Robotics study jam", hosted by Drew with Robotics Club as co-host (Casey accepted). It appears on both calendars. The test database now has 9 events and passes the integrity check.
+- **Tests:** added `tests/backend/test_hosting_and_rosters.py` (41 runs). In total, 339 pass and the 7 known-bug xfails are unchanged. Ruff is clean.
+
+### Changed
+- `EventService.create(event, host_id, by_person_id)`: `host_org_id` was renamed `host_id`, and it can now be the creator themselves.
+- The existing test `test_co_host_invite_must_target_an_org` became `..._must_target_an_existing_host`, because inviting a person is now allowed.
+- Removed an unused `STAFF` import in `test_events_and_privacy.py` and sorted `__all__`. These were lint fixes only.
+
+### Not done
+- ~~Requesting to join an event as co-host~~: added in the entry above.
+- **Event series:** they still belong to orgs only.
+- **Org freshness:** publishing updates only the primary host when it's an org. Co-host orgs aren't credited.
+- **Logged-out visitors:** a person-hosted event is hidden from them, because a person's profile is visible only to logged-in users. This follows the rule that an event is never more visible than its host.
+- **Event visibility:** it's set at creation time and can't be changed afterwards with `revise`.
+
+---
+
 ## 2026-11-13 — Edge-case unit tests
 
 **Request:** "Add more edge cases and test them."

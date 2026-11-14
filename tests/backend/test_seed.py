@@ -36,6 +36,13 @@ def test_seeded_test_db_is_clearly_fictional_and_rule_abiding(tmp_path):
         assert graph.events.host_org_ids(result.events["fundraiser"]) == {
             result.orgs["chapter"], result.orgs["national"],
         }
+        assert graph.events.host_ids(result.events["study_jam"]) == {
+            result.people["drew"], result.orgs["robotics"],
+        }
+        waiting = graph.co_hosting.pending(result.events["demo_day"], result.people["casey"])
+        assert [h.source_id for h in waiting] == [result.people["emery"]]
+        robotics = graph.calendar.host_events(result.orgs["robotics"], None)
+        assert result.events["study_jam"] in {e.id for e in robotics.public}
         assert events["cancelled_mixer"].status is EventStatus.CANCELLED
         assert events["draft_formal"].status is EventStatus.DRAFT
         assert not graph.membership.is_member(result.people["emery"], result.orgs["robotics"])

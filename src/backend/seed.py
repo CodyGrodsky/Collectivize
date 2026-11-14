@@ -148,12 +148,24 @@ class _MockWorld:
                                    location="Engineering Hall", capacity=60)
         ev.tag(demo_day.id, tags["robotics"], casey, self.now)
         events["demo_day"] = demo_day.id
+        # A request to join, left waiting for the club's admin to answer.
+        emery = people["emery"]
+        self.g.co_hosting.request(demo_day.id, emery, emery, self.now)
 
         mixer = self._published("Fall mixer", 3, orgs["chapter"], avery)
         events["cancelled_mixer"] = ev.cancel(mixer.id, avery).id
 
         draft = ev.create(self._event("Formal", 30), orgs["chapter"], avery)
         events["draft_formal"] = draft.id
+
+        # A combined event: a student hosts it, invites the Robotics Club,
+        # and the club's admin accepts, so it shows on both calendars.
+        drew = people["drew"]
+        study_jam = self._published("Robotics study jam", 4, drew, drew,
+                                    location="Library, Room 3")
+        invite = ev.invite_co_host(study_jam.id, orgs["robotics"], drew, self.now)
+        ev.accept_co_host(invite.id, casey)
+        events["study_jam"] = study_jam.id
 
         ev.tag(orgs["robotics"], tags["robotics"], casey, self.now)
         ev.tag(orgs["chapter"], tags["social"], avery, self.now)
@@ -191,10 +203,10 @@ class _MockWorld:
         )
 
     def _published(
-        self, title: str, days_ahead: int, org_id: str, admin_id: str, **extra: Any
+        self, title: str, days_ahead: int, host_id: str, by_id: str, **extra: Any
     ) -> Event:
-        event = self.g.events.create(self._event(title, days_ahead, **extra), org_id, admin_id)
-        return self.g.events.publish(event.id, admin_id, self.now)
+        event = self.g.events.create(self._event(title, days_ahead, **extra), host_id, by_id)
+        return self.g.events.publish(event.id, by_id, self.now)
 
     def _weekly_series(self, org_id: str) -> EventSeries:
         return EventSeries(

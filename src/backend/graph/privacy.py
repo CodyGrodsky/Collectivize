@@ -4,6 +4,8 @@
   and both endpoints', so no party can expose another more than they chose.
 - Draft events are visible only to admins of their host orgs.
 - Deleting an account truly erases the person's edges (not just hides them).
+- People who host an event own it: they can always see it, and a
+  connections-only event is visible to their connections.
 """
 
 from __future__ import annotations
@@ -75,9 +77,11 @@ class PrivacyService:
 
     def erase_person(self, person_id: str) -> None:
         """True erasure: hard-delete every edge touching the person, then the
-        node. Orgs left without an admin return to unclaimed."""
+        node. Orgs left without an admin return to unclaimed; events they
+        were primary host of pass to a co-host or are deleted."""
         self._store.node(person_id, Person)
         with self._store.transaction():
+            self._events.release_host(person_id)
             for edge in self._store.edges_touching(person_id):
                 if isinstance(edge, MemberOf):
                     self._membership.release_if_last_admin(edge)
@@ -89,6 +93,12 @@ class PrivacyService:
     def _owner_ids(self, record: GraphRecord) -> set[str]:
         if isinstance(record, Person):
             return {record.id}
+        if isinstance(record, Event):
+            return {
+                host_id
+                for host_id in self._events.host_ids(record.id)
+                if isinstance(self._store.any_node(host_id), Person)
+            }
         if isinstance(record, Edge):
             return {
                 node_id
