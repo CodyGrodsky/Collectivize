@@ -279,7 +279,7 @@
                     el("div", { className: "dc-badges" }, [this.typeLabel("Person", "person")]),
                     el("h2", { className: "dc-card-title" }, [el("a", { text: cleanName(person.name), attrs: { href: Ui.profileHref(person.id) } })]),
                     person.bio ? el("p", { className: "dc-meta", text: person.bio }) : null,
-                    person.top3_title ? el("p", { className: "dc-host", text: `Top 3 ${person.top3_title}` }) : null,
+                    person.top3_title ? el("p", { className: "dc-host", text: person.top3_title }) : null,
                 ]),
                 el("div", { className: "dc-side" }, actions),
             ]);
@@ -375,14 +375,11 @@
             else if (trust && trust.startsWith("Unclaimed")) add("Unverified listing", "is-unverified");
         }
 
+        /** Friends going are shown without names or initials (Cody's change). */
         friends(container, names) {
             if (!names.length) return;
             container.hidden = false;
-            const first = names.map(cleanName);
-            container.querySelector(".dc-avatars").replaceChildren(...first.slice(0, 4).map((name) => el("span", { className: "dc-avatar", text: name.charAt(0).toUpperCase() })));
-            const shown = first.slice(0, 2).join(", ");
-            const more = first.length > 2 ? ` and ${first.length - 2} more` : "";
-            container.querySelector(".dc-friends-text").textContent = `${shown}${more} going`;
+            container.querySelector(".dc-friends-text").textContent = "Friends are attending";
         }
 
         going(element, item) {
