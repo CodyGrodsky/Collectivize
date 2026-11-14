@@ -9,6 +9,12 @@ page, the invite page, their assets and POST /api/signin answer; every
 other page redirects to the landing page and every other API call is 401.
 The viewer is always the session's person, never a request parameter.
 
+Development: `serve.py --no-login` turns the gate off. Anyone without a
+session is signed in automatically (as drew.demo@northeastern.edu, or
+`--as <email>`), with a real session, so everything else behaves exactly
+as with login on; sign out and use the sign-in form to switch accounts.
+Drop the flag to turn login back on; nothing else changes.
+
 Platform admins can "view as" someone from /admin: read-only (every change
 is refused), with a banner on every page, and logged (see sessions.py).
 
@@ -83,11 +89,19 @@ class DemoServer(ThreadingHTTPServer):
         api: DiscoverApi,
         app: AppApi | None = None,
         sessions: SessionStore | None = None,
+        auto_login_email: str | None = None,
     ) -> None:
-        super().__init__(address, RequestHandler)
         self.api = api
         self.app = app or AppApi(api.graphs)
         self.sessions = sessions or SessionStore()
+        # Development only (`serve.py --no-login`): visitors without a session
+        # are signed in as this account. None (the default) means login is on.
+        # Checked before the port opens, so a bad account fails cleanly.
+        self.auto_login_id = (
+            None if auto_login_email is None
+            else self.app.sign_in({"email": auto_login_email})
+        )
+        super().__init__(address, RequestHandler)
 
 
 class RequestHandler(BaseHTTPRequestHandler):
@@ -116,7 +130,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/api/signin":
             self._sign_in()
             return
-        session = self._session()
+        session = self._session(auto=path != "/api/signout")
         if path == "/api/signout":
             self.server.sessions.end(self._cookie())
             self._json(HTTPStatus.OK, {"signed_out": True}, cookie="")
@@ -139,7 +153,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/api/invite":  # the invite landing page is public
             self._api(lambda: app.invite_preview(params))
             return
-        session = self._session()
+        # The landing page's quiet check never auto-signs-in, so with
+        # --no-login the sign-in form still works for switching accounts.
+        session = self._session(auto=path != "/api/session")
         if path == "/api/session":  # public: lets the landing page check quietly
             self._json(HTTPStatus.OK, {"signed_in": session is not None})
             return
@@ -203,10 +219,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         morsel = jar.get(COOKIE_NAME)
         return morsel.value if morsel else None
 
-    def _session(self) -> Session | None:
+    def _session(self, *, auto: bool = True) -> Session | None:
         session = self.server.sessions.get(self._cookie())
         if session is None:
-            return None
+            return self._auto_login() if auto else None
         # A deleted account (or a deleted view-as target) ends the session.
         with self.server.api.graphs() as graph:
             if not graph.store.has_node(session.person_id):
@@ -215,6 +231,23 @@ class RequestHandler(BaseHTTPRequestHandler):
             if session.view_as and not graph.store.has_node(session.view_as):
                 return self.server.sessions.view_as(self._cookie() or "", None, utc_now())
         return session
+
+    def _auto_login(self) -> Session | None:
+        """With --no-login: start a real session for the default account,
+        and send its cookie with this response (see end_headers)."""
+        person_id = self.server.auto_login_id
+        if person_id is None:
+            return None
+        token = self.server.sessions.create(person_id)
+        self._pending_cookie = token
+        return self.server.sessions.get(token)
+
+    def end_headers(self) -> None:
+        token = getattr(self, "_pending_cookie", None)
+        if token:
+            self.send_header("Set-Cookie", f"{COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Lax")
+            self._pending_cookie = None
+        super().end_headers()
 
     def _is_platform_admin(self, session: Session | None) -> bool:
         if session is None:
@@ -385,6 +418,8 @@ def serve(
     *,
     app: AppApi | None = None,
     sessions: SessionStore | None = None,
+    auto_login_email: str | None = None,
 ) -> DemoServer:
-    """Create the server on 127.0.0.1 (call .serve_forever() to run it)."""
-    return DemoServer(("127.0.0.1", port), api, app, sessions)
+    """Create the server on 127.0.0.1 (call .serve_forever() to run it).
+    `auto_login_email` turns login off for development (see DemoServer)."""
+    return DemoServer(("127.0.0.1", port), api, app, sessions, auto_login_email)

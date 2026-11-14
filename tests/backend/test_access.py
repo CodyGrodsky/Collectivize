@@ -199,3 +199,60 @@ def test_org_page_member_list_follows_the_rule(world):
     assert as_other["member_count"] == as_member["member_count"]
     assert [m["id"] for m in as_other["members"]] == [result.people["bob"]]
     assert not as_other["can_manage"]
+
+
+# --- development: serve.py --no-login ------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def no_login(world):
+    _, graph, result, _ = world
+
+    @contextmanager
+    def factory():
+        yield graph
+
+    srv = serve(DiscoverApi(factory, clock=lambda: NOW), port=0,
+                app=AppApi(factory, clock=lambda: NOW), sessions=SessionStore(),
+                auto_login_email="alice.demo@northeastern.edu")
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{srv.server_address[1]}", result
+    srv.shutdown()
+    srv.server_close()
+
+
+def test_no_login_signs_everyone_in_with_a_real_session(no_login):
+    base, result = no_login
+    status, headers, _ = call(f"{base}/src/frontend/discover.html")
+    assert status == 200  # no redirect to sign-in
+    token = headers["Set-Cookie"].split(";", 1)[0].split("=", 1)[1]
+    status, headers, body = call(f"{base}/api/me")  # an API call with no cookie works too
+    assert status == 200 and json.loads(body)["id"] == result.people["alice"]
+    status, headers, body = call(f"{base}/api/me", token=token)  # and the cookie sticks
+    assert json.loads(body)["id"] == result.people["alice"] and "Set-Cookie" not in headers
+
+
+def test_no_login_still_lets_you_switch_accounts(no_login):
+    base, result = no_login
+    status, _, body = call(f"{base}/api/session")  # the landing page's check stays honest
+    assert status == 200 and json.loads(body) == {"signed_in": False}
+    token, me = sign_in(base, "carol.demo@northeastern.edu")
+    assert me["id"] == result.people["carol"]
+    assert json.loads(call(f"{base}/api/me", token=token)[2])["id"] == result.people["carol"]
+
+
+def test_login_is_on_unless_asked(world):
+    base = world[0]
+    assert call(f"{base}/src/frontend/discover.html")[0] == 302
+    assert call(f"{base}/api/me")[0] == 401
+
+
+def test_no_login_refuses_a_non_campus_account(world):
+    _, graph, _, _ = world
+
+    @contextmanager
+    def factory():
+        yield graph
+
+    with pytest.raises(Exception, match="Northeastern"):
+        serve(DiscoverApi(factory), port=0, auto_login_email="me@gmail.com")
