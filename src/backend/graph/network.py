@@ -229,7 +229,10 @@ class NetworkService:
         org = self._store.node(edge.target_id, Organization)
         if not (org.is_active and self._privacy.can_view(viewer, org)):
             return False
-        return edge.source_id == viewer or self._roster.shows(viewer, edge)
+        if edge.source_id == viewer:
+            return True
+        member = self._store.node(edge.source_id, Person)
+        return self._privacy.can_view(viewer, member) and self._roster.shows(viewer, edge)
 
 
 class _Walk:

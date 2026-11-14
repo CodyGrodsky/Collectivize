@@ -16,12 +16,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from backend.config import load_config
+from backend.config import Environment, load_config
 from backend.database import open_graph
-from backend.graph.sqlite_store import (
-    EnvironmentMismatchError,
-    SqliteGraphStore,
-)
+from backend.graph.sqlite_store import read_environment_stamp
 from backend.objects.base import utc_now
 from backend.seed import seed_mock_data
 
@@ -42,10 +39,12 @@ def main(argv: list[str] | None = None) -> int:
         if not args.reset:
             log.error("%s already exists. Use --reset to wipe and re-seed it.", config.path)
             return 1
-        try:  # only ever delete a file stamped as a test database
-            SqliteGraphStore(config.path, config.environment).close()
-        except EnvironmentMismatchError as error:
-            log.error("Refusing to reset %s: %s", config.path, error)
+        # Only ever delete a file already stamped as a test database. Read the
+        # stamp without opening the store, which would stamp an unstamped file.
+        stamp = read_environment_stamp(config.path)
+        if stamp != Environment.TEST.value:
+            log.error("Refusing to reset %s: it is not a test database (stamp: %s).",
+                      config.path, stamp or "none")
             return 1
         config.path.unlink()
 

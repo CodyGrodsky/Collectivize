@@ -11,7 +11,11 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from backend.objects import (
+    ERASED_CONFIRMER,
+    DomainRuleError,
     Edge,
     Event,
     GraphRecord,
@@ -57,7 +61,37 @@ class PrivacyService:
         owners = self._owner_ids(record)
         if viewer_id is not None and viewer_id in owners:
             return True
-        level = self.effective_visibility(record)
+        if (
+            isinstance(record, Event)
+            and viewer_id is not None
+            and self._events.can_edit(viewer_id, record.id)
+        ):
+            return True  # its hosts (including an org's admins) always see it
+        if isinstance(record, Edge) and not all(
+            self.can_view(viewer_id, self._store.any_node(node_id))
+            for node_id in (record.source_id, record.target_id)
+        ):
+            # Every party's setting must allow it, not just the strictest one:
+            # "members only" and "connections only" are different groups, so a
+            # connections-only RSVP to a members-only event needs both.
+            return False
+        return self._allows(viewer_id, record, record.visibility, owners)
+
+    def can_view_listing(self, viewer_id: str | None, event: Event) -> bool:
+        """Whether an event may be shown or acted on: the viewer must be able
+        to see the event and its primary host (an event is never more visible
+        than whoever runs it). Used by Discover, RSVPs and co-host requests."""
+        if not (event.is_active and self.can_view(viewer_id, event)):
+            return False
+        try:
+            host = self._store.any_node(self._events.primary_host_id(event.id))
+        except (DomainRuleError, LookupError):
+            return False
+        return self.can_view(viewer_id, host)
+
+    def _allows(
+        self, viewer_id: str | None, record: GraphRecord, level: Visibility, owners: set[str]
+    ) -> bool:
         if level is Visibility.PUBLIC:
             return True
         if viewer_id is None:
@@ -84,6 +118,10 @@ class PrivacyService:
         self._store.node(person_id, Person)
         with self._store.transaction():
             self._events.release_host(person_id)
+            for edge in self._store.edges(MemberOf, include_inactive=True):
+                if edge.confirmed_by == person_id and edge.source_id != person_id:
+                    # Keep the fact that an admin confirmed it, not who.
+                    self._store.save_edge(replace(edge, confirmed_by=ERASED_CONFIRMER))
             for edge in self._store.edges_touching(person_id):
                 if isinstance(edge, MemberOf):
                     self._membership.release_if_last_admin(edge)

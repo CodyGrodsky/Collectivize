@@ -18,10 +18,11 @@ from functools import cache
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
 from backend import objects
-from backend.objects import GraphRecord
+from backend.objects import GeoPoint, GraphRecord
 
 _DATETIME = "$datetime"
 _TIMEDELTA = "$timedelta"
+_GEO = "$geo"
 
 
 @cache
@@ -77,7 +78,12 @@ def _decode_dataclass(cls: type, data: dict[str, Any]) -> Any:
     unknown = set(data) - names
     if unknown:
         raise ValueError(f"unexpected fields for {cls.__name__}: {sorted(unknown)}")
-    return cls(**{name: _decode(value, hints[name]) for name, value in data.items()})
+    try:
+        return cls(**{name: _decode(value, hints[name]) for name, value in data.items()})
+    except (TypeError, AttributeError, KeyError) as error:
+        # A missing required field, or a value of the wrong JSON type: the record
+        # can't be loaded. ValueError lets callers (e.g. check_graph) report it.
+        raise ValueError(f"can't decode {cls.__name__}: {error}") from error
 
 
 def _encode(value: Any, hint: Any) -> Any:
@@ -127,6 +133,8 @@ def _encode_tagged(value: Any) -> Any:
         return {_TIMEDELTA: value.total_seconds()}
     if isinstance(value, Enum):
         return value.value
+    if isinstance(value, GeoPoint):  # e.g. a logged change of an event's coordinates
+        return {_GEO: [value.latitude, value.longitude]}
     return value
 
 
@@ -135,4 +143,7 @@ def _decode_tagged(raw: Any) -> Any:
         return datetime.fromisoformat(raw[_DATETIME])
     if isinstance(raw, dict) and _TIMEDELTA in raw:
         return timedelta(seconds=raw[_TIMEDELTA])
+    if isinstance(raw, dict) and _GEO in raw:
+        latitude, longitude = raw[_GEO]
+        return GeoPoint(latitude, longitude)
     return raw

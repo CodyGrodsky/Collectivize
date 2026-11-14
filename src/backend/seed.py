@@ -131,7 +131,8 @@ class SeedResult:
 def seed_mock_data(
     graph: CollectivizeGraph, environment: Environment, now: datetime
 ) -> SeedResult:
-    if environment is not Environment.TEST:
+    store_environment = getattr(graph.store, "environment", Environment.TEST)
+    if environment is not Environment.TEST or store_environment is not Environment.TEST:
         raise ProductionSeedError("refusing to seed mock data outside the test database")
     with graph.store.transaction():
         return _MockWorld(graph, now).build()

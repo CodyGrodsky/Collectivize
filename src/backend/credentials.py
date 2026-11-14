@@ -44,7 +44,7 @@ def _from_keychain(service: str) -> str | None:
             timeout=KEYCHAIN_TIMEOUT_SECONDS,
             check=False,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.SubprocessError, ValueError):  # incl. undecodable output
         return None
     if result.returncode != 0:
         return None  # not stored, or access denied

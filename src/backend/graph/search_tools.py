@@ -21,7 +21,7 @@ from typing import Any
 from backend.objects import GeoPoint, Organization, Person, Tag
 
 from .activity import ActivityService
-from .ai_search import CandidateEvent, keyword_match
+from .ai_search import CandidateEvent, keyword_match, meaningful_words
 from .discovery import MAX_LIMIT, DiscoveryItem, DiscoveryQuery, DiscoveryService
 from .preferences import PreferenceService
 from .privacy import PrivacyService
@@ -243,7 +243,7 @@ class SearchTools:
             limit=MAX_LIMIT,
         )
         items = list(self._discovery.search(query, s.now).items)
-        if keywords:
+        if keywords and meaningful_words(keywords):  # filler-only keywords don't filter
             scored = [(keyword_match(keywords, self._candidate(i)), i) for i in items]
             items = [i for score, i in sorted(scored, key=lambda p: -p[0]) if score > 0]
         return {
@@ -288,7 +288,8 @@ class SearchTools:
             raise ToolInputError(f"picks must be a list of at most {MAX_PICKS}")
         picks: list[Pick] = []
         for entry in raw:
-            if not isinstance(entry, dict) or entry.get("ref") not in self.session.seen:
+            ref = entry.get("ref") if isinstance(entry, dict) else None
+            if not isinstance(ref, str) or ref not in self.session.seen:
                 raise ToolInputError(
                     f"unknown ref {entry.get('ref') if isinstance(entry, dict) else entry!r}; "
                     "pick only events returned by search_events"
@@ -344,8 +345,14 @@ def _int(value: Any, name: str, low: int, high: int) -> int:
 
 
 def _number(value: Any, name: str, low: float, high: float) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ToolInputError(f"{name} must be a number")
+    try:
+        finite = math.isfinite(value)
+    except OverflowError:  # an int too big for a float
+        finite = False
+    if not finite:
+        raise ToolInputError(f"{name} must be between {low:g} and {high:g}")
     if not low <= value <= high:
         raise ToolInputError(f"{name} must be between {low:g} and {high:g}")
     return float(value)

@@ -97,6 +97,7 @@ class RsvpService:
             saved = self._new_rsvp(person, event_id, status, now)
         learn_trip = (
             newly_going
+            and not saved.trip_recorded  # one trip per event, however often they flip
             and origin is not None
             and event.coordinates is not None
             and saved.recommendation_use is not RecommendationUse.NONE
@@ -105,6 +106,7 @@ class RsvpService:
             self._preferences.record_trip(
                 person_id, origin.distance_km(event.coordinates)  # type: ignore[union-attr]
             )
+            saved = self._store.save_edge(replace(saved, trip_recorded=True))
         return saved
 
     def _new_rsvp(
@@ -165,6 +167,7 @@ class RsvpService:
             for edge in self._store.edges(Rsvp, target_id=event_id)
             if edge.status is RsvpStatus.GOING
             and edge.source_id in friends
+            and edge.recommendation_use is not RecommendationUse.NONE  # their choice
             and self._privacy.can_view(viewer_id, edge)
         ]
         return tuple(sorted(going, key=lambda p: (p.display_name, p.id)))
@@ -190,6 +193,6 @@ class RsvpService:
             event = self._store.node(event_id, Event)
         except NotFoundError:
             event = None
-        if event is None or not event.is_active or not self._privacy.can_view(viewer_id, event):
+        if event is None or not self._privacy.can_view_listing(viewer_id, event):
             raise NotFoundError(f"event {event_id!r} not found")
         return event

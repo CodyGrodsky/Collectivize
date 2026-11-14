@@ -74,6 +74,9 @@ class PersonOwnedEdge(Edge):
 # --- Person -> Org -----------------------------------------------------------
 
 
+ERASED_CONFIRMER = "erased-account"  # confirmed_by after the confirmer's erasure
+
+
 class MemberRole(Enum):
     MEMBER = "member"
     OFFICER = "officer"
@@ -93,7 +96,8 @@ class MemberOf(PersonOwnedEdge):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     org_confirmed: bool = False
-    confirmed_by: str | None = None
+    confirmed_by: str | None = None  # or ERASED_CONFIRMER once their account is gone
+    was_admin: bool = False  # has held confirmed admin rights here (kept after demotion)
     visibility: Visibility = Visibility.MEMBERS
 
     def __post_init__(self) -> None:
@@ -237,6 +241,7 @@ class Rsvp(PersonOwnedEdge):
 
     status: RsvpStatus
     updated_at: datetime
+    trip_recorded: bool = False  # this RSVP already fed the travel average once
 
 
 class AttendanceMethod(Enum):

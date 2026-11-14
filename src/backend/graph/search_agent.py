@@ -226,7 +226,7 @@ class SearchAgentService:
         picked = {session.seen[p.ref].event.id for p in picks}
         page = self._discovery.search(
             DiscoveryQuery(viewer_id=viewer_id, origin=origin, include_cancelled=False,
-                           limit=100),
+                           event_ids=tuple(sorted(picked)), limit=100),
             now, request_matches=matches,
         )
         items = tuple(i for i in page.items if i.event.id in picked)

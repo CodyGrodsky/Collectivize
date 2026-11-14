@@ -57,6 +57,8 @@ class SeriesService:
         series = self._store.node(series_id, EventSeries)
         if not self._events.can_edit(by_person_id, event_id):
             raise PermissionDeniedError("only admins of a host org can do that")
+        if not self._membership.is_admin(by_person_id, series.owner_org_id):
+            raise PermissionDeniedError("only admins of the series' org can add to it")
         if series.owner_org_id not in self._events.host_org_ids(event_id):
             raise DomainRuleError("the series owner must host the event")
         if self._store.edges(InstanceOf, source_id=event_id):

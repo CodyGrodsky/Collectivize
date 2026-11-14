@@ -62,6 +62,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     config = load_config()
+    if not config.path.exists():
+        log.error("No database at %s.", config.path)
+        return 1
     with open_graph(config) as graph:
         try:
             dataset = graph.data_access.ml_dataset(args.staff, args.purpose, now, key)

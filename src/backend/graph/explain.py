@@ -64,7 +64,9 @@ def explain(
     proximity = _proximity_reason(signals, result.effect("proximity"))
     if proximity:
         add(result.effect("proximity"), proximity)
-    if not signals.is_cancelled and signals.days_until <= STARTING_SOON_DAYS:
+    if not signals.is_cancelled and signals.days_until < 0:
+        add(result.effect("soonness"), "Happening now")
+    elif not signals.is_cancelled and signals.days_until <= STARTING_SOON_DAYS:
         add(result.effect("soonness"), "Starts within 48 hours")
     staleness_effect = result.effect("staleness")
     if abs(staleness_effect) >= NOTABLE_EFFECT:

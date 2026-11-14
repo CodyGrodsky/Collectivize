@@ -21,6 +21,7 @@ The viewer's position is used for this search only and never stored.
 from __future__ import annotations
 
 import math
+import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -39,6 +40,7 @@ from backend.objects import (
     Tag,
     Tagged,
 )
+from backend.objects.base import require_aware
 
 from .connections import ConnectionService
 from .events import EventService
@@ -80,6 +82,7 @@ class DiscoveryQuery:
     origin: GeoPoint | None = None  # where the viewer is now; never stored
     max_distance_km: float | None = None  # radius filter; needs origin
     include_unlocated: bool = True  # with a radius: keep events with no location
+    event_ids: tuple[str, ...] = ()  # only these events (e.g. an agent's picks)
     limit: int = DEFAULT_LIMIT
     offset: int = 0
 
@@ -90,6 +93,8 @@ class DiscoveryQuery:
             raise DomainRuleError("offset cannot be negative")
         if len(self.text) > MAX_TEXT_LENGTH:
             raise DomainRuleError(f"text is limited to {MAX_TEXT_LENGTH} characters")
+        require_aware(self.starts_after, "starts_after")
+        require_aware(self.starts_before, "starts_before")
         window = (self.starts_after, self.starts_before)
         if all(window) and self.starts_after >= self.starts_before:  # type: ignore[operator]
             raise DomainRuleError("starts_after must be before starts_before")
@@ -231,6 +236,8 @@ class DiscoveryService:
 
     def _consider(self, event: Event, ctx: _SearchContext) -> DiscoveryItem | None:
         query, now, org_scope = ctx.query, ctx.now, ctx.org_scope
+        if query.event_ids and event.id not in query.event_ids:
+            return None
         if not (event.is_active and event.is_discoverable(now)):
             return None
         is_cancelled = event.status is EventStatus.CANCELLED
@@ -281,7 +288,7 @@ class DiscoveryService:
         """An event is never more visible than whoever hosts it."""
         return self._privacy.can_view(viewer_id, event) and self._privacy.can_view(
             viewer_id, host
-        )
+        )  # same rule as PrivacyService.can_view_listing, with the host already loaded
 
     def event_tag_ids(self, event_id: str) -> set[str]:
         """An event's own tags plus those inherited from its host orgs."""
@@ -369,8 +376,13 @@ def _in_window(event: Event, query: DiscoveryQuery) -> bool:
 
 
 def _matches_text(event: Event, text: str) -> bool:
-    needle = text.strip().casefold()
+    needle = normalize_text(text).strip()
     if not needle:
         return True
-    haystack = f"{event.title} {event.description} {event.location}".casefold()
-    return needle in haystack
+    return needle in normalize_text(f"{event.title} {event.description} {event.location}")
+
+
+def normalize_text(text: str) -> str:
+    """Comparable form: Unicode-normalized (so "café" typed either way
+    matches) and case-folded."""
+    return unicodedata.normalize("NFKC", text).casefold()

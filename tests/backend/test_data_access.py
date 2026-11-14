@@ -158,14 +158,17 @@ def test_rows_carry_useful_features(world):
     assert data.memberships[0]["role"] == "admin"
 
 
-def test_person_hosts_appear_only_if_they_consented(world):
+def test_person_hosted_events_are_exported_only_when_published_and_their_host_consented(world):
     event = make_event("Study group")
     world.graph.events.create(event, world.carol.id, world.carol.id)
-    rows = {e["event_id"]: e for e in dataset(world).events}
-    assert rows[event.id]["host_people"] == []
     consent(world, world.carol)
+    assert event.id not in {e["event_id"] for e in dataset(world).events}  # still a draft
+    world.graph.events.publish(event.id, world.carol.id, NOW)
     rows = {e["event_id"]: e for e in dataset(world).events}
     assert len(rows[event.id]["host_people"]) == 1
+    carol = world.graph.store.node(world.carol.id, Person)
+    world.graph.store.save_node(replace(carol, analytics_consent=False))
+    assert event.id not in {e["event_id"] for e in dataset(world).events}
 
 
 def test_every_export_is_recorded(world):

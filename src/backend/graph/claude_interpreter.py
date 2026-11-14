@@ -177,16 +177,23 @@ def parse_answer(text: str, refs: set[str]) -> Interpretation:
     refs keep the first answer, and reasons are trimmed."""
     try:
         data = json.loads(text)
-    except json.JSONDecodeError as error:
+    except (ValueError, RecursionError) as error:  # bad JSON, huge ints, deep nesting
         raise InterpreterError("the answer wasn't valid JSON") from error
     if not isinstance(data, dict) or not isinstance(data.get("matches"), list):
         raise InterpreterError("the answer had the wrong shape")
     matches: dict[str, RequestMatch] = {}
     for entry in data["matches"]:
-        if not isinstance(entry, dict) or entry.get("ref") not in refs:
+        if not isinstance(entry, dict) or not isinstance(entry.get("ref"), str):
+            continue
+        if entry["ref"] not in refs:
             continue
         score = entry.get("score")
-        if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score):
+        if isinstance(score, bool) or not isinstance(score, (int, float)):
+            continue
+        try:
+            if not math.isfinite(score):
+                continue
+        except OverflowError:  # an int too big for a float: garbage, like NaN
             continue
         if entry["ref"] in matches:
             continue

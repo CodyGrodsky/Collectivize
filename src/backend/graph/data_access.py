@@ -14,8 +14,10 @@ for analytics and machine learning:
   under a secret key (from COLLECTIVIZE_EXPORT_KEY), so the same person has
   the same pseudonym across exports made with the same key, but it can't be
   reversed without the key.
-- No names, emails, positions or invites. Events and orgs are public
-  entities and keep their ids.
+- No names, emails, positions or invites. Orgs keep their ids. Events are
+  included only if they were published, aren't private or connections-only,
+  and are hosted by an org or only by people who consented; interactions
+  with other events are left out too.
 - Every export is recorded (DataExport: who, why, how much).
 
 Note: files written from a dataset are outside the graph, so erasing an
@@ -48,6 +50,7 @@ from backend.objects import (
     Rsvp,
     Tag,
     Tagged,
+    Visibility,
 )
 
 from .activity import ActivityService
@@ -58,6 +61,7 @@ from .store import GraphStore
 EXPORT_KEY_ENV = "COLLECTIVIZE_EXPORT_KEY"
 MIN_KEY_BYTES = 16
 PSEUDONYM_CHARS = 24
+_UNEXPORTED_VISIBILITY = frozenset({Visibility.CONNECTIONS, Visibility.PRIVATE})
 TRIP_ROUNDING_KM = 0.5
 
 Row = dict[str, Any]
@@ -161,11 +165,17 @@ class DataAccessService:
         consenting = {p.id: p for p in self._store.nodes(Person) if p.analytics_consent}
         pid = lambda person_id: _pseudonym(key, person_id)
         dataset = MlDataset(generated_at=_iso(now), purpose=purpose.strip())
+        people_ids = {p.id for p in self._store.nodes(Person)}
+        events = [
+            e for e in self._store.nodes(Event) if self._exportable(e, consenting, people_ids)
+        ]
+        event_ids = {e.id for e in events}
         for person in consenting.values():
             dataset.people.append(self._person_row(person, pid(person.id)))
             dataset.interactions.extend(
                 {**self._rsvp_row(r), "person": pid(person.id)}
-                for r in self._store.edges(Rsvp, source_id=person.id) if _usable(r)
+                for r in self._store.edges(Rsvp, source_id=person.id)
+                if _usable(r) and r.target_id in event_ids
             )
             dataset.memberships.extend(
                 {**self._membership_row(m), "person": pid(person.id)}
@@ -173,9 +183,8 @@ class DataAccessService:
                 if _usable(m)
             )
         dataset.connections.extend(self._consented_connections(consenting, pid))
-        people_ids = {p.id for p in self._store.nodes(Person)}
         dataset.events.extend(
-            self._event_row(e, consenting, pid, people_ids) for e in self._store.nodes(Event)
+            self._event_row(e, consenting, pid, people_ids) for e in events
         )
         dataset.orgs.extend(
             {"org_id": o.id, "name": o.name, "kind": o.kind.value, "claim_state": o.claim_state.value}
@@ -184,6 +193,16 @@ class DataAccessService:
         rows = sum(len(t) for t in dataset.tables().values())
         self._record(staff_id, purpose, people=len(dataset.people), rows=rows, now=now)
         return dataset
+
+    def _exportable(
+        self, event: Event, consenting: dict[str, Person], people_ids: set[str]
+    ) -> bool:
+        if not event.was_published or event.visibility in _UNEXPORTED_VISIBILITY:
+            return False
+        hosts = [h.source_id for h in self._store.edges(Hosts, target_id=event.id)
+                 if h.is_effective]
+        has_org_host = any(h not in people_ids for h in hosts)
+        return has_org_host or (bool(hosts) and all(h in consenting for h in hosts))
 
     # --- rows ------------------------------------------------------------------
 

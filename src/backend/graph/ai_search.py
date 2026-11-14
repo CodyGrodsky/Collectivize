@@ -38,6 +38,7 @@ from .discovery import (
     DiscoveryQuery,
     DiscoveryService,
     RequestMatch,
+    normalize_text,
 )
 from .preferences import PreferenceService
 from .store import GraphStore
@@ -52,7 +53,8 @@ MIN_LEARNED_STRENGTH = 0.25
 STOPWORDS = frozenset(
     ["a", "an", "and", "any", "are", "as", "at", "be", "but", "by", "can", "do", "for", "from", "get", "go", "i", "i'd", "i'm", "im", "in", "into", "is", "it", "like", "me", "my", "of", "on", "or", "some", "something", "somewhere", "that", "the", "this", "to", "uses", "use", "want", "wanna", "with", "would", "you", "your"]
 )
-WORD = re.compile(r"[a-z0-9']+")
+WORD = re.compile(r"\w+(?:'\w+)*")  # Unicode-aware: "日本語", "café", "5k"
+MIN_WORD_CHARS = 2  # keeps "AI", "Go", "5K"
 STEM_PREFIX = 4  # "robot" matches "robotics"
 
 
@@ -145,6 +147,10 @@ class AiSearchService:
         offset: int = 0,
     ) -> AiSearchResult:
         text = clean_sentence(sentence)
+        final = DiscoveryQuery(  # built first: bad paging fails before any paid call
+            viewer_id=viewer_id, origin=origin, max_distance_km=max_distance_km,
+            include_cancelled=False, limit=limit, offset=offset,
+        )
         base = DiscoveryQuery(
             viewer_id=viewer_id, origin=origin, max_distance_km=max_distance_km,
             include_cancelled=False, limit=MAX_LIMIT,
@@ -158,10 +164,6 @@ class AiSearchService:
             candidates=tuple(self._candidate(ref, item, now) for ref, item in refs.items()),
         )
         matches, summary, used_ai, note = self._interpret(request, refs)
-        final = DiscoveryQuery(
-            viewer_id=viewer_id, origin=origin, max_distance_km=max_distance_km,
-            include_cancelled=False, limit=limit, offset=offset,
-        )
         page = self._discovery.search(final, now, request_matches=matches)
         return AiSearchResult(page=page, understood_as=summary, used_ai=used_ai, note=note)
 
@@ -260,16 +262,24 @@ def keyword_match(sentence: str, candidate: CandidateEvent) -> float:
     """Fallback when AI isn't available: the share of the request's words
     (ignoring filler words) found in the event, 0..1. Words match on a
     shared stem ("robot" ~ "robotics"). No meaningful words -> 0."""
-    wanted = {w for w in WORD.findall(sentence.lower()) if w not in STOPWORDS and len(w) > 2}
+    wanted = meaningful_words(sentence)
     if not wanted:
         return 0.0
     text = " ".join(
         (candidate.title, candidate.description, candidate.location, candidate.host,
          " ".join(candidate.tags))
-    ).lower()
-    present = set(WORD.findall(text))
+    )
+    present = set(WORD.findall(normalize_text(text)))
     found = sum(1 for w in wanted if any(_same_stem(w, p) for p in present))
     return found / len(wanted)
+
+
+def meaningful_words(text: str) -> set[str]:
+    """The words of a request worth matching: normalized, minus filler words."""
+    return {
+        w for w in WORD.findall(normalize_text(text))
+        if w not in STOPWORDS and len(w) >= MIN_WORD_CHARS
+    }
 
 
 def _same_stem(a: str, b: str) -> bool:

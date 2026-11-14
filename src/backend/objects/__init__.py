@@ -12,6 +12,7 @@ from .base import (
 )
 from .data_export import DataExport
 from .edges import (
+    ERASED_CONFIRMER,
     AttendanceMethod,
     Attended,
     Connected,
@@ -42,6 +43,7 @@ from .person import Person, VerificationLevel
 from .taxonomy import Tag, Venue
 
 __all__ = [
+    "ERASED_CONFIRMER",
     "AttendanceMethod",
     "Attended",
     "ClaimState",
