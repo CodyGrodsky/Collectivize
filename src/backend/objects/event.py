@@ -8,11 +8,12 @@ from enum import Enum
 from typing import Any
 
 from .base import DomainRuleError, GraphRecord, Provenance, require_aware
+from .geo import GeoPoint
 
 EDITABLE_FIELDS = frozenset(
-    {"title", "description", "starts_at", "ends_at", "location", "capacity"}
+    {"title", "description", "starts_at", "ends_at", "location", "coordinates", "capacity"}
 )
-LOGGED_FIELDS = frozenset({"starts_at", "ends_at", "location"})
+LOGGED_FIELDS = frozenset({"starts_at", "ends_at", "location", "coordinates"})
 
 
 class EventStatus(Enum):
@@ -40,6 +41,7 @@ class Event(GraphRecord):
     ends_at: datetime
     description: str = ""
     location: str = ""  # free text in MVP; Venue edge Later
+    coordinates: GeoPoint | None = None  # where it happens, for "near me"
     capacity: int | None = None
     is_demo: bool = False  # can never be cleared once set
     status: EventStatus = EventStatus.DRAFT
@@ -125,6 +127,7 @@ class EventSeries(GraphRecord):
     default_duration: timedelta
     default_description: str = ""
     default_location: str = ""
+    default_coordinates: GeoPoint | None = None
     default_capacity: int | None = None
     is_demo: bool = False
 
@@ -137,6 +140,7 @@ class EventSeries(GraphRecord):
             "title": self.default_title,
             "description": self.default_description,
             "location": self.default_location,
+            "coordinates": self.default_coordinates,
             "capacity": self.default_capacity,
         }
 
@@ -158,6 +162,7 @@ class EventSeries(GraphRecord):
             "title": "default_title",
             "description": "default_description",
             "location": "default_location",
+            "coordinates": "default_coordinates",
             "capacity": "default_capacity",
         }
         unknown = set(changes) - set(mapping)

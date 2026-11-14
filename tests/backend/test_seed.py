@@ -51,3 +51,26 @@ def test_seeded_test_db_is_clearly_fictional_and_rule_abiding(tmp_path):
 def _series_id(graph: CollectivizeGraph, result) -> str:
     edge = graph.store.edges(InstanceOf, source_id=result.events["meeting_1"])[0]
     return edge.target_id
+
+
+def test_seeded_demo_invite_joins_you_to_drew():
+    graph = CollectivizeGraph()
+    result = seed_mock_data(graph, Environment.TEST, NOW)
+    joined = graph.invites.redeem(result.invite_code, "demo@northeastern.edu", "You", NOW)
+    assert graph.connections.are_connected(joined.person.id, result.people["drew"])
+    assert graph.integrity.audit() == ()
+
+
+def test_seeded_demo_has_places_tastes_and_travel_habits():
+    from backend.graph.preferences import typical_trip_km
+    from backend.objects import Event, InterestedIn, Person
+    from backend.seed import CAMPUS
+
+    graph = CollectivizeGraph()
+    result = seed_mock_data(graph, Environment.TEST, NOW)
+    crawl = graph.store.node(result.events["food_crawl"], Event)
+    assert 5 < CAMPUS.distance_km(crawl.coordinates) < 7
+    people = graph.store.nodes(Person)
+    assert sum(typical_trip_km(p) is not None for p in people) >= 10
+    assert len(graph.store.edges(InterestedIn)) >= 20
+    assert all(p.travel_log_km is None or p.travel_samples > 0 for p in people)

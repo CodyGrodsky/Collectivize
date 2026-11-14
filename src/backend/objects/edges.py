@@ -259,17 +259,25 @@ class Attended(PersonOwnedEdge):
 # --- Person <-> Person (Later) -----------------------------------------------
 
 
+class ConnectionOrigin(Enum):
+    REQUEST = "request"  # one person asked, the other accepted
+    INVITE = "invite"  # the inviter's invite, redeemed by the new person
+
+
 @dataclass(frozen=True, kw_only=True)
 class Connected(PersonOwnedEdge):
     """Mutual connection; exists only when both people accept. The source
-    is whoever sent the request."""
+    is whoever sent the request. Visible to logged-in users by default;
+    either person can hide their whole list (`Person.hide_connections`),
+    and a connection shows only if neither person has."""
 
     SOURCE_TYPES = (Person,)
     TARGET_TYPES = (Person,)
 
     source_accepted: bool = False
     target_accepted: bool = False
-    visibility: Visibility = Visibility.CONNECTIONS
+    origin: ConnectionOrigin = ConnectionOrigin.REQUEST
+    visibility: Visibility = Visibility.NETWORK
 
     @property
     def is_established(self) -> bool:

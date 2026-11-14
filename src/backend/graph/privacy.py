@@ -15,6 +15,7 @@ from backend.objects import (
     Edge,
     Event,
     GraphRecord,
+    Invite,
     MemberOf,
     Organization,
     Person,
@@ -78,7 +79,8 @@ class PrivacyService:
     def erase_person(self, person_id: str) -> None:
         """True erasure: hard-delete every edge touching the person, then the
         node. Orgs left without an admin return to unclaimed; events they
-        were primary host of pass to a co-host or are deleted."""
+        were primary host of pass to a co-host or are deleted; invites they
+        sent or redeemed are deleted."""
         self._store.node(person_id, Person)
         with self._store.transaction():
             self._events.release_host(person_id)
@@ -86,6 +88,9 @@ class PrivacyService:
                 if isinstance(edge, MemberOf):
                     self._membership.release_if_last_admin(edge)
                 self._store.delete_edge(edge.id)
+            for invite in self._store.nodes(Invite):
+                if person_id in (invite.inviter_id, invite.used_by):
+                    self._store.delete_node(invite.id)
             self._store.delete_node(person_id)
 
     # --- internals -----------------------------------------------------------

@@ -89,6 +89,12 @@ class RosterService:
             return self._membership.is_member(viewer_id, org_id)
         return self._membership.is_admin(viewer_id, org_id)
 
+    def shows(self, viewer_id: str | None, edge: MemberOf) -> bool:
+        """Whether this one membership appears on the list for this viewer."""
+        if not edge.is_confirmed_current or not self.can_see(viewer_id, edge.target_id):
+            return False
+        return not self._hidden(edge, self._store.node(edge.source_id, Person))
+
     def members(self, org_id: str, viewer_id: str | None) -> tuple[RosterEntry, ...]:
         if not self.can_see(viewer_id, org_id):
             raise PermissionDeniedError("you can't see this org's members")

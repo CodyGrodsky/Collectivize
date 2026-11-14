@@ -59,6 +59,7 @@ def main(argv: list[str] | None = None) -> int:
         len(result.tags),
         len(result.events),
     )
+    log.info("Demo invite code (from Drew): %s", result.invite_code)
     return 0
 
 

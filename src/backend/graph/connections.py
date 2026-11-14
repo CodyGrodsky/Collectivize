@@ -15,6 +15,7 @@ from datetime import datetime
 
 from backend.objects import (
     Connected,
+    ConnectionOrigin,
     DomainRuleError,
     Person,
     Provenance,
@@ -75,11 +76,40 @@ class ConnectionService:
         )
         return self._store.save_edge(edge)
 
+    def connect_via_invite(
+        self, inviter_id: str, invitee_id: str, now: datetime
+    ) -> Connected:
+        """The inviter agreed by sending the invite and the invitee by
+        redeeming it, so the connection starts out accepted by both. Only
+        InviteService calls this, after checking the invite."""
+        if self.between(inviter_id, invitee_id) is not None:
+            raise DomainRuleError("a connection or request already exists")
+        edge = Connected(
+            source_id=inviter_id,
+            target_id=invitee_id,
+            source_accepted=True,
+            target_accepted=True,
+            origin=ConnectionOrigin.INVITE,
+            provenance=Provenance(
+                created_by=inviter_id, method=ProvenanceMethod.SELF_CLAIM, created_at=now
+            ),
+        )
+        return self._store.save_edge(edge)
+
     def accept(self, edge_id: str, by_person_id: str) -> Connected:
         edge = self._store.edge(edge_id, Connected)
         if by_person_id != edge.target_id:
             raise PermissionDeniedError("only the person who was asked can accept")
         return self._store.save_edge(replace(edge, target_accepted=True))
+
+    def set_hide_connections(
+        self, person_id: str, by_person_id: str, hidden: bool
+    ) -> Person:
+        """Hide or show your connection list. Only you can change it."""
+        if person_id != by_person_id:
+            raise PermissionDeniedError("only you can change who sees your connections")
+        person = self._store.node(person_id, Person)
+        return self._store.save_node(person.with_hide_connections(hidden))
 
     def remove(self, edge_id: str, by_person_id: str) -> None:
         """Decline a request or end a connection. Either person may do it."""

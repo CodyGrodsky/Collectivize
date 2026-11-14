@@ -10,6 +10,7 @@ graph rule (claims, admin checks, hierarchy kinds, co-host acceptance).
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
@@ -20,6 +21,7 @@ from backend.objects import (
     DomainRuleError,
     Event,
     EventSeries,
+    GeoPoint,
     MemberRole,
     Organization,
     OrgKind,
@@ -30,8 +32,29 @@ from backend.objects import (
     Tag,
     VerificationLevel,
 )
+from backend.seed_network import seed_network
 
 SEED_STAFF_ID = "seed-staff"
+DEMO_INVITE_CODE = "demo-join-from-drew"  # fixed so the demo can type it in
+CAMPUS = GeoPoint(42.3500, -71.1000)  # centre of the fictional campus
+KM_PER_DEGREE_LAT = 111.195
+# Named places: (km north, km east) of the campus centre.
+PLACES = {
+    "Student Center, Room 204": (0.0, 0.0),
+    "North Field": (0.9, 0.2),
+    "Engineering Hall": (0.3, -0.5),
+    "Library, Room 3": (-0.4, 0.3),
+    "Downtown night market": (2.5, 5.5),
+}
+
+
+def place(name: str) -> GeoPoint:
+    north_km, east_km = PLACES[name]
+    km_per_degree_lon = KM_PER_DEGREE_LAT * math.cos(math.radians(CAMPUS.latitude))
+    return GeoPoint(
+        CAMPUS.latitude + north_km / KM_PER_DEGREE_LAT,
+        CAMPUS.longitude + east_km / km_per_degree_lon,
+    )
 DEMO_PREFIX = "[Demo]"
 EVENING_HOUR = 18
 
@@ -49,6 +72,11 @@ ORGS = {
     "chapter": ("Alpha Beta, Gamma Chapter", OrgKind.CHAPTER),
     "robotics": ("Robotics Club", OrgKind.CLUB),
     "chess": ("Chess Club", OrgKind.CLUB),  # deliberately left unclaimed
+    "surf": ("Surf Club", OrgKind.CLUB),
+    "soccer": ("Club Soccer", OrgKind.CLUB),
+    "cooking": ("Cooking Club", OrgKind.CLUB),
+    "delta": ("Alpha Beta, Delta Chapter", OrgKind.CHAPTER),
+    "sigma": ("Sigma Tau, Epsilon Chapter", OrgKind.CHAPTER),
 }
 PEOPLE = {
     "avery": "Avery (demo chapter admin)",
@@ -56,13 +84,32 @@ PEOPLE = {
     "casey": "Casey (demo club admin)",
     "drew": "Drew (demo student)",
     "emery": "Emery (demo student)",
+    "finley": "Finley (demo club admin)",
+    "gray": "Gray (demo club admin)",
+    "harper": "Harper (demo club admin)",
+    "indigo": "Indigo (demo chapter admin)",
+    "jordan": "Jordan (demo chapter admin)",
 }
-ADMINS = {"avery": "chapter", "blake": "national", "casey": "robotics"}
+ADMINS = {
+    "avery": "chapter",
+    "blake": "national",
+    "casey": "robotics",
+    "finley": "surf",
+    "gray": "soccer",
+    "harper": "cooking",
+    "indigo": "delta",
+    "jordan": "sigma",
+}
 HIERARCHY = [
     ("chapter", "national", PartOfKind.CHAPTER_OF),
     ("chapter", "ifc", PartOfKind.MEMBER_OF_COUNCIL),
     ("ifc", "university", PartOfKind.UNDER_INSTITUTION),
     ("robotics", "university", PartOfKind.UNDER_INSTITUTION),
+    ("delta", "national", PartOfKind.CHAPTER_OF),
+    ("delta", "ifc", PartOfKind.MEMBER_OF_COUNCIL),
+    ("sigma", "ifc", PartOfKind.MEMBER_OF_COUNCIL),
+    *[(club, "university", PartOfKind.UNDER_INSTITUTION)
+      for club in ("surf", "soccer", "cooking")],
 ]
 
 
@@ -78,6 +125,7 @@ class SeedResult:
     people: dict[str, str]
     tags: dict[str, str]
     events: dict[str, str] = field(default_factory=dict)
+    invite_code: str | None = None  # an open invite from Drew, for the join demo
 
 
 def seed_mock_data(
@@ -111,7 +159,14 @@ class _MockWorld:
         for child, parent, kind in HIERARCHY:
             self.g.hierarchy.staff_link(orgs[child], orgs[parent], kind, SEED_STAFF_ID, self.now)
         events = self._events(orgs, people, tags)
-        return SeedResult(orgs=orgs, people=people, tags=tags, events=events)
+        people |= seed_network(
+            self.g, orgs, people, ADMINS, self.now, self._person,
+            event_ids=events.values(), tag_ids=tags.values(), campus=CAMPUS,
+        )
+        invite = self.g.invites.create(people["drew"], self.now, code=DEMO_INVITE_CODE)
+        return SeedResult(
+            orgs=orgs, people=people, tags=tags, events=events, invite_code=invite.code
+        )
 
     # --- scenario ------------------------------------------------------------
 
@@ -138,21 +193,26 @@ class _MockWorld:
         events |= {f"meeting_{i + 1}": e.id for i, e in enumerate(meetings)}
 
         fundraiser = self._published("Spring philanthropy 5K", 10, orgs["chapter"], avery,
-                                     hours=3, location="North Field")
+                                     hours=3, location="North Field",
+                                     description="A timed 5K loop around campus to raise money "
+                                     "for the food bank. Run it hard or walk it with friends.")
         invite = ev.invite_co_host(fundraiser.id, orgs["national"], avery, self.now)
         ev.accept_co_host(invite.id, blake)
         ev.tag(fundraiser.id, tags["philanthropy"], avery, self.now)
         events["fundraiser"] = fundraiser.id
 
         demo_day = self._published("Robot demo day", 5, orgs["robotics"], casey,
-                                   location="Engineering Hall", capacity=60)
+                                   location="Engineering Hall", capacity=60,
+                                   description="Teams race their robots through an obstacle "
+                                   "course, then take questions on how they built them.")
         ev.tag(demo_day.id, tags["robotics"], casey, self.now)
         events["demo_day"] = demo_day.id
         # A request to join, left waiting for the club's admin to answer.
         emery = people["emery"]
         self.g.co_hosting.request(demo_day.id, emery, emery, self.now)
 
-        mixer = self._published("Fall mixer", 3, orgs["chapter"], avery)
+        mixer = self._published("Fall mixer", 3, orgs["chapter"], avery,
+                                description="Music, snacks and meeting new people.")
         events["cancelled_mixer"] = ev.cancel(mixer.id, avery).id
 
         draft = ev.create(self._event("Formal", 30), orgs["chapter"], avery)
@@ -162,10 +222,19 @@ class _MockWorld:
         # and the club's admin accepts, so it shows on both calendars.
         drew = people["drew"]
         study_jam = self._published("Robotics study jam", 4, drew, drew,
-                                    location="Library, Room 3")
+                                    location="Library, Room 3",
+                                    description="Timed coding puzzles in pairs, then we compare "
+                                    "solutions. Quick rounds, lots of problem solving.")
         invite = ev.invite_co_host(study_jam.id, orgs["robotics"], drew, self.now)
         ev.accept_co_host(invite.id, casey)
         events["study_jam"] = study_jam.id
+
+        # Off campus, to show distance at work in Discover.
+        crawl = self._published("Night market food crawl", 6, orgs["cooking"],
+                                people["harper"], location="Downtown night market",
+                                description="A relaxed evening walking the night market and "
+                                "sharing street food from a dozen stalls.")
+        events["food_crawl"] = crawl.id
 
         ev.tag(orgs["robotics"], tags["robotics"], casey, self.now)
         ev.tag(orgs["chapter"], tags["social"], avery, self.now)
@@ -193,6 +262,8 @@ class _MockWorld:
 
     def _event(self, title: str, days_ahead: int, hours: int = 2, **extra: Any) -> Event:
         start = self._evening(days_ahead)
+        if "location" in extra and "coordinates" not in extra:
+            extra["coordinates"] = place(extra["location"])
         return Event(
             title=title,
             starts_at=start,
@@ -214,7 +285,10 @@ class _MockWorld:
             name="Weekly chapter meeting",
             recurrence="Weekly",
             default_title="Chapter meeting",
+            default_description="Weekly business meeting: committee updates, votes and "
+            "planning for upcoming events.",
             default_location="Student Center, Room 204",
+            default_coordinates=place("Student Center, Room 204"),
             default_duration=timedelta(hours=1),
             is_demo=True,
             provenance=self._staff(),
