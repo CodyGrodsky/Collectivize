@@ -160,6 +160,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             "/api/find": lambda: app.find(viewer, params, debug=self._is_platform_admin(session)),
             "/api/requests": lambda: app.requests(viewer),
             "/api/my-events": lambda: app.my_events(viewer),
+            "/api/my-calendar": lambda: app.my_calendar(viewer, params),
             "/api/admin/users": lambda: app.admin_users(session.person_id, params),
             "/api/admin/audit": lambda: self._audit(session),
         }

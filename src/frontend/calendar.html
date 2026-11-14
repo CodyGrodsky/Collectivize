@@ -43,7 +43,8 @@
         <ul class="cal-legend" aria-label="Key">
             <li><span class="cal-chip is-going">Going</span></li>
             <li><span class="cal-chip is-maybe">Maybe</span></li>
-            <li><span class="cal-chip is-starred">Starred</span></li>
+            <li><span class="cal-chip is-saved">Saved</span></li>
+            <li><span class="cal-chip is-my_org">My orgs</span></li>
             <li><span class="cal-chip is-hosting">Hosting</span></li>
         </ul>
 
@@ -61,17 +62,10 @@
 
                 <p class="day-status" id="day-status" role="status" aria-live="polite"></p>
 
-                <section class="day-section" aria-labelledby="mine-title">
-                    <h3 class="day-section-title" id="mine-title">My events</h3>
-                    <ul class="day-list" id="day-mine"></ul>
-                    <p class="day-empty" id="day-mine-empty">Nothing you're hosting, going to, or starred.</p>
-                </section>
+                <ul class="day-list" id="day-list"></ul>
+                <p class="day-empty" id="day-empty">Nothing planned this day.</p>
 
-                <section class="day-section" aria-labelledby="community-title">
-                    <h3 class="day-section-title" id="community-title">Community events</h3>
-                    <ul class="day-list" id="day-community"></ul>
-                    <p class="day-empty" id="day-community-empty">No community events this day.</p>
-                </section>
+                <a class="cal-find" id="day-find" href="discover.html"></a>
             </aside>
         </div>
     </main>

@@ -225,21 +225,6 @@ button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 /* Elements styled with display must still hide when [hidden]. */
 [hidden] { display: none !important; }
 
-/* Who you're viewing as (shared with Discover). */
-.cal-persona { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 13px; }
-
-.cal-persona select {
-    height: 34px;
-    max-width: 280px;
-    padding: 0 10px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--card);
-    color: var(--ink);
-    font: inherit;
-    font-size: 13px;
-}
-
 /* Problems loading events: shown above the grid, which keeps working. */
 .cal-banner {
     display: flex;
@@ -279,9 +264,9 @@ button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 
 .cal-chip.is-maybe { border-color: var(--green); background: var(--green-soft); color: var(--green); }
 
-.cal-chip.is-starred::before { content: "\2605 "; color: #d29b17; }
+.cal-chip.is-saved { border-color: #1e3a9e; background: #e6ecfa; color: #1e3a9e; }
 
-.cal-chip.is-going.is-starred::before { color: #ffe08a; }
+.cal-chip.is-my_org { border-color: #b9862d; background: #fbf3e2; color: #8a5a12; }
 
 .cal-chip.is-hosting { background: var(--ink); color: #fff; }
 
@@ -334,7 +319,28 @@ button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
     .cal-cell { min-height: 56px; align-items: center; padding: 6px 2px; }
     .cal-chips { justify-items: center; }
     .cal-chip { width: 8px; height: 8px; padding: 0; border-radius: 50%; font-size: 0; }
-    .cal-chip.is-starred::before { content: none; }
     .cal-more { font-size: 10px; }
-    .cal-persona select { max-width: 200px; }
+}
+
+/* "Find events on …": discovery happens on Discover (v1.1 spec 4.7). */
+.cal-find {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 40px;
+    margin-top: 14px;
+    padding: 0 14px;
+    border-radius: 999px;
+    background: var(--green);
+    color: #fff;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.cal-find:hover { opacity: .92; }
+
+/* On phones, day cells show dots; the key keeps its words. */
+@media (max-width: 640px) {
+    .cal-legend .cal-chip { width: auto; height: auto; padding: 2px 8px; border-radius: 6px; font-size: 12px; }
 }

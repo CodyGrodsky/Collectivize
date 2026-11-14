@@ -18,7 +18,8 @@ from http import HTTPStatus
 from typing import Any
 
 from backend.config import ALLOWED_EMAIL_DOMAINS
-from backend.demo_api import ApiError, GraphFactory, _item_json
+from backend.demo_api import ApiError, GraphFactory, _datetime_param, _entry_json, _item_json
+from backend.graph.my_calendar import Relation
 from backend.graph import CollectivizeGraph
 from backend.graph.query_understanding import QueryReader
 from backend.graph.unified_search import PER_PAGE as SEARCH_PER_PAGE
@@ -458,6 +459,22 @@ class AppApi:
         soonest first, past most recent first."""
         with self._graphs() as graph:
             return _my_events(graph, viewer, self._clock())
+
+    # --- personal calendar (spec 4.7) ------------------------------------------------
+
+    def my_calendar(self, viewer: str, params: dict[str, str]) -> dict[str, Any]:
+        """Your calendar for a window (`start`, `end`, ISO 8601 with a time
+        zone): events you're going to, said maybe to, saved or host, plus
+        events your organizations run. Nothing else: discovery is Discover's
+        job, not the calendar's."""
+        start = _datetime_param(params.get("start"), "start")
+        end = _datetime_param(params.get("end"), "end")
+        with self._graphs() as graph:
+            cal = graph.my_calendar.for_viewer(viewer, start, end)
+            mine_too = [e for e in cal.community if Relation.MY_ORG in e.relations]
+            entries = sorted([*cal.mine, *mine_too], key=lambda e: (e.event.starts_at, e.event.id))
+            return {"start": cal.start.isoformat(), "end": cal.end.isoformat(),
+                    "entries": [_entry_json(e) for e in entries]}
 
     # --- organizations (spec 4.9 org admins, 7.1 member lists) ---------------------
 

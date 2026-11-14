@@ -271,3 +271,32 @@ def test_a_full_event_closes_going(fresh):
     assert state["is_full"]
     with pytest.raises(DomainRuleError):
         rsvp_api.rsvp({"viewer": r.people["carol"], "event_id": event_id, "status": "going"})
+
+
+# --- 4.7 personal calendar --------------------------------------------------------
+
+
+def test_calendar_shows_only_my_plans_and_my_orgs_events(fresh):
+    from datetime import timedelta
+
+    from backend.objects import Event, Provenance, ProvenanceMethod
+
+    app, graph, r = fresh
+    drew, casey = r.people["drew"], r.people["casey"]
+    # A Robotics Club event: Drew isn't in the club and has no plans for it.
+    start = NOW + timedelta(days=2)
+    event = graph.events.create(Event(
+        title="Soldering basics", starts_at=start, ends_at=start + timedelta(hours=1),
+        is_demo=True, provenance=Provenance(created_by=casey, method=ProvenanceMethod.ORG_ADMIN),
+    ), r.orgs["robotics"], casey)
+    graph.events.publish(event.id, casey, NOW)
+    window = {"start": (NOW - timedelta(days=3)).isoformat(),
+              "end": (NOW + timedelta(days=40)).isoformat()}
+
+    data = app.my_calendar(drew, window)
+    personal = {"going", "maybe", "starred", "hosting", "my_org"}
+    assert data["entries"] and all(set(e["relations"]) & personal for e in data["entries"])
+    assert event.id not in {e["id"] for e in data["entries"]}
+    assert event.id in {e["id"] for e in app.my_calendar(casey, window)["entries"]}  # Casey's org
+    with pytest.raises(ApiError):
+        app.my_calendar(drew, {**window, "start": "yesterday"})

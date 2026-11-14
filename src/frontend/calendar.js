@@ -1,9 +1,11 @@
 "use strict";
 
-// Calendar page: a month grid with a day panel. Shows the events of the
-// person you're viewing as (the same person as on Discover): what they're
-// going to, said maybe to, starred or host, plus other campus events.
-// The day panel has the same "I'm going" / "Maybe" / star buttons as
+// Calendar page (v1.1 spec 4.7): your personal calendar, not a master
+// calendar. A month grid with a day panel, showing only what you're going
+// to, said maybe to, saved or host, plus your organizations' events,
+// colour-coded by status. Discovery happens on Discover: the day panel
+// links there with that day already set ("Find events on …").
+// The day panel has the same "I'm going" / "Maybe" / save buttons as
 // Discover; changing them updates the calendar straight away.
 //
 // Built to keep working when things go wrong: if events can't load, the
@@ -23,7 +25,11 @@
     const GRID_DAYS = 42; // six weeks, so the grid keeps its height
     const CHIPS_PER_CELL = 3;
     const MAX_SPAN_DAYS = 14; // a multi-day event is shown on at most this many days
-    const PERSONAL = ["hosting", "going", "maybe", "starred"];
+    // One status per chip, strongest first (the legend's colours).
+    const STATUS_ORDER = ["going", "maybe", "starred", "hosting", "my_org"];
+    const STATUS_CLASS = { going: "is-going", maybe: "is-maybe", starred: "is-saved", hosting: "is-hosting", my_org: "is-my_org" };
+    const STATUS_TEXT = { going: "going", maybe: "maybe", starred: "saved", hosting: "hosting", my_org: "your org" };
+    const FIND_FORMAT = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "short", day: "numeric" });
 
     const $ = (id) => document.getElementById(id);
 
@@ -38,7 +44,7 @@
         .replace(/^\[Demo\]\s*/, "").replace(/\s*\(demo[^)]*\)$/, "");
 
     /** A server entry, checked and normalized; null if it can't be shown. */
-    function readEntry(raw, section) {
+    function readEntry(raw) {
         if (!raw || typeof raw !== "object" || typeof raw.id !== "string") return null;
         const start = new Date(raw.starts_at);
         const end = new Date(raw.ends_at);
@@ -54,7 +60,7 @@
             relations,
             cancelled: raw.is_cancelled === true,
             draft: raw.is_draft === true,
-            section,
+            status: STATUS_ORDER.find((r) => relations.includes(r)) || "my_org",
             myRsvp: relations.includes("going") ? "going" : relations.includes("maybe") ? "interested" : null,
             starred: relations.includes("starred"),
         };
@@ -113,14 +119,13 @@
             const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + GRID_DAYS);
             this.setDayStatus("Loading events…");
             try {
-                const data = await Api.get("/api/calendar", {
+                const data = await Api.get("/api/my-calendar", {
                     start: MonthCalendar.iso(start), end: MonthCalendar.iso(end),
                 });
                 if (id !== this.request) return; // a newer request has started
                 this.byDay = MonthCalendar.index(data, start, end);
                 this.hideBanner();
-                this.setDayStatus(data.community_truncated
-                    ? "Showing the first community events only: there are a lot this month." : "");
+                this.setDayStatus("");
             } catch (error) {
                 if (id !== this.request) return;
                 this.byDay = new Map();
@@ -138,6 +143,12 @@
             const date = new Date(year, month - 1, day);
             const valid = date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
             return valid && year >= 2000 && year <= 2100 ? date : null;
+        }
+
+        /** YYYY-MM-DD of a local date (for Discover's date filter). */
+        static isoDate(date) {
+            const pad = (n) => String(n).padStart(2, "0");
+            return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
         }
 
         /** Local time with its offset, e.g. 2026-11-01T00:00:00-04:00. */
@@ -162,9 +173,8 @@
                     day = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
                 }
             };
-            const read = (list, section) => (Array.isArray(list) ? list : [])
-                .map((raw) => readEntry(raw, section)).filter(Boolean);
-            for (const entry of [...read(data?.mine, "mine"), ...read(data?.community, "community")]) add(entry);
+            const entries = (Array.isArray(data?.entries) ? data.entries : []).map(readEntry).filter(Boolean);
+            for (const entry of entries) add(entry);
             for (const list of byDay.values()) list.sort((a, b) => a.start - b.start);
             return byDay;
         }
@@ -204,25 +214,22 @@
             cell.append(number);
 
             const entries = this.byDay.get(dayKey(date)) || [];
-            const mine = entries.filter((e) => e.section === "mine");
-            const others = entries.length - mine.length;
             const label = [FULL_FORMAT.format(date)];
-            if (mine.length) label.push(`${mine.length} of your events`);
-            if (others) label.push(`${others} other events`);
-            cell.setAttribute("aria-label", label.join(", "));
+            if (entries.length) {
+                label.push(entries.map((e) => `${e.title}, ${STATUS_TEXT[e.status]}`).join("; "));
+            }
+            cell.setAttribute("aria-label", label.join(": "));
 
-            if (mine.length || others) {
+            if (entries.length) {
                 const chips = document.createElement("span");
                 chips.className = "cal-chips";
                 chips.setAttribute("aria-hidden", "true");
-                for (const entry of mine.slice(0, CHIPS_PER_CELL)) chips.append(MonthCalendar.chip(entry));
-                const hidden = Math.max(0, mine.length - CHIPS_PER_CELL);
-                const extra = [hidden ? `+${hidden} more` : "", others ? `+${others}` : ""]
-                    .filter(Boolean).join(" · ");
-                if (extra) {
+                for (const entry of entries.slice(0, CHIPS_PER_CELL)) chips.append(MonthCalendar.chip(entry));
+                const hidden = Math.max(0, entries.length - CHIPS_PER_CELL);
+                if (hidden) {
                     const more = document.createElement("span");
                     more.className = "cal-more";
-                    more.textContent = extra;
+                    more.textContent = `+${hidden} more`;
                     chips.append(more);
                 }
                 cell.append(chips);
@@ -233,10 +240,7 @@
 
         static chip(entry) {
             const chip = document.createElement("span");
-            chip.className = "cal-chip";
-            for (const relation of PERSONAL) {
-                if (entry.relations.includes(relation)) chip.classList.add(`is-${relation}`);
-            }
+            chip.className = `cal-chip ${STATUS_CLASS[entry.status]}`;
             if (entry.cancelled) chip.classList.add("is-cancelled");
             chip.textContent = entry.title;
             return chip;
@@ -247,9 +251,11 @@
             this.dayEyebrow.textContent = isToday ? "Today" : WEEKDAY_FORMAT.format(this.selected);
             this.dayTitle.textContent = DAY_FORMAT.format(this.selected);
             const entries = this.byDay.get(dayKey(this.selected)) || [];
-            this.fillList($("day-mine"), $("day-mine-empty"), entries.filter((e) => e.section === "mine"));
-            this.fillList($("day-community"), $("day-community-empty"),
-                entries.filter((e) => e.section === "community"));
+            this.fillList($("day-list"), $("day-empty"), entries);
+            // Discovery lives on Discover: open it with this day already set.
+            const find = $("day-find");
+            find.textContent = `Find events on ${FIND_FORMAT.format(this.selected)}`;
+            find.href = `discover.html?${new URLSearchParams({ date: MonthCalendar.isoDate(this.selected) })}`;
         }
 
         fillList(list, empty, entries) {
@@ -299,6 +305,9 @@
                 tag.textContent = text;
                 tags.append(tag);
             };
+            if (entry.relations.includes("going")) add("Going");
+            else if (entry.relations.includes("maybe")) add("Maybe");
+            if (entry.relations.includes("starred")) add("Saved");
             if (entry.relations.includes("hosting")) add("Hosting");
             if (entry.relations.includes("my_org")) add("Your org");
             if (entry.cancelled) add("Cancelled", true);
