@@ -4,6 +4,42 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-14 — Backend reference document
+
+**Request:** "Can you add a document that describes all the backend functions and where the functions are that have the functions?"
+
+### Added
+**`docs/BACKEND_REFERENCE.md`** (about 690 lines) lists every public class, method and function in `src/backend/`, with its signature, a one-line description and a link to its exact line, for example [L35](../src/backend/graph/membership.py#L35).
+
+**Hand-written sections at the top:**
+- **Start here:** how to get a `CollectivizeGraph` (`open_graph()`, or `CollectivizeGraph()` in tests), its constructor options, and a table mapping every `graph.<service>` to its class, file and job.
+- **Conventions:**
+  - the acting person and `now` are always passed in;
+  - records are immutable;
+  - which error means what (`NotFoundError` also covers "you may not know this exists");
+  - privacy is enforced in the backend;
+  - where AI calls happen.
+- **Scripts:** what each script in `scripts/` does.
+
+**The function lists** are grouped into nine areas:
+- membership and orgs;
+- people and the network;
+- events;
+- Discover and ranking;
+- AI search;
+- privacy, integrity and data access;
+- storage;
+- domain objects (with their fields);
+- setup and demo data.
+
+### How it was made
+- **Generated from the code:** signatures, line numbers and existing docstrings were read from the source, so they're exact.
+- **Descriptions written by hand:** 143 functions and 78 classes had no docstring, so their descriptions were written from reading the code.
+- **Checked:** every one of the 337 entries links to the right line (the named `def`/`class` is there), and every contents link resolves.
+- **No source files changed.** The generator was a throwaway script, so line numbers will drift as the code changes.
+
+---
+
 ## 2026-11-14 — Edge-case hunt: 26 bugs found and fixed
 
 **Requests:** "Can you make tests to test as many edge cases as possible and figure out where the bugs are", followed by "fix the bugs they find".
