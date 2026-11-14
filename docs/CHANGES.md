@@ -4,6 +4,75 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-13 — Calendar page shell and nav placeholders
+
+**Request:** "Add the following pages to the navigation: calendar, discover, network, and profile. Then add an empty calendar to the calendar page with all the basic things that a calendar has that won't really affect the backend."
+
+There is now a Calendar page (`src/frontend/calendar.html`), and the nav lists the pages from the plan. The calendar is a layout only: it shows no events and loads no data. Nothing in `src/backend/` or `tests/` changed.
+
+### How to use it
+- Run `python3 -m http.server` from the repo root and open `http://localhost:8000/src/frontend/calendar.html`.
+
+### Added
+- **`src/frontend/calendar.html`, `calendar.css` and `calendar.js`:** the Calendar page.
+  - **Header:** the month and year, a Today button, previous and next arrows, and a Month / Week / Day switch. Week and Day are disabled and marked "Coming soon".
+  - **Month grid:** Sunday to Saturday, always six weeks so its height never changes. Days outside the month are faded, today is circled, and clicking a day selects it.
+  - **Day panel:** the selected day, with empty **My events** and **Community events** sections, as described in the plan. It moves below the grid on screens 960px and narrower.
+- **`src/frontend/discover.html`, `network.html` and `profile.html`, with `placeholder.css`:** "Coming soon" pages so the new nav links don't lead to an error page.
+
+### Changed
+- **`src/frontend/nav.js`:** the nav now reads Home, Calendar, Discover, Network, Profile, then Demo. Each new page has its own icon. Network uses the graph icon, so Demo has a new flask icon.
+
+### Decisions
+- **Its own page for now:** the plan puts the calendar on Home, below the hero. It's a separate page for now because Home is still just the hero and Discover doesn't exist yet. It can move into Home later.
+- **No calendar library:** the month grid is about 100 lines of plain JS, which matches the rest of the frontend. Week and day views will take more work than they would with FullCalendar.
+- **Demo stays in the nav,** at the bottom, until the Network page replaces it.
+
+### Not done
+- **Events:** no data, fetching or event display. When events are added, they should use the backend's field names (`starts_at`, `ends_at`, `location`, `status`, `visibility`, hosts with `role`) so an API can replace the placeholder data without changing the page.
+- **Backend gaps for the calendar:**
+  - There's no query that returns everything a viewer should see on their calendar in a date range. `calendar.host_events` covers one host, and `discovery.search` only returns upcoming events.
+  - RSVPs have no service, so "Going" can't come from the backend yet.
+  - There's no API.
+- **Locations are free text.** There's no address or map until `Venue` is built.
+- **Plan mismatch:** the plan's visibility levels (public / members / invite) don't match the backend's (public / network / members / connections / private). The backend has no "invite specific people".
+- **Restored entry:** the "Home page and shared navigation" entry below was dropped by commit `5fad060` and has been put back unchanged.
+
+---
+
+## 2026-11-13 — Home page and shared navigation
+
+**Request:** "When you first enter the website, fullscreen you see the logo and wordmark… a nav bar on the left that allows you to switch between pages… similar to how the Claude nav bar works."
+
+There is now a Home page (`src/frontend/index.html`) showing only the logo with the wordmark below it, centered on an off-white background. A shared sidebar nav, which works like Claude's, switches between Home and the demo graph page (`main.html`). We stayed with plain HTML/CSS/JS instead of moving to Next.js for now.
+
+### How to use it
+- To view it, run `python3 -m http.server` from the repo root and open `http://localhost:8000/src/frontend/`.
+- To add a page to the nav, add one entry to `PAGES` at the top of `src/frontend/nav.js`, then add these two lines to the new page's `<head>`:
+  ```html
+  <link rel="stylesheet" href="nav.css">
+  <script src="nav.js"></script>
+  ```
+  Load `nav.js` without `defer`, so the open/closed state is set before the page paints.
+
+### Added
+- **`src/frontend/index.html` and `landing.css`:** the Home page. The logo is sized `min(58vh, 80% of the space beside the nav)` and the wordmark `min(70%, 520px)`, so neither ever scrolls. The tab title is "Collectivize" and the tab icon is `app/icon.svg`.
+- **`src/frontend/nav.js` and `nav.css`:** the shared nav, built from a single page list.
+  - **On desktop:** a 56px icon rail. The toggle button expands it to 232px with page names, which pushes the page over. On the closed rail, hovering or focusing an icon shows its name.
+  - **On phones (640px and under):** a thin top bar. Its button slides the nav over the page, and tapping outside or pressing Escape closes it.
+  - **Behavior:** the current page is highlighted. Desktop remembers whether the nav was open; phones always start closed. Toggling and links work from the keyboard, with a focus outline, and reduced-motion settings turn off the animation.
+
+### Changed
+- **`src/frontend/main.html`:** 2 lines in `<head>` load the nav. Nothing else on the demo page changed, and `main.css` is untouched. The nav's own CSS makes room for itself.
+- **`public/brand/wordmark-on-paper.svg`:** the fill of the wordmark's 44 dots changed from `#FDFDFB` to `#F5F4F0` so they match the page background. Everything else is unchanged.
+
+### Decisions
+- **Background color:** every page and the nav use `#F5F4F0`. It's a warm off-white close to Claude's, and it's already the demo page's background, so the pages match.
+- **Phone layout:** a top bar instead of a floating corner button, because the floating button covered the demo page's header logo.
+- **Image paths:** pages link to images with relative paths (`../../public/brand/`). These may need updating when the site is hosted.
+
+---
+
 ## 2026-11-13 — Requesting to co-host an event
 
 **Request:** "Add the ability to request to join an event as co-host."
