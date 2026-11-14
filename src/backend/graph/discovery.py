@@ -2,7 +2,7 @@
 
 Which events can appear:
 - Published events that haven't ended, plus cancelled events until their
-  original start time (so people who planned to go find out).
+  original end time (so people who planned to go, even late, find out).
 - Only events the viewer may see, hosted by an org the viewer may see.
 
 Ranking (higher first; ties broken by start time). Every factor that moves
@@ -75,6 +75,7 @@ PERSON_HOST_REASON = "Hosted by a person"
 INTEREST_MATCH_SCORE = 2.5
 SOONNESS_MAX_SCORE = 2.0
 CANCELLED_SCORE = -100.0
+CANCELLED_REASON = "Cancelled: this event is not happening"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -233,7 +234,7 @@ class DiscoveryService:
             reasons.append(f"Matches your interest: {tag_labels.get(tag_id, tag_id)}")
         if is_cancelled:
             score += CANCELLED_SCORE
-            reasons.insert(0, "Cancelled")
+            reasons.insert(0, CANCELLED_REASON)
         elif timedelta(0) <= event.starts_at - now <= STARTING_SOON:
             reasons.append("Starts within 48 hours")
         return DiscoveryItem(

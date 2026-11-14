@@ -54,14 +54,18 @@ def test_only_published_upcoming_events_are_listed(world):
     assert titles(discover(world)) == ["Upcoming"]
 
 
-def test_cancelled_events_shown_last_and_flagged_until_start(world):
+def test_cancelled_events_shown_last_and_flagged_until_end(world):
     publish(world, "On")
     off = publish(world, "Off", days=1)
     world.graph.events.cancel(off.id, world.alice.id)
     page = discover(world)
     assert titles(page) == ["On", "Off"]
     assert page.items[1].is_cancelled
+    assert page.items[1].reasons[0] == "Cancelled: this event is not happening"
     assert titles(discover(world, include_cancelled=False)) == ["On"]
+    during = world.graph.discovery.search(DiscoveryQuery(), off.starts_at)
+    assert "Off" in titles(during)
+    assert "Off" not in titles(world.graph.discovery.search(DiscoveryQuery(), off.ends_at))
 
 
 def test_visibility_is_enforced(world):
