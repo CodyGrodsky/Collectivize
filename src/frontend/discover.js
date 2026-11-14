@@ -9,7 +9,6 @@
 // HTML, so event titles or descriptions can't inject markup.
 
 (() => {
-    const STORE_KEY = "collectivize.discover";
     const DATE = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
     const TIME = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
     const PART = (options) => new Intl.DateTimeFormat(undefined, options);
@@ -17,24 +16,6 @@
     const $ = (id) => document.getElementById(id);
 
     const { Api, Viewer, PersonaPicker, EventActions } = window.Collectivize;
-
-    class Settings {
-        static load() {
-            try {
-                return JSON.parse(localStorage.getItem(STORE_KEY)) || {};
-            } catch {
-                return {};
-            }
-        }
-
-        static save(values) {
-            try {
-                localStorage.setItem(STORE_KEY, JSON.stringify(values));
-            } catch {
-                // Private mode or storage blocked: settings just won't persist.
-            }
-        }
-    }
 
     class DiscoverPage {
         constructor() {
@@ -44,9 +25,7 @@
         }
 
         async start() {
-            const saved = Settings.load();
             const url = new URLSearchParams(location.search);
-            this.state.near = saved.near ?? true;
             this.state.query = url.get("q") || "";
             this.state.page = Math.max(1, parseInt(url.get("page"), 10) || 1);
             this.bindControls();
@@ -57,7 +36,6 @@
                 this.showError(error);
                 return;
             }
-            $("near").checked = this.state.near;
             $("search-input").value = this.state.query;
             this.refresh();
         }
@@ -67,7 +45,6 @@
                 Viewer.set(e.target.value);
                 this.update({ viewer: e.target.value, page: 1 });
             });
-            $("near").addEventListener("change", (e) => this.update({ near: e.target.checked, page: 1 }));
             $("search-form").addEventListener("submit", (e) => {
                 e.preventDefault();
                 const query = $("search-input").value.trim();
@@ -82,7 +59,6 @@
 
         update(changes) {
             Object.assign(this.state, changes);
-            Settings.save({ near: this.state.near });
             const url = new URL(location.href);
             this.state.query ? url.searchParams.set("q", this.state.query) : url.searchParams.delete("q");
             this.state.page > 1 ? url.searchParams.set("page", this.state.page) : url.searchParams.delete("page");
@@ -320,16 +296,7 @@
         friends(container, names) {
             if (!names.length) return;
             container.hidden = false;
-            const first = names.map(DiscoverPage.cleanName);
-            container.querySelector(".dc-avatars").replaceChildren(...first.slice(0, 4).map((name) => {
-                const avatar = document.createElement("span");
-                avatar.className = "dc-avatar";
-                avatar.textContent = name.charAt(0).toUpperCase();
-                return avatar;
-            }));
-            const shown = first.slice(0, 2).join(", ");
-            const more = first.length > 2 ? ` and ${first.length - 2} more` : "";
-            container.querySelector(".dc-friends-text").textContent = `${shown}${more} going`;
+            container.querySelector(".dc-friends-text").textContent = "Friends are attending";
         }
 
         going(element, item) {
