@@ -8,6 +8,7 @@ API (JSON):
     GET  /api/tags                             topic tags, for filters
     GET  /api/discover?viewer=&page=&near=1&tag=   the ranked Discover list (10 a page)
     POST /api/search  {"viewer", "query", "near"}  AI search (the search agent)
+    GET  /api/network?viewer=&center=          the network map (you or a connection)
 
 Safety:
 - Demo only. There is no login yet, so the server refuses to run against the
@@ -80,6 +81,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "/api/tags": lambda: self.server.api.tags(),
                 "/api/discover": lambda: self.server.api.discover(params),
                 "/api/calendar": lambda: self.server.api.calendar(params),
+                "/api/network": lambda: self.server.api.network(params),
             }
             self._api(routes.get(url.path))
         elif url.path == "/":
