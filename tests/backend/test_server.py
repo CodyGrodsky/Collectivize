@@ -356,13 +356,18 @@ def test_a_browser_that_stops_waiting_is_not_reported_as_a_failure(seeded, caplo
     @contextmanager
     def factory():
         yield seeded[0]
-    srv = serve(Gone(factory), port=0)
+    sessions = SessionStore()
+    token = sessions.create(seeded[1].people["drew"])
+    srv = serve(Gone(factory), port=0, sessions=sessions)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{srv.server_address[1]}"
+    signed_in_as_drew = {"Cookie": f"{COOKIE_NAME}={token}"}
     try:
         with caplog.at_level("INFO", logger="backend.server"), pytest.raises(OSError):
-            urllib.request.urlopen(f"{base}/api/tags")  # the server just hangs up
-        assert fetch(f"{base}/api/personas")[0] == 200  # and keeps serving
+            # The server just hangs up (a 500 would be an HTTPError, also an
+            # OSError, so the log check below is what tells the two apart).
+            urllib.request.urlopen(urllib.request.Request(f"{base}/api/tags", headers=signed_in_as_drew))
+        assert fetch(f"{base}/api/discover", token=token)[0] == 200  # and keeps serving
     finally:
         srv.shutdown()
         srv.server_close()
@@ -370,8 +375,11 @@ def test_a_browser_that_stops_waiting_is_not_reported_as_a_failure(seeded, caplo
 
 
 def test_find_over_http(server, seeded):
-    drew = seeded[1].people["drew"]
-    status, _, body = fetch(f"{server}/api/find?viewer={drew}&q=al")
-    assert status == 200 and set(json.loads(body)) == {"query", "people", "orgs", "events"}
-    status, _, body = fetch(f"{server}/api/find?q=a")
-    assert status == 400 and "characters" in json.loads(body)["error"]
+    # The unified search (people, orgs and events in one ranked list).
+    status, _, body = fetch(f"{server}/api/find?q=al")
+    data = json.loads(body)
+    assert status == 200 and {"items", "total", "page", "pages", "counts"} <= set(data)
+    assert data["page"] == 1 and len(data["items"]) <= data["total"]
+    assert fetch(f"{server}/api/find?q=al", token="")[0] == 401  # signed out
+    status, _, body = fetch(f"{server}/api/find?q=al&page=zero")
+    assert status == 400 and "page" in json.loads(body)["error"]

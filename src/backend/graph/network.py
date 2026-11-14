@@ -143,7 +143,9 @@ class NetworkMap:
     people shown relate to each other: `links` are accepted connections,
     `near` are people who aren't connected but are close in the graph (they
     share a connection or an org, not counting the center). A pair in
-    neither has no real tie. `orgs` is empty when the center is an org."""
+    neither has no real tie. `memberships` are (person id, org id) pairs:
+    which of the people shown belong to which of the orgs shown, as far as
+    the viewer may see. `orgs` is empty when the center is an org."""
 
     center: NetworkNode
     is_self: bool  # the viewer's own map
@@ -151,6 +153,7 @@ class NetworkMap:
     people: tuple[MapPerson, ...]
     links: tuple[tuple[str, str], ...]
     near: tuple[tuple[str, str], ...]
+    memberships: tuple[tuple[str, str], ...]
     truncated: bool  # True when there were more than MAX_MAP_PEOPLE people
 
 
@@ -273,6 +276,13 @@ class NetworkService:
             for a, b in combinations(sorted(ids), 2)
             if (a, b) not in links and reach[a] & reach[b]
         }
+        org_ids = {o.id for o in orgs}
+        memberships = {
+            (p.id, other)
+            for p in shown
+            for other, kind in walk.neighbors(p.id)
+            if kind is LinkKind.MEMBERSHIP and other in org_ids
+        }
         return NetworkMap(
             center=walk.node(center),
             is_self=center == viewer,
@@ -280,6 +290,7 @@ class NetworkService:
             people=tuple(shown),
             links=tuple(sorted(links)),
             near=tuple(sorted(near)),
+            memberships=tuple(sorted(memberships)),
             truncated=len(people) > MAX_MAP_PEOPLE,
         )
 

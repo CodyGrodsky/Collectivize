@@ -54,7 +54,7 @@
         };
     }
 
-    function readPerson(raw, name) {
+    function readPerson(raw, name, id) {
         const colors = raw.colors && typeof raw.colors === "object" ? raw.colors : {};
         const top3 = raw.top3 && typeof raw.top3 === "object" && text(raw.top3.title)
             && list(raw.top3.items).length === 3 && raw.top3.items.every((item) => text(item))
@@ -66,6 +66,7 @@
         } : null;
         return {
             kind: "person",
+            id, // needed to send them a connection request
             name,
             role: text(raw.role),
             verified: raw.verified === true,
@@ -113,20 +114,25 @@
         const ids = new Set(people.map((person) => person.id));
         const pairs = (value) => list(value).filter((pair) => Array.isArray(pair)
             && pair.length === 2 && pair[0] !== pair[1] && ids.has(pair[0]) && ids.has(pair[1]));
+        const orgs = raw.orgs.filter(named).map((org) => ({ id: org.id, name: org.name, closeness: closeness(org) }));
+        const orgIds = new Set(orgs.map((org) => org.id));
         const isOrg = raw.center.kind === "org";
         const profile = raw.profile && typeof raw.profile === "object" ? raw.profile : {};
         return {
             center: { id: raw.center.id, name: raw.center.name, isOrg },
             isSelf: raw.is_self === true,
-            orgs: raw.orgs.filter(named).map((org) => ({ id: org.id, name: org.name, closeness: closeness(org) })),
+            orgs,
             people,
             links: pairs(raw.links), // accepted connections between people shown
             near: pairs(raw.near), // not connected, but close in the network
+            // [person, org]: which people shown belong to which communities shown
+            memberships: list(raw.memberships).filter((pair) => Array.isArray(pair)
+                && pair.length === 2 && ids.has(pair[0]) && orgIds.has(pair[1])),
             truncated: raw.truncated === true,
             // False for someone you aren't connected to, or an org you aren't in:
             // you can read their page, but their network stays closed.
             networkOpen: raw.network_open !== false,
-            profile: isOrg ? readOrg(profile, raw.center.name) : readPerson(profile, raw.center.name),
+            profile: isOrg ? readOrg(profile, raw.center.name) : readPerson(profile, raw.center.name, raw.center.id),
         };
     }
 

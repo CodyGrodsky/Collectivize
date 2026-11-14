@@ -149,6 +149,7 @@
 
     // Draws a profile. Used for the pages and for the editor's live preview.
     // mode: "self" (your own page), "visitor", or "preview" (inert visitor view).
+    // slots.onConnection: called after Connect / Accept succeeds, to redraw.
     // slots.network: the element to show in the "network" section (the graph
     // bubble). Without it, the section is a placeholder (preview) or skipped.
     class ProfileRenderer {
@@ -158,14 +159,14 @@
             if (view.access === "locked") {
                 surface.classList.add("is-locked");
                 surface.append(el("div", { className: "profile-grid" }, [
-                    this.card(view, mode, true),
+                    this.card(view, mode, true, slots),
                     // A locked profile still shows the network you share with them.
                     el("div", { className: "p-sections" }, [slots.network ? this.section("Network", slots.network) : null]),
                 ]));
                 return surface;
             }
             surface.append(el("div", { className: "profile-grid" }, [
-                this.card(view, mode, false),
+                this.card(view, mode, false, slots),
                 this.sections(view, mode, slots),
             ]));
             return surface;
@@ -181,7 +182,7 @@
             return (letters || "?").toUpperCase();
         }
 
-        card(view, mode, locked) {
+        card(view, mode, locked, slots = {}) {
             const card = el("div", { className: "p-box p-card" }, [
                 el("div", { className: "p-ring", attrs: { "aria-hidden": "true" } }, [
                     el("span", { text: ProfileRenderer.initials(view) }),
@@ -202,7 +203,7 @@
                     }, [el("span", { text: "Visit my site" }), el("span", { className: "p-site-domain", text: domain })]));
                 }
             }
-            if (mode !== "self") card.append(this.connectButton(view, mode));
+            if (mode !== "self") card.append(this.connectButton(view, mode, slots));
             if (mode !== "self" && view.in_common && !locked) {
                 card.append(el("p", { className: "p-share" }, [
                     el("span", { className: "p-share-label", text: "You share" }),
@@ -222,7 +223,7 @@
             return el("p", { className: "p-badge" }, [icon, el("span", { text: "Verified Northeastern" })]);
         }
 
-        connectButton(view, mode) {
+        connectButton(view, mode, slots = {}) {
             const states = {
                 none: ["Connect", true],
                 pending_out: ["Request sent", false],
@@ -238,18 +239,26 @@
                 text: label,
                 attrs: { type: "button", disabled: !live, tabindex: mode === "preview" ? "-1" : null },
             });
-            if (live) {
-                button.addEventListener("click", async () => {
-                    button.disabled = true;
-                    try {
-                        await window.Collectivize.Api.post("/api/connect", { person_id: view.id });
-                        window.location.reload();
-                    } catch (error) {
-                        button.textContent = error.message;
-                    }
-                });
-            }
-            return button;
+            if (!live) return button;
+            const problem = el("p", { className: "p-connect-error", attrs: { role: "alert", hidden: true } });
+            button.addEventListener("click", async () => {
+                button.disabled = true;
+                problem.hidden = true;
+                button.textContent = view.connection === "pending_in" ? "Accepting…" : "Sending…";
+                try {
+                    await window.Collectivize.Api.post("/api/connect", { person_id: view.id });
+                    // The page redraws with the new state ("Request sent" or "Connected").
+                    if (slots.onConnection) slots.onConnection();
+                    else window.location.reload();
+                } catch (error) {
+                    // Put the button back so they can try again, and say why.
+                    button.textContent = label;
+                    button.disabled = false;
+                    problem.textContent = error instanceof Error ? error.message : "That didn't send.";
+                    problem.hidden = false;
+                }
+            });
+            return el("div", { className: "p-connect-box" }, [button, problem]);
         }
 
         sections(view, mode, slots) {

@@ -26,23 +26,11 @@
     const { Api, EventActions, Ui } = window.Collectivize;
     const { el, cleanName } = Ui;
 
-    const { Api, Viewer, PersonaPicker, EventActions, NameSearch } = window.Collectivize;
-
-    class Settings {
-        static load() {
-            try {
-                return JSON.parse(localStorage.getItem(STORE_KEY)) || {};
-            } catch {
-                return {};
-            }
-        }
-
-        static save(values) {
-            try {
-                localStorage.setItem(STORE_KEY, JSON.stringify(values));
-            } catch {
-                // Private mode or storage blocked: settings just won't persist.
-            }
+    const showScores = (() => {
+        try {
+            return localStorage.getItem(SCORES_KEY) === "1";
+        } catch {
+            return false;
         }
     })();
 
@@ -66,13 +54,7 @@
                 this.showError(error);
                 return;
             }
-            $("near").checked = this.state.near;
-            $("search-input").value = this.state.query;
-            // Names of people, orgs and events, listed as you type (find.js).
-            this.names = new NameSearch({
-                input: $("search-input"), panel: $("find-panel"), getViewer: () => this.state.viewer,
-            });
-            this.names.refresh();
+            this.syncControls();
             this.refresh();
         }
 
@@ -172,12 +154,8 @@
 
         update(changes) {
             Object.assign(this.state, changes);
-            Settings.save({ near: this.state.near });
-            const url = new URL(location.href);
-            this.state.query ? url.searchParams.set("q", this.state.query) : url.searchParams.delete("q");
-            this.state.page > 1 ? url.searchParams.set("page", this.state.page) : url.searchParams.delete("page");
-            history.replaceState(null, "", url);
-            this.names?.refresh(); // the viewer or the search box may have changed
+            this.writeUrl();
+            this.syncControls();
             this.refresh();
         }
 

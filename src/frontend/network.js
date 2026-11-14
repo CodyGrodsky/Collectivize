@@ -155,7 +155,10 @@
         personPage() {
             const { profile, isSelf, networkOpen } = this.data;
             const network = this.networkBlock();
-            const surface = this.renderer.render(profile, isSelf ? "self" : "visitor", { network });
+            const surface = this.renderer.render(profile, isSelf ? "self" : "visitor", {
+                network,
+                onConnection: () => this.load(), // redraw with "Request sent" or "Connected"
+            });
             if (surface.contains(network) || !networkOpen) return [surface];
             // They left the network out of their layout: show it under their page.
             return [surface, this.box("Network", network)];

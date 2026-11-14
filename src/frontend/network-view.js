@@ -275,6 +275,7 @@
         ["nw-key", "Your connection"],
         ["nw-key is-line", "Connected"],
         ["nw-key is-line is-near", "Close, not connected"],
+        ["nw-key is-line is-org", "In the community"],
     ];
 
     /** The bubble as one element: circle, "there's more" hint, and key. */

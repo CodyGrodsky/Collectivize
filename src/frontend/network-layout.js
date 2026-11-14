@@ -11,7 +11,8 @@
 //     shares with the center (its `closeness`), so close ones sit nearer;
 //   - people who are connected to each other are tied together, so
 //     friends end up side by side; people who are only close in the
-//     network (map.near) are tied more loosely;
+//     network (map.near) are tied more loosely; so are people and the
+//     communities shown that they belong to (map.memberships);
 //   - all nodes push each other apart so nothing overlaps.
 // The starting spots are random, so the same network is drawn a little
 // differently each time. Pass a `random` function to make it repeatable.
@@ -27,6 +28,8 @@
     const CENTER_PULL = 0.05;
     const PEER_PULL = 0.03;
     const NEAR_PULL = 0.012;
+    const MEMBER_TIE = 115; // between a person and a community they belong to
+    const MEMBER_PULL = 0.012;
 
     const clamp = (value, limit) => Math.min(limit, Math.max(-limit, value));
 
@@ -57,6 +60,7 @@
         const ties = [
             ...tied(map.links, "peer", PEER_TIE, PEER_PULL),
             ...tied(map.near, "near", NEAR_TIE, NEAR_PULL),
+            ...tied(map.memberships, "org", MEMBER_TIE, MEMBER_PULL),
         ];
         // Someone tied to many others is pulled less by each, so a tightly
         // knit group gathers on one side without collapsing into a clump.

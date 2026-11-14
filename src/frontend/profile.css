@@ -493,3 +493,7 @@ select.edit-input { height: 38px; cursor: pointer; }
 .edit-check { display: flex; align-items: center; gap: 8px; }
 .edit-check label { font-weight: 550; cursor: pointer; }
 .edit-layout-item input, .edit-check input { width: 16px; height: 16px; accent-color: var(--green); }
+
+/* The Connect button and, under it, why a request didn't send. */
+.p-connect-box { display: grid; gap: 6px; width: 100%; }
+.p-connect-error { margin: 0; color: var(--p-ink); font-size: 13px; font-weight: 600; }

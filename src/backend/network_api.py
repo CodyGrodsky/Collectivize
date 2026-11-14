@@ -65,6 +65,7 @@ def _closed_page(
         "people": [],
         "links": [],
         "near": [],
+        "memberships": [],
         "truncated": False,
         "network_open": False,
         "profile": profile,
@@ -148,6 +149,7 @@ def _map_json(view: NetworkMap) -> dict[str, Any]:
         ],
         "links": [list(pair) for pair in view.links],
         "near": [list(pair) for pair in view.near],
+        "memberships": [list(pair) for pair in view.memberships],
         "truncated": view.truncated,
     }
 

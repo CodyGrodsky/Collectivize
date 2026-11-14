@@ -334,3 +334,36 @@ def test_saving_an_unchanged_demo_name_keeps_its_role_tag(world):
     assert world.graph.store.node(world.alice.id, Person).display_name == "Alice (demo student)"
     renamed = api.profile({"viewer": world.alice.id, "display_name": "Ali"})["profile"]
     assert renamed["name"] == "Ali" and renamed["role"] == ""
+
+
+# --- the Connect button --------------------------------------------------------------
+
+
+def test_connect_sends_a_request_that_shows_on_both_profiles(world):
+    from backend.app_api import AppApi
+
+    @contextmanager
+    def factory():
+        yield world.graph
+
+    app, api = AppApi(factory, clock=lambda: NOW), api_for(world)
+
+    def page(viewer, other):
+        return api.network({"viewer": viewer.id, "center": other.id})["profile"]
+
+    before = page(world.carol, world.bob)
+    assert before["id"] == world.bob.id and before["connection"] == "none"  # the button needs the id
+    sent = app.connect(world.carol.id, {"person_id": before["id"]})
+    assert sent == {"person_id": world.bob.id, "connection": "pending_out"}
+    assert page(world.carol, world.bob)["connection"] == "pending_out"  # "Request sent"
+    assert page(world.bob, world.carol)["connection"] == "pending_in"  # "Accept connection"
+    assert app.connect(world.carol.id, {"person_id": world.bob.id})["connection"] == "pending_out"  # no duplicate
+    assert app.connect(world.bob.id, {"person_id": world.carol.id})["connection"] == "connected"  # asking back accepts
+    assert page(world.carol, world.bob)["connection"] == "connected"
+
+
+def test_the_page_script_keeps_the_persons_id_for_the_connect_button():
+    from pathlib import Path
+
+    script = (Path(__file__).resolve().parents[2] / "src/frontend/network-data.js").read_text()
+    assert "readPerson(profile, raw.center.name, raw.center.id)" in script

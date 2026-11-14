@@ -149,6 +149,7 @@ select { font: inherit; color: inherit; }
 .nw-key.is-org { border-radius: 3px; background: color-mix(in srgb, var(--b-accent) 14%, var(--b-bg)); }
 .nw-key.is-line { width: 20px; height: 0; border: 0; border-top: 2.2px solid color-mix(in srgb, var(--b-ink) 70%, var(--b-bg)); border-radius: 0; background: none; }
 .nw-key.is-line.is-near { border-top: 1.5px dashed color-mix(in srgb, var(--b-ink) 38%, var(--b-bg)); }
+.nw-key.is-line.is-org { border-top: 2px solid var(--b-accent); background: none; opacity: .6; }
 
 /* --- inside the bubble --------------------------------------------------- */
 

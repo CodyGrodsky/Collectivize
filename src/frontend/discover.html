@@ -8,12 +8,10 @@
     <link rel="icon" href="../../app/icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="discover.css">
     <link rel="stylesheet" href="event-actions.css">
-    <link rel="stylesheet" href="find.css">
     <link rel="stylesheet" href="nav.css">
     <script src="nav.js"></script>
     <script src="shared.js" defer></script>
     <script src="add-to-calendar.js" defer></script>
-    <script src="find.js" defer></script>
     <script src="discover.js" defer></script>
 </head>
 <body>
@@ -62,18 +60,8 @@
                 <input type="search" id="search-input" maxlength="200" autocomplete="off"
                        placeholder="Search, or describe it: &ldquo;people into pottery&rdquo;">
             </div>
-            <label class="dc-sr" for="search-input">Search people, organizations and events</label>
-            <svg class="dc-search-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/>
-            </svg>
-            <input type="search" id="search-input" maxlength="500" autocomplete="off"
-                   placeholder="Search a name, or describe what you're in the mood for" aria-describedby="search-hint">
             <button type="submit" class="dc-search-button" id="search-button">Search</button>
         </form>
-
-        <p class="dc-sr" id="search-hint">Names of people, organizations and events appear as you type. Press Search to find events by description.</p>
-
-        <section class="find-panel" id="find-panel" aria-label="Names that match" aria-live="polite" hidden></section>
 
         <p class="dc-understood" id="understood" hidden aria-live="polite"></p>
 

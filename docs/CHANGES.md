@@ -4,6 +4,82 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-14 — Fixed the three failing tests (one was a broken Discover page)
+
+**Request:** "fix the three failing tests."
+
+### A real break: the Discover page's script did not run
+- The "merging branch" commit (`963d7af`) pasted pieces of the older Discover page on top of the v1.1 one. `discover.js` declared `Api` twice, which is a syntax error, so the whole script failed to load. `discover.html` also had two search boxes with the same id.
+- **Fix:** `discover.js` and `discover.html` are restored to the v1.1 versions (commit `0e6c4bc`).
+- **Removed:** `find.js` and `find.css`, the older name-search panel. The v1.1 unified search replaced it and had already deleted these files; the merge brought them back. Nothing else uses them.
+
+### Two tests that were out of date
+- **`test_find_over_http`** checked the older name-search answer. It now checks the unified search: the answer's shape, that signed-out visitors get 401, and that a bad page number gets 400.
+- **`test_a_browser_that_stops_waiting_is_not_reported_as_a_failure`** predates the sign-in gate, so it was turned away before reaching the code it tests. It now signs in first. The server fix it covers was never broken.
+
+### Not changed
+- `graph/directory.py` (the older name search on the server) is still there and still tested, but no page calls it any more.
+
+### Tests
+- Full suite: 1981 passed, 4 skipped, none failing.
+- **In a browser:** the Discover page loads and a search shows results.
+
+---
+
+## 2026-11-14 — The network bubble draws each connection's line to the orgs you share
+
+**Request:** "draw each connection's line to the orgs we share."
+
+### What changed
+- **Before:** an org you share with a connection was drawn once, with only the center's line to it. The connection's membership showed only indirectly (they sat closer in).
+- **Now:** every person in the bubble gets an accent-colored line to each org in the bubble that they belong to. The org is still drawn once. The key has a new entry, "In the community".
+- **`graph/network.py`:** `NetworkMap` has a new `memberships` field, (person id, org id) pairs for the people and orgs already on the map. `/api/network` sends it as `memberships`.
+- **`network-data.js`, `network-layout.js`:** the page reads the pairs (dropping any that name someone or something not on the map) and draws them; members are also pulled gently toward their org.
+
+### What did not change
+- Nobody new appears on the map: the lines only join people and orgs that were already shown.
+- A membership someone has hidden from you is not drawn (it uses the same visibility check as the rest of the map).
+- An org's own map is unchanged: its members already have a line to it.
+
+### Tests
+- New `tests/backend/test_map_memberships.py`: shared org is tied, an org you aren't in is not, a private membership is not drawn, mutual friends on a connection's map are tied, an org's own map adds nothing.
+- **In a browser:** on Drew's map, three connections now have lines to the Alpha Beta, Gamma Chapter.
+
+---
+
+## 2026-11-14 — The Connect button sends a connection request
+
+**Request:** "make the connect button actually send a connection request."
+
+### What was wrong
+- The button on a person's page was already wired to the server (`POST /api/connect`), but it only switches on when it knows whose page it is. The page's data reader (`network-data.js`) was dropping the person's id, so the button was always greyed out.
+
+### What changed
+- **`network-data.js`** keeps the person's id, so the button is live on the page of anyone you aren't connected to.
+- **`profile-render.js`:** pressing **Connect** sends the request and the page redraws with **Request sent** (no full reload). If they had already asked you, the button reads **Accept connection** and pressing it connects you. While it's working it says "Sending…"; if it fails, the button comes back and the reason shows underneath.
+- **`network.js`** passes the redraw so the page updates in place.
+
+### Tests
+- `test_profiles.py`: a request shows as "pending_out" on your side and "pending_in" on theirs, pressing twice doesn't duplicate it, asking back accepts, and the page script passes the id through.
+- **In a browser:** on a stranger's page the button went from "Connect" to "Request sent", the server listed the outgoing request, and I then cancelled it so the demo data is unchanged.
+
+---
+
+## 2026-11-14 — "Can't connect to the database": the local demo database was out of date
+
+**Request:** "the software seems to not be able to connect to the database."
+
+### What happened
+- **The database connection was fine.** The server was reading `data/test.db` and returning events and topics.
+- **The local `data/test.db` had been seeded before the v1.1 sign-in work.** None of its demo people had an email. So signing in as `drew.demo@northeastern.edu` (automatic now that sign-in is off) found nobody and created a brand-new, empty "Drew Demo" account: no connections, no orgs, no events. That empty account is what looked like a missing database.
+
+### Fix
+- **Re-seeded `data/test.db`** with the current seed, where the demo people have their `<name>.demo@northeastern.edu` emails. Drew is the real demo Drew again (8 connections, 1 org, upcoming events).
+- **The old file is kept** as `data/test.db.before-reseed-2026-11-14` (not in git). Delete it once you're sure nothing in it is needed.
+- **No code changed.** `data/` isn't in git, so each teammate whose database predates v1.1 needs to run `uv run python scripts/seed_test_db.py --reset` once, then restart the server.
+
+---
+
 ## 2026-11-14 — The .edu sign-in step is temporarily off (one switch turns it back on)
 
 **Request:** "can you temporarily disable the .edu sign in part, but make it so it is easy to re-enable."
