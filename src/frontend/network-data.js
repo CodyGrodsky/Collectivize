@@ -95,6 +95,7 @@
         return {
             kind: "org",
             name,
+            isMember: raw.is_member === true,
             orgKind: ORG_KINDS[raw.org_kind] || "Community",
             website: link(raw.website),
             upcoming,
@@ -122,6 +123,9 @@
             links: pairs(raw.links), // accepted connections between people shown
             near: pairs(raw.near), // not connected, but close in the network
             truncated: raw.truncated === true,
+            // False for someone you aren't connected to, or an org you aren't in:
+            // you can read their page, but their network stays closed.
+            networkOpen: raw.network_open !== false,
             profile: isOrg ? readOrg(profile, raw.center.name) : readPerson(profile, raw.center.name),
         };
     }

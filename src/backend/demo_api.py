@@ -32,8 +32,9 @@ from backend.graph.discovery import DiscoveryItem
 from backend.graph.my_calendar import CalendarEntry
 from backend.graph.search_agent import AgentStep
 from backend.graph.sqlite_store import SqliteGraphStore
-from backend.network_api import clean_name, network_json, profile_changes
+from backend.network_api import clean_name, find_json, network_json, profile_changes
 from backend.objects import (
+    DomainRuleError,
     EventStatus,
     MemberOf,
     Organization,
@@ -262,6 +263,17 @@ class DiscoverApi:
         with self._graphs() as graph:
             viewer = self._required_viewer(graph, params.get("viewer"))
             return network_json(graph, viewer, center, self._clock())
+
+    def find(self, params: dict[str, str]) -> dict[str, Any]:
+        """Find people, orgs and events by name: `q` (2-100 characters) and
+        `viewer` (optional; logged-out visitors find no people)."""
+        text = params.get("q", "")
+        with self._graphs() as graph:
+            viewer = self._viewer(graph, params.get("viewer"))
+            try:
+                return find_json(graph, viewer, text, self._clock())
+            except DomainRuleError as error:
+                raise ApiError(HTTPStatus.BAD_REQUEST, str(error)) from None
 
     def profile(self, body: dict[str, Any]) -> dict[str, Any]:
         """Save your own profile and settings: `viewer` plus any of

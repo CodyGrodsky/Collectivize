@@ -347,3 +347,31 @@ def test_network_map_over_http(server, seeded):
     assert fetch(f"{server}/api/network?center=nobody")[0] == 404
     status, _, body = fetch(f"{server}/src/frontend/network.html")
     assert status == 200 and b'id="nw-root"' in body
+
+
+def test_a_browser_that_stops_waiting_is_not_reported_as_a_failure(seeded, caplog):
+    class Gone(DiscoverApi):
+        def tags(self):
+            raise BrokenPipeError(32, "Broken pipe")  # what a closed connection raises on send
+    @contextmanager
+    def factory():
+        yield seeded[0]
+    srv = serve(Gone(factory), port=0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    try:
+        with caplog.at_level("INFO", logger="backend.server"), pytest.raises(OSError):
+            urllib.request.urlopen(f"{base}/api/tags")  # the server just hangs up
+        assert fetch(f"{base}/api/personas")[0] == 200  # and keeps serving
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert "API request failed" not in caplog.text and "client left" in caplog.text
+
+
+def test_find_over_http(server, seeded):
+    drew = seeded[1].people["drew"]
+    status, _, body = fetch(f"{server}/api/find?viewer={drew}&q=al")
+    assert status == 200 and set(json.loads(body)) == {"query", "people", "orgs", "events"}
+    status, _, body = fetch(f"{server}/api/find?q=a")
+    assert status == 400 and "characters" in json.loads(body)["error"]

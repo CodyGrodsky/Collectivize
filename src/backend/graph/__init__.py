@@ -9,6 +9,7 @@ from .claude_interpreter import ClaudeInterpreter
 from .cohosting import CoHostingService
 from .connections import ConnectionService
 from .data_access import DataAccessService, MlDataset
+from .directory import DirectoryService, Found, FoundPerson
 from .discovery import DiscoveryPage, DiscoveryQuery, DiscoveryService, RequestMatch
 from .errors import NotFoundError, PermissionDeniedError
 from .events import EventService
@@ -71,6 +72,9 @@ class CollectivizeGraph:
             self.preferences,
             ranking_weights,
         )
+        self.directory = DirectoryService(
+            self.store, self.privacy, self.connections, self.discovery
+        )
         self.co_hosting = CoHostingService(self.store, self.events, self.privacy)
         self.calendar = CalendarService(self.store, self.events, self.privacy)
         self.stars = StarService(self.store, self.privacy)
@@ -118,10 +122,13 @@ __all__ = [
     "CollectivizeGraph",
     "ConnectionService",
     "DataAccessService",
+    "DirectoryService",
     "DiscoveryPage",
     "DiscoveryQuery",
     "DiscoveryService",
     "EventService",
+    "Found",
+    "FoundPerson",
     "GraphStore",
     "HierarchyService",
     "HostEvents",

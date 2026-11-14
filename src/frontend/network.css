@@ -112,6 +112,9 @@ select { font: inherit; color: inherit; }
 
 .nw-world.is-gliding { transition: transform var(--duration-normal) var(--ease-out); }
 
+/* In the bubble's place when someone's network is closed to you. */
+.nw-closed { margin: 0; color: var(--p-muted, var(--muted)); }
+
 .nw-bubble-empty { margin: 8px 0 0; color: var(--b-muted); font-size: 13px; }
 
 .nw-move { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 12px; margin: 10px 0 0; color: var(--b-muted); font-size: 12px; text-align: center; }

@@ -306,6 +306,11 @@ class RequestHandler(BaseHTTPRequestHandler):
         except sqlite3.OperationalError:  # e.g. "database is locked" by another save
             log.warning("database busy", exc_info=True)
             self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "busy right now, please try again"})
+        except (BrokenPipeError, ConnectionResetError):
+            # The browser stopped waiting (left the page, or asked again) before
+            # the answer was sent. Nothing failed and there is nobody to tell.
+            log.info("client left before the answer was sent: %s", urlsplit(self.path).path)
+            self.close_connection = True
         except Exception:  # never leak internals to the page
             log.exception("API request failed")
             self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "something went wrong"})

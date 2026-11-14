@@ -9,6 +9,10 @@
 // and its bubble of members. Only nodes you can open are ever in a bubble
 // (you, your connections, your communities); the server leaves the rest out.
 //
+// Search can bring you to someone you aren't connected to, or a community
+// you aren't in. You see their page as far as they allow, but not their
+// network: a short note takes the bubble's place.
+//
 // A person's page is drawn by the same renderer as the Profile tab, in the
 // colors and layout they chose. If they left the network section out of
 // their layout, the bubble still shows here, under their page.
@@ -139,7 +143,7 @@
             $("nw-home").hidden = data.isSelf;
             $("nw-edit").hidden = !data.isSelf;
             document.title = `${data.isSelf ? "Your network" : data.center.name} · Collectivize`;
-            this.bubble.draw(data);
+            if (data.networkOpen) this.bubble.draw(data);
             const page = data.center.isOrg ? this.orgPage() : this.personPage();
             $("nw-root").replaceChildren(...page);
             this.drawLists();
@@ -149,11 +153,24 @@
         // --- a person's page ---------------------------------------------------------
 
         personPage() {
-            const { profile, isSelf } = this.data;
-            const surface = this.renderer.render(profile, isSelf ? "self" : "visitor", { network: this.bubble.element });
-            if (surface.contains(this.bubble.element)) return [surface];
+            const { profile, isSelf, networkOpen } = this.data;
+            const network = this.networkBlock();
+            const surface = this.renderer.render(profile, isSelf ? "self" : "visitor", { network });
+            if (surface.contains(network) || !networkOpen) return [surface];
             // They left the network out of their layout: show it under their page.
-            return [surface, this.box("Network", this.bubble.element)];
+            return [surface, this.box("Network", network)];
+        }
+
+        /** The bubble, or a note in its place when this network is closed to you. */
+        networkBlock() {
+            const { networkOpen, center } = this.data;
+            if (networkOpen) return this.bubble.element;
+            return el("p", {
+                className: "nw-closed",
+                text: center.isOrg
+                    ? "You aren't a member, so its network of members isn't shown."
+                    : `You and ${center.name.split(" ")[0]} aren't connected, so their network isn't shown.`,
+            });
         }
 
         box(title, body) {
@@ -166,15 +183,15 @@
             const { profile, center, people } = this.data;
             const members = people.filter((person) => !person.isYou).length;
             const facts = [
-                `${plural(members, "member")} you're connected to`,
+                profile.isMember ? `${plural(members, "member")} you're connected to` : null,
                 profile.upcomingCount ? plural(profile.upcomingCount, "upcoming event") : "No upcoming events",
-            ];
+            ].filter(Boolean);
             const card = el("section", { className: "nw-org", attrs: { "aria-label": "Community" } }, [
                 el("div", { className: "nw-org-mark", text: initials(center.name), attrs: { "aria-hidden": "true" } }),
                 el("div", { className: "nw-org-body" }, [
-                    el("p", { className: "nw-eyebrow", text: "Your community" }),
+                    el("p", { className: "nw-eyebrow", text: profile.isMember ? "Your community" : "Community" }),
                     el("h2", { className: "nw-name", text: center.name }),
-                    el("p", { className: "nw-meta", text: `${profile.orgKind} · You're a member` }),
+                    el("p", { className: "nw-meta", text: profile.isMember ? `${profile.orgKind} · You're a member` : profile.orgKind }),
                     el("ul", { className: "nw-facts" }, facts.map((fact) => el("li", { className: "nw-fact", text: fact }))),
                 ]),
                 profile.website ? el("a", {
@@ -185,7 +202,7 @@
             const upcoming = profile.upcoming.length
                 ? this.box("Coming up", el("ul", { className: "nw-upcoming-list" }, profile.upcoming.map(NetworkPage.eventItem)))
                 : null;
-            return [card, el("div", { className: "nw-org-grid" }, [upcoming, this.box("Network", this.bubble.element)])];
+            return [card, el("div", { className: "nw-org-grid" }, [upcoming, this.box("Network", this.networkBlock())])];
         }
 
         static eventItem(event) {

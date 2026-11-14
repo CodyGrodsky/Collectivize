@@ -4,6 +4,58 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-14 — Search for people, organizations and events by name
+
+**Request:** "add people search, organization search, events search."
+
+### What you can do now
+- **Type a name in the Discover search bar.** From two characters on, a panel under the bar lists matching **People**, **Organizations** and **Events**, each with a count. It updates as you type and costs nothing; pressing Search still runs the AI search for events by description.
+  - **People** open their page on the Network tab. Your connections come first and are marked "Connected", with what you have in common.
+  - **Organizations** open their page (kind, website, upcoming events). Ones you belong to say "You're a member".
+  - **Events** open their day on the Calendar.
+  - Each kind shows up to 8 results and says how many more there are.
+- **You can now open the page of someone you aren't connected to, or an org you aren't in.** You see their page as far as they allow (a locked profile shows only name, badge and colors). Their network is not shown; a note takes the bubble's place. Before, these links fell back to your own page.
+
+### Backend
+- **New `DirectoryService`** (`graph/directory.py`, `graph.directory`): `find(viewer_id, text, now, limit=8)` returns matching people, orgs and events with totals.
+  - **People:** only people the viewer may see; never yourself; matched on the name only (not bio, About or email). Logged-out visitors find nobody.
+  - **Orgs:** only orgs the viewer may see, by name.
+  - **Events:** the Discover search with the text as a filter (title, description, place), so the same visibility and ranking rules apply.
+  - **Matching:** ignores case; every word typed must appear; names starting with the text come first. The demo data's "[Demo]" and "(demo role)" tags aren't searchable.
+  - **Limits:** 2 to 100 characters, at most 25 results per kind.
+- **`GET /api/find?viewer=&q=`** (`network_api.py`, `demo_api.py`, `server.py`).
+- **`GET /api/network`** now answers for any person or org the viewer may see, with `network_open: false` and an empty map when the viewer isn't connected or isn't a member. Opening the map itself is still refused by `NetworkService`.
+
+### Frontend
+- New `find.js` and `find.css` (the results panel); `discover.html` and `discover.js` hook it to the search bar. `network.js` and `network-data.js` handle a closed network.
+
+### Decisions to confirm
+- **Anyone signed in can find anyone whose account is visible to signed-in users** (the default). A person who sets their visibility to connections-only is found only by their connections. There's no separate "don't show me in search" setting yet.
+- **The Connect button still only shows the state.** Search makes sending a request the obvious next step; it isn't built.
+
+### Tests
+- **New `tests/backend/test_directory.py`** (51 runs): matching and ranking, connections first, hidden people and orgs not found, logged-out finds no people, name-only matching, drafts and members-only events hidden from outsiders, caps and totals, length limits, a fuzz test, and the API.
+- `test_person_map.py`: a stranger's and a non-member org's page open with the network closed. `test_server.py`: the endpoint over HTTP.
+- Full suite apart from the `test_audit_*` files: 1864 pass. Checked in a browser: typing "ri" lists all three kinds, and a non-connection's page opens with the note in place of the bubble.
+
+---
+
+## 2026-11-14 — Server no longer logs a crash when the browser stops waiting
+
+**Request:** "can you look at error.md and figure out what happened? I believe it was when I tried searching ben in the search bar and it was unable to find any items."
+
+### What happened
+- **The traceback in `error.md` is not from the search.** It is from `GET /api/calendar`: the browser closed the connection before the server finished sending the calendar (leaving the Calendar page mid-load does this). The server then tried to send a "something went wrong" answer down the same closed connection, which failed again and printed the long second traceback. No data was lost and nothing was actually broken.
+- **"ben" found nothing because nothing matches it.** The Discover search bar searches events only. The demo data has no person, org or event with "ben" in its name, title or description.
+
+### Fix
+- **`server.py`:** a connection the browser closed (`BrokenPipeError`, `ConnectionResetError`) is now logged as one short line and not treated as a failure, so there is no traceback and no second attempt to answer.
+
+### Tests
+- `test_server.py`: a dropped connection is not reported as a failure and the server keeps serving.
+
+---
+
 ## 2026-11-14 — Profile page and network bubble combined, on real data, with editing
 
 **Request:** "imagine combining profile page information display and then displaying the small graph bubble in the same page. Then in the profile page you can change settings, layout of the public profile display, colors, what events you want shown to who, etc."

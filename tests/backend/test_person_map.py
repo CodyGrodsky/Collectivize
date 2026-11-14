@@ -337,15 +337,20 @@ def test_api_only_ever_returns_nodes_the_viewer_can_open(api, seeded):
         assert [p["name"] for p in theirs["people"] if p["is_you"]] == ["Drew"]
 
 
-def test_api_refuses_a_stranger_and_someone_elses_org(api, seeded):
+def test_api_shows_a_strangers_page_without_their_network(api, seeded):
     drew = seeded[1].people["drew"]
     own = api.network({"viewer": drew})
     known = {n["id"] for n in own["orgs"] + own["people"]} | {drew}
     stranger = next(p for p in seeded[1].people.values() if p not in known)
     other_org = next(o for o in seeded[1].orgs.values() if o not in known)
-    for center in (stranger, other_org):
-        with pytest.raises(PermissionDeniedError):
-            api.network({"viewer": drew, "center": center})
+    for center, kind in ((stranger, "person"), (other_org, "org")):
+        page = api.network({"viewer": drew, "center": center})
+        assert page["network_open"] is False and page["center"]["kind"] == kind
+        assert page["orgs"] == page["people"] == page["links"] == page["near"] == []
+        assert page["profile"]["kind"] == kind and not page["is_self"]
+    assert api.network({"viewer": drew, "center": stranger})["profile"]["connection"] == "none"
+    assert api.network({"viewer": drew, "center": other_org})["profile"]["is_member"] is False
+    assert own["network_open"] is True
 
 
 @pytest.mark.parametrize("params", [{}, {"viewer": ""}, {"viewer": "nobody"}])

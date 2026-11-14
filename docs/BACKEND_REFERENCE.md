@@ -308,6 +308,16 @@ Event discovery: a visibility-aware, filterable, explainable event list.
   - `event_tag_ids(event_id: str) -> set[str]`: An event's own tags plus those inherited from its host orgs. [L293](../src/backend/graph/discovery.py#L293)
 - `normalize_text(text: str) -> str`: Comparable form: Unicode-normalized (so "café" typed either way matches) and case-folded. [L385](../src/backend/graph/discovery.py#L385)
 
+### `src/backend/graph/directory.py`
+
+Finding people, organizations and events by name.
+
+- **`FoundPerson`**: [L41](../src/backend/graph/directory.py#L41)
+- **`Found`**: Up to `limit` matches of each kind, best first, with how many matched. [L47](../src/backend/graph/directory.py#L47)
+- **`DirectoryService`**: [L59](../src/backend/graph/directory.py#L59)
+  - `find(viewer_id: str | None, text: str, now: datetime, *, limit: int = DEFAULT_LIMIT) -> Found`: People, orgs and events whose name matches `text`, for this viewer. [L72](../src/backend/graph/directory.py#L72)
+- `searchable_name(name: str) -> str`: A name as people would type it: normalized, and without the demo data's "[Demo]" prefix and "(demo role)" tag, so searching "demo" or "student" doesn't match every demo record. [L125](../src/backend/graph/directory.py#L125)
+
 ### `src/backend/graph/ranking.py`
 
 The "would they go?" model behind Discover.
@@ -718,39 +728,41 @@ Where secrets come from. Never from source code or files in the repo.
 
 The demo API's behaviour, independent of HTTP (server.py wraps it).
 
-- **`ApiError`** (Exception): [L59](../src/backend/demo_api.py#L59)
-- `demo_graph_factory(config: DatabaseConfig, *, use_ai: bool) -> GraphFactory`: Each request opens its own connection (SQLite connections can't be shared across the server's threads). [L85](../src/backend/demo_api.py#L85)
-- **`DiscoverApi`**: The API's behaviour, independent of HTTP (so it can be tested directly). [L109](../src/backend/demo_api.py#L109)
-  - `personas() -> dict[str, Any]`: Every demo person you can view Discover as, suggested ones first. [L122](../src/backend/demo_api.py#L122)
-  - `tags() -> dict[str, Any]`: All topic tags, by label (for the topic filter). [L144](../src/backend/demo_api.py#L144)
-  - `discover(params: dict[str, str]) -> dict[str, Any]`: One page of Discover for a viewer: `viewer`, `page`, `near=1`, `tag`. [L150](../src/backend/demo_api.py#L150)
-  - `search(body: dict[str, Any]) -> dict[str, Any]`: AI search via the search agent: `query`, `viewer`, `near`. Repeat searches come from the cache; one runs at a time. [L167](../src/backend/demo_api.py#L167)
-  - `rsvp(body: dict[str, Any]) -> dict[str, Any]`: Set or clear an RSVP: `viewer`, `event_id`, `status` ("going", "maybe", or null to clear), `near` (records the trip distance). [L205](../src/backend/demo_api.py#L205)
-  - `star(body: dict[str, Any]) -> dict[str, Any]`: Star or unstar an event: `viewer`, `event_id`, `starred` (true/false). [L220](../src/backend/demo_api.py#L220)
-  - `calendar(params: dict[str, str]) -> dict[str, Any]`: A person's calendar for a window: `viewer`, `start`, `end` (ISO 8601 with a time zone, at most 62 days apart). [L234](../src/backend/demo_api.py#L234)
-  - `network(params: dict[str, str]) -> dict[str, Any]`: The network map and the profile of whoever is in the middle: `viewer` (required) and `center` (the viewer, one of their connections, or an org they belong to; default the viewer). [L250](../src/backend/demo_api.py#L250)
-  - `profile(body: dict[str, Any]) -> dict[str, Any]`: Save your own profile and settings: `viewer` plus any of `display_name`, `bio`, `about`, `top3`, `website`, `colors`, `sections`, `profile_visibility`, `rsvp_visibility`, `hide_connections`. Returns your page again (as GET /api/network). [L261](../src/backend/demo_api.py#L261)
+- **`ApiError`** (Exception): [L60](../src/backend/demo_api.py#L60)
+- `demo_graph_factory(config: DatabaseConfig, *, use_ai: bool) -> GraphFactory`: Each request opens its own connection (SQLite connections can't be shared across the server's threads). [L86](../src/backend/demo_api.py#L86)
+- **`DiscoverApi`**: The API's behaviour, independent of HTTP (so it can be tested directly). [L110](../src/backend/demo_api.py#L110)
+  - `personas() -> dict[str, Any]`: Every demo person you can view Discover as, suggested ones first. [L123](../src/backend/demo_api.py#L123)
+  - `tags() -> dict[str, Any]`: All topic tags, by label (for the topic filter). [L145](../src/backend/demo_api.py#L145)
+  - `discover(params: dict[str, str]) -> dict[str, Any]`: One page of Discover for a viewer: `viewer`, `page`, `near=1`, `tag`. [L151](../src/backend/demo_api.py#L151)
+  - `search(body: dict[str, Any]) -> dict[str, Any]`: AI search via the search agent: `query`, `viewer`, `near`. Repeat searches come from the cache; one runs at a time. [L168](../src/backend/demo_api.py#L168)
+  - `rsvp(body: dict[str, Any]) -> dict[str, Any]`: Set or clear an RSVP: `viewer`, `event_id`, `status` ("going", "maybe", or null to clear), `near` (records the trip distance). [L206](../src/backend/demo_api.py#L206)
+  - `star(body: dict[str, Any]) -> dict[str, Any]`: Star or unstar an event: `viewer`, `event_id`, `starred` (true/false). [L221](../src/backend/demo_api.py#L221)
+  - `calendar(params: dict[str, str]) -> dict[str, Any]`: A person's calendar for a window: `viewer`, `start`, `end` (ISO 8601 with a time zone, at most 62 days apart). [L235](../src/backend/demo_api.py#L235)
+  - `network(params: dict[str, str]) -> dict[str, Any]`: The network map and the profile of whoever is in the middle: `viewer` (required) and `center` (the viewer, one of their connections, or an org they belong to; default the viewer). [L251](../src/backend/demo_api.py#L251)
+  - `find(params: dict[str, str]) -> dict[str, Any]`: Find people, orgs and events by name: `q` (2-100 characters) and `viewer` (optional; logged-out visitors find no people). [L262](../src/backend/demo_api.py#L262)
+  - `profile(body: dict[str, Any]) -> dict[str, Any]`: Save your own profile and settings: `viewer` plus any of `display_name`, `bio`, `about`, `top3`, `website`, `colors`, `sections`, `profile_visibility`, `rsvp_visibility`, `hide_connections`. Returns your page again (as GET /api/network). [L273](../src/backend/demo_api.py#L273)
 
 ### `src/backend/network_api.py`
 
-JSON for the Network and Profile pages: the map around one node, the profile of whoever is in the middle, and saving your own profile.
+JSON for the Network and Profile pages and for name search: the map around one node, the profile of whoever is in the middle, saving your own profile, and finding people, orgs and events by name.
 
-- `network_json(graph: CollectivizeGraph, viewer: str, center: str | None, now: datetime) -> dict[str, Any]`: The answer to GET /api/network: the map and the center's profile. [L29](../src/backend/network_api.py#L29)
-- `clean_name(name: str) -> str`: A demo name without its "[Demo]" prefix or "(demo role)" suffix. [L37](../src/backend/network_api.py#L37)
-- `person_profile_json(graph: CollectivizeGraph, viewer: str, person_id: str, now: datetime) -> dict[str, Any]`: A person's profile page as the viewer may read it (the shape docs/profile-backend-proposal.md describes, without usernames). Never the email. `settings` is only included on your own profile. [L71](../src/backend/network_api.py#L71)
-- `profile_changes(body: dict[str, Any]) -> dict[str, Any]`: Turn a POST /api/profile body into `ProfileService.update` changes. Only keys that are present are changed. Raises ValueError (with a message safe to show) for anything malformed; the limits themselves are checked by the Person record. [L152](../src/backend/network_api.py#L152)
+- `network_json(graph: CollectivizeGraph, viewer: str, center: str | None, now: datetime) -> dict[str, Any]`: The answer to GET /api/network: the map and the center's profile. [L31](../src/backend/network_api.py#L31)
+- `find_json(graph: CollectivizeGraph, viewer: str | None, text: str, now: datetime) -> dict[str, Any]`: The answer to GET /api/find: people, orgs and events matching a name. [L74](../src/backend/network_api.py#L74)
+- `clean_name(name: str) -> str`: A demo name without its "[Demo]" prefix or "(demo role)" suffix. [L129](../src/backend/network_api.py#L129)
+- `person_profile_json(graph: CollectivizeGraph, viewer: str, person_id: str, now: datetime) -> dict[str, Any]`: A person's profile page as the viewer may read it (the shape docs/profile-backend-proposal.md describes, without usernames). Never the email. `settings` is only included on your own profile. [L163](../src/backend/network_api.py#L163)
+- `profile_changes(body: dict[str, Any]) -> dict[str, Any]`: Turn a POST /api/profile body into `ProfileService.update` changes. Only keys that are present are changed. Raises ValueError (with a message safe to show) for anything malformed; the limits themselves are checked by the Person record. [L244](../src/backend/network_api.py#L244)
 
 ### `src/backend/server.py`
 
 A small local web server for the demo: the frontend pages plus a JSON API.
 
-- **`DemoServer`** (ThreadingHTTPServer): [L64](../src/backend/server.py#L64)
-- **`RequestHandler`** (BaseHTTPRequestHandler): [L72](../src/backend/server.py#L72)
-  - `do_GET() -> None`: API routes, the home redirect, or a static file. [L77](../src/backend/server.py#L77)
-  - `do_POST() -> None`: POST /api/search, /api/rsvp, /api/star and /api/profile. [L95](../src/backend/server.py#L95)
-  - `log_message(format: str, *args) -> None`: One short log line per request (method and path, no query). [L108](../src/backend/server.py#L108)
-- `resolve_static(url_path: str, root: Path = ROOT) -> Path | None`: The file a URL path refers to, or None unless it is a real file inside one of STATIC_DIRS. Blocks '..', encoded traversal, dotfiles and symlinks that lead outside. [L191](../src/backend/server.py#L191)
-- `serve(api: DiscoverApi, port: int = 8000) -> DemoServer`: Create the server on 127.0.0.1 (call .serve_forever() to run it). [L207](../src/backend/server.py#L207)
+- **`DemoServer`** (ThreadingHTTPServer): [L65](../src/backend/server.py#L65)
+- **`RequestHandler`** (BaseHTTPRequestHandler): [L73](../src/backend/server.py#L73)
+  - `do_GET() -> None`: API routes, the home redirect, or a static file. [L78](../src/backend/server.py#L78)
+  - `do_POST() -> None`: POST /api/search, /api/rsvp, /api/star and /api/profile. [L97](../src/backend/server.py#L97)
+  - `log_message(format: str, *args) -> None`: One short log line per request (method and path, no query). [L110](../src/backend/server.py#L110)
+- `resolve_static(url_path: str, root: Path = ROOT) -> Path | None`: The file a URL path refers to, or None unless it is a real file inside one of STATIC_DIRS. Blocks '..', encoded traversal, dotfiles and symlinks that lead outside. [L198](../src/backend/server.py#L198)
+- `serve(api: DiscoverApi, port: int = 8000) -> DemoServer`: Create the server on 127.0.0.1 (call .serve_forever() to run it). [L214](../src/backend/server.py#L214)
 
 ### `src/backend/seed.py`
 

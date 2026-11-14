@@ -1,5 +1,6 @@
-"""JSON for the Network and Profile pages: the map around one node, the
-profile of whoever is in the middle, and saving your own profile.
+"""JSON for the Network and Profile pages and for name search: the map
+around one node, the profile of whoever is in the middle, saving your own
+profile, and finding people, orgs and events by name.
 
 Everything here is built for one viewer from what `NetworkService` and the
 other graph services already let that viewer see. Nothing is sent about
@@ -11,11 +12,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from backend.graph import CollectivizeGraph, ProfileAccess
+from backend.graph import CollectivizeGraph, PermissionDeniedError, ProfileAccess
 from backend.graph.network import NetworkMap, NodeKind
 from backend.objects import (
     Event,
     EventStatus,
+    MemberOf,
     Organization,
     VerificationLevel,
     Visibility,
@@ -29,9 +31,99 @@ SAFE_LINK_PREFIXES = ("https://", "http://")
 def network_json(
     graph: CollectivizeGraph, viewer: str, center: str | None, now: datetime
 ) -> dict[str, Any]:
-    """The answer to GET /api/network: the map and the center's profile."""
-    view = graph.network.node_map(viewer, center)
-    return {**_map_json(view), "profile": _profile_json(graph, viewer, view, now)}
+    """The answer to GET /api/network: the map and the center's profile.
+
+    Someone you aren't connected to, or an org you aren't in, still has a
+    page you may read (as far as they allow), but their network stays
+    closed: `network_open` is false and the map is empty."""
+    try:
+        view = graph.network.node_map(viewer, center)
+    except PermissionDeniedError:
+        return _closed_page(graph, viewer, center, now)  # type: ignore[arg-type]
+    return {
+        **_map_json(view),
+        "network_open": True,
+        "profile": _profile_json(graph, viewer, view, now),
+    }
+
+
+def _closed_page(
+    graph: CollectivizeGraph, viewer: str, center: str, now: datetime
+) -> dict[str, Any]:
+    """A page without its network. `node_map` already checked that the
+    viewer may see this person or org at all (hidden looks missing)."""
+    node = graph.store.any_node(center)
+    is_org = isinstance(node, Organization)
+    profile = (
+        _org_profile(graph, viewer, node, now) if is_org
+        else person_profile_json(graph, viewer, center, now)
+    )
+    return {
+        "center": {"id": center, "name": profile["name"], "kind": "org" if is_org else "person"},
+        "is_self": False,
+        "orgs": [],
+        "people": [],
+        "links": [],
+        "near": [],
+        "truncated": False,
+        "network_open": False,
+        "profile": profile,
+    }
+
+
+def find_json(
+    graph: CollectivizeGraph, viewer: str | None, text: str, now: datetime
+) -> dict[str, Any]:
+    """The answer to GET /api/find: people, orgs and events matching a name."""
+    found = graph.directory.find(viewer, text, now)
+    mine = (
+        {m.target_id for m in graph.store.edges(MemberOf, source_id=viewer) if m.is_confirmed_current}
+        if viewer else set()
+    )
+    return {
+        "query": found.text,
+        "people": {
+            "total": found.people_total,
+            "items": [
+                {
+                    "id": f.person.id,
+                    "name": clean_name(f.person.display_name),
+                    "role": _role(f.person.display_name),
+                    "connected": f.connected,
+                    "in_common": _in_common(graph, viewer, f.person.id),  # type: ignore[arg-type]
+                }
+                for f in found.people
+            ],
+        },
+        "orgs": {
+            "total": found.orgs_total,
+            "items": [
+                {"id": o.id, "name": clean_name(o.name), "kind": o.kind.value, "is_member": o.id in mine}
+                for o in found.orgs
+            ],
+        },
+        "events": {
+            "total": found.events_total,
+            "items": [
+                {
+                    "id": i.event.id,
+                    "title": i.event.title,
+                    "starts_at": i.event.starts_at.isoformat(),
+                    "location": i.event.location,
+                    "host": clean_name(
+                        i.host.name if isinstance(i.host, Organization) else i.host.display_name
+                    ),
+                    "is_cancelled": i.is_cancelled,
+                }
+                for i in found.events
+            ],
+        },
+    }
+
+
+def _role(display_name: str) -> str:
+    """The demo role in a name like "Drew (demo student)", or ""."""
+    return display_name.split("(demo ", 1)[1].rstrip(")") if "(demo " in display_name else ""
 
 
 def clean_name(name: str) -> str:
@@ -82,7 +174,7 @@ def person_profile_json(
         "kind": "person",
         "id": person.id,
         "name": clean_name(name),
-        "role": name.split("(demo ", 1)[1].rstrip(")") if "(demo " in name else "",
+        "role": _role(name),
         "verified": person.verification_level is not VerificationLevel.NONE,
         "colors": {"background": person.color_background, "outline": person.color_outline},
         "access": view.access.value,
@@ -214,6 +306,7 @@ def _org_profile(
     return {
         "kind": "org",
         "name": clean_name(org.name),
+        "is_member": graph.membership.is_member(viewer, org.id),
         "org_kind": org.kind.value,
         "website": website if website.startswith(SAFE_LINK_PREFIXES) else None,
         "upcoming_count": len(upcoming),
