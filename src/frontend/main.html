@@ -3,46 +3,107 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My First Web Page</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            max-width: 800px;
-            margin: 40px auto;
-            padding: 0 20px;
-            color: #333;
-        }
-        header {
-            border-bottom: 2px solid #007BFF;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-        }
-        a {
-            color: #007BFF;
-        }
-    </style>
+    <meta name="theme-color" content="#f5f4f0">
+    <title>Collectivize — Demo graph</title>
+    <link rel="stylesheet" href="main.css">
+    <script src="main.js" defer></script>
 </head>
 <body>
+    <div class="app-shell">
+        <header class="topbar">
+            <a class="brand" href="#" aria-label="Collectivize home">
+                <span class="brand-mark" aria-hidden="true">c</span>
+                <span>collectivize</span>
+            </a>
+            <div class="topbar-context">
+                <span class="context-dot" aria-hidden="true"></span>
+                <span>Northbridge University</span>
+                <span class="context-divider">/</span>
+                <span class="context-muted">Network explorer</span>
+            </div>
+            <span class="demo-badge"><span aria-hidden="true">●</span> DEMO DATA</span>
+        </header>
 
-    <header>
-        <h1>Welcome to My Website</h1>
-        <p>Built from scratch with HTML.</p>
-    </header>
+        <main>
+            <section class="page-heading" aria-labelledby="page-title">
+                <div>
+                    <p class="eyebrow">A living campus network</p>
+                    <h1 id="page-title">See how it all connects<span>.</span></h1>
+                    <p class="intro">Organizations, people, and events form one shared graph. Select any node to explore its connections.</p>
+                </div>
+                <div class="seed-note">
+                    <span class="seed-icon" aria-hidden="true">✳</span>
+                    <span><strong>Sample graph</strong><br>Mirrors the backend seed scenario</span>
+                </div>
+            </section>
 
-    <main>
-        <h2>About This Page</h2>
-        <p>HTML uses tags to organize content like headings, paragraphs, and lists.</p>
+            <section class="stats" aria-label="Graph summary">
+                <div class="stat-card"><span class="stat-number" id="stat-nodes">—</span><span class="stat-label">nodes</span></div>
+                <div class="stat-card"><span class="stat-number" id="stat-links">—</span><span class="stat-label">relationships</span></div>
+                <div class="stat-card"><span class="stat-number" id="stat-events">—</span><span class="stat-label">demo events</span></div>
+                <div class="stat-card stat-highlight"><span class="stat-number">1</span><span class="stat-label">co-hosted event</span></div>
+            </section>
 
-        <h3>Things I Can Add Next</h3>
-        <ul>
-            <li>Images using the <code>&lt;img&gt;</code> tag</li>
-            <li>Links to other pages using the <code>&lt;a&gt;</code> tag</li>
-            <li>Interactive features with JavaScript</li>
-        </ul>
+            <section class="workspace" aria-label="Interactive graph explorer">
+                <div class="graph-panel">
+                    <div class="graph-toolbar">
+                        <div>
+                            <h2>Campus network <span class="live-pill"><span aria-hidden="true"></span> MOCK WORLD</span></h2>
+                            <p>Relationships flow from left to right. Hover a line for its meaning.</p>
+                        </div>
+                        <button class="reset-button" id="reset-view" type="button">Reset view <span aria-hidden="true">↺</span></button>
+                    </div>
 
-        <p>Learn more at <a href="https://mozilla.org" target="_blank">MDN Web Docs</a>.</p>
-    </main>
+                    <div class="layer-controls" role="group" aria-label="Toggle graph layers">
+                        <span class="control-label">LAYERS</span>
+                        <button class="layer-toggle is-on" data-layer="people" type="button" aria-pressed="true"><span class="layer-dot people-dot"></span>People</button>
+                        <button class="layer-toggle is-on" data-layer="orgs" type="button" aria-pressed="true"><span class="layer-dot org-dot"></span>Organizations</button>
+                        <button class="layer-toggle is-on" data-layer="events" type="button" aria-pressed="true"><span class="layer-dot event-dot"></span>Events</button>
+                        <button class="layer-toggle is-on" data-layer="tags" type="button" aria-pressed="true"><span class="layer-dot tag-dot"></span>Topics</button>
+                    </div>
 
+                    <div class="graph-viewport" id="graph-viewport" tabindex="0" aria-label="Scrollable relationship graph">
+                        <svg id="graph" class="graph" viewBox="0 0 1430 1080" role="img" aria-labelledby="graph-title graph-description">
+                            <title id="graph-title">Northbridge University demo network graph</title>
+                            <desc id="graph-description">A graph of five people, six organizations, a recurring event series and its occurrences, other events, and topic tags.</desc>
+                        </svg>
+                    </div>
+
+                    <div class="graph-footer">
+                        <div class="legend" aria-label="Relationship legend">
+                            <span><i class="legend-line hierarchy-line"></i>Hierarchy</span>
+                            <span><i class="legend-line membership-line"></i>Membership</span>
+                            <span><i class="legend-line hosting-line"></i>Hosts</span>
+                            <span><i class="legend-line topic-line"></i>Tagged with</span>
+                        </div>
+                        <span class="pan-hint">Scroll to explore <span aria-hidden="true">↔</span></span>
+                    </div>
+                </div>
+
+                <aside class="inspector" id="inspector" aria-live="polite">
+                    <div class="inspector-top">
+                        <span class="inspector-kicker">NODE DETAILS</span>
+                        <span class="inspector-menu" aria-hidden="true">•••</span>
+                    </div>
+                    <div class="inspector-empty" id="inspector-empty">
+                        <div class="empty-graphic" aria-hidden="true">
+                            <span class="empty-node empty-node-a"></span>
+                            <span class="empty-node empty-node-b"></span>
+                            <span class="empty-node empty-node-c"></span>
+                            <span class="empty-link empty-link-a"></span>
+                            <span class="empty-link empty-link-b"></span>
+                        </div>
+                        <h3>Pick a node to explore</h3>
+                        <p>See who belongs to an organization, what it hosts, and how the wider network connects.</p>
+                    </div>
+                    <div class="inspector-content" id="inspector-content" hidden></div>
+                    <div class="inspector-tip"><span aria-hidden="true">↗</span> Every line represents a relationship in the graph.</div>
+                </aside>
+            </section>
+
+            <p class="data-disclaimer"><span aria-hidden="true">ⓘ</span> All names and connections shown are fictional sample data. Pending and draft relationships are included to illustrate graph states.</p>
+        </main>
+        <footer class="page-footer"><span>COLLECTIVIZE</span><span>People + organizations, naturally connected.</span></footer>
+    </div>
 </body>
 </html>
