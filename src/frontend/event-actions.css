@@ -1,0 +1,55 @@
+/* The "I'm going" / "Maybe" / star buttons (built by shared.js), used on
+   Discover cards and in the calendar's day panel. */
+
+.ev-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+.ev-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid #e6e5df;
+    border-radius: 999px;
+    background: #fbfaf7;
+    color: #202b29;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 550;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease, color .15s ease, transform .1s ease;
+}
+
+.ev-action svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.ev-action:hover:not(:disabled) { border-color: #c9cfcb; background: #fff; }
+
+.ev-action:active:not(:disabled) { transform: scale(.97); }
+
+.ev-action:focus-visible { outline: 2px solid #266956; outline-offset: 2px; }
+
+.ev-action:disabled { opacity: .45; cursor: not-allowed; }
+
+.ev-action.is-going[aria-pressed="true"] { border-color: #266956; background: #266956; color: #fff; }
+
+.ev-action.is-maybe[aria-pressed="true"] { border-color: #266956; background: #e8f2ed; color: #266956; }
+
+.ev-action.is-star { width: 32px; padding: 0; justify-content: center; color: #5f6b67; }
+
+.ev-action.is-star[aria-pressed="true"] { border-color: #e2b23a; background: #fbf3dc; color: #a66d00; }
+
+.ev-action.is-star[aria-pressed="true"] svg { fill: #f2c14e; }
+
+.ev-actions.is-busy { cursor: progress; }
+
+@media (prefers-reduced-motion: reduce) {
+    .ev-action { transition: none; }
+}

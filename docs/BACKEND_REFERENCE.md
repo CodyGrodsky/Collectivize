@@ -2,7 +2,7 @@
 
 Every public class and function in the Collectivize backend (`src/backend/`): what it does and where it lives. Each entry links to its line in the source, for example [L35](../src/backend/graph/membership.py#L35).
 
-Line numbers were current on 2026-11-14 (updated for the demo server and the generated demo world). If one has moved, search the file for the function name.
+Line numbers were current on 2026-11-14. If one has moved, search the file for the function name.
 
 ## Start here
 
@@ -72,7 +72,6 @@ In tests, use `CollectivizeGraph()` for an in-memory graph, or pass a store: `Co
 | [`seed_test_db.py`](../scripts/seed_test_db.py) | Fill the test database with the fictional demo world (`--reset` to start over; refuses production). |
 | [`check_graph.py`](../scripts/check_graph.py) | Run the integrity audit on the configured database. |
 | [`ai_search.py`](../scripts/ai_search.py) | Try a search from the terminal: the agent by default, or one AI call with `--single` (costs a little). |
-| [`serve.py`](../scripts/serve.py) | Run the local demo server: the frontend pages plus the JSON API behind Discover (`--no-ai` for keyword search only). |
 | [`export_ml_dataset.py`](../scripts/export_ml_dataset.py) | Export the consent-gated, pseudonymized dataset to `data/exports/` (needs `COLLECTIVIZE_EXPORT_KEY`). |
 
 ## Contents
@@ -85,7 +84,7 @@ In tests, use `CollectivizeGraph()` for an in-memory graph, or pass a store: `Co
 6. [Privacy, integrity and data access](#privacy-integrity-and-data-access)
 7. [Storage](#storage)
 8. [Domain objects (nodes and edges)](#domain-objects-nodes-and-edges)
-9. [Setup, configuration, demo server and demo data](#setup-configuration-demo-server-and-demo-data)
+9. [Setup, configuration and demo data](#setup-configuration-and-demo-data)
 
 In the lists below, **bold names** are classes, the indented items are their methods, and *(property)* marks a value read without calling it.
 
@@ -131,12 +130,12 @@ PART_OF rules: mutual acceptance (or staff verification), allowed kinds per org 
 
 Org member lists, governed by one policy object.
 
-- **`RosterPolicy`**: Who may see an org's member list. [L43](../src/backend/graph/roster.py#L43)
-- **`RosterEntry`**: One member on a member list: the person, their role, and since when. [L62](../src/backend/graph/roster.py#L62)
-- **`RosterService`**: Member lists, governed by `RosterPolicy`. `graph.roster`. [L68](../src/backend/graph/roster.py#L68)
-  - `can_see(viewer_id: str | None, org_id: str) -> bool`: Whether a viewer may see an org's member list (roster policy, capped by the org's visibility). [L79](../src/backend/graph/roster.py#L79)
-  - `shows(viewer_id: str | None, edge: MemberOf) -> bool`: Whether this one membership appears on the list for this viewer. [L92](../src/backend/graph/roster.py#L92)
-  - `members(org_id: str, viewer_id: str | None) -> tuple[RosterEntry, ...]`: An org's confirmed members visible to the viewer; raises if they can't see the list. [L98](../src/backend/graph/roster.py#L98)
+- **`RosterPolicy`**: Who may see an org's member list. [L45](../src/backend/graph/roster.py#L45)
+- **`RosterEntry`**: One member on a member list: the person, their role, and since when. [L64](../src/backend/graph/roster.py#L64)
+- **`RosterService`**: Member lists, governed by `RosterPolicy`. `graph.roster`. [L70](../src/backend/graph/roster.py#L70)
+  - `can_see(viewer_id: str | None, org_id: str) -> bool`: Whether a viewer may see an org's member list (roster policy, capped by the org's visibility). [L83](../src/backend/graph/roster.py#L83)
+  - `shows(viewer_id: str | None, edge: MemberOf) -> bool`: Whether this one membership appears on the list for this viewer. [L96](../src/backend/graph/roster.py#L96)
+  - `members(org_id: str, viewer_id: str | None) -> tuple[RosterEntry, ...]`: An org's confirmed members visible to the viewer (connections-only members only to their connections and themselves); raises if they can't see the list. [L102](../src/backend/graph/roster.py#L102)
 
 ## People and the network
 
@@ -191,30 +190,30 @@ The network view: people and orgs as nodes, linked by accepted connections (pers
 
 ## Events
 
-Creating, publishing and editing events; people and orgs as hosts; co-hosting by invite or request; series; calendars; RSVPs.
+Creating, publishing and editing events; people and orgs as hosts; co-hosting by invite or request; series; calendars (host and personal); RSVPs and stars.
 
 ### `src/backend/graph/events.py`
 
 HOSTS and TAGGED rules plus the event lifecycle.
 
-- **`EventService`**: Event lifecycle, hosts (people or orgs), co-host invites, and tagging. `graph.events`. [L38](../src/backend/graph/events.py#L38)
-  - `host_edges(event_id: str) -> list[Hosts]`: An event's accepted host links. [L45](../src/backend/graph/events.py#L45)
-  - `primary_host_id(event_id: str) -> str`: Id of the event's primary host (error unless there is exactly one). [L48](../src/backend/graph/events.py#L48)
-  - `host_ids(event_id: str) -> set[str]`: Every accepted host, people and orgs. [L54](../src/backend/graph/events.py#L54)
-  - `host_org_ids(event_id: str) -> set[str]`: Ids of the accepted hosts that are orgs. [L58](../src/backend/graph/events.py#L58)
-  - `acts_for(person_id: str, host_id: str) -> bool`: A person acts for themselves, and for orgs they are an admin of. [L65](../src/backend/graph/events.py#L65)
-  - `can_edit(person_id: str, event_id: str) -> bool`: Whether a person may edit the event (they act for an accepted host). [L72](../src/backend/graph/events.py#L72)
-  - `host_node(host_id: str) -> Person | Organization`: Load a host (person or org); `NotFoundError` for anything else. [L75](../src/backend/graph/events.py#L75)
-  - `create(event: Event, host_id: str, by_person_id: str) -> Event`: `host_id` is the primary host: the creator themselves, or an org the creator is an admin of. [L83](../src/backend/graph/events.py#L83)
-  - `publish(event_id: str, by_person_id: str, now: datetime) -> Event`: Publish a draft (must start in the future); updates the primary org's last-published time. [L103](../src/backend/graph/events.py#L103)
-  - `revise(event_id: str, by_person_id: str, now: datetime, **changes) -> Event`: Edit an event's details; time and location changes are logged once it's published. [L111](../src/backend/graph/events.py#L111)
-  - `cancel(event_id: str, by_person_id: str) -> Event`: Cancel an event (a published one stays listed as cancelled until it ends). [L117](../src/backend/graph/events.py#L117)
-  - `archive(event_id: str, by_person_id: str) -> Event`: Archive an event: dropped from discovery, kept for history. [L121](../src/backend/graph/events.py#L121)
-  - `invite_co_host(event_id: str, host_id: str, by_person_id: str, now: datetime) -> Hosts`: An existing host asks a person or org to co-host. Nothing changes for the invited party until it accepts. [L127](../src/backend/graph/events.py#L127)
-  - `accept_co_host(edge_id: str, by_person_id: str) -> Hosts`: Approve a pending co-host link. An invitation is approved by the invited person (or an admin of the invited org); a request to join is approved by anyone acting for a current host of the event. [L144](../src/backend/graph/events.py#L144)
-  - `remove_co_host(edge_id: str, by_person_id: str) -> Hosts`: Decline, withdraw, leave or remove. The co-host itself and the primary host can always do it; any current host can also decline a pending request to join. [L156](../src/backend/graph/events.py#L156)
-  - `release_host(host_id: str) -> None`: Called when a host's account is erased. Events they were primary host of pass to the earliest accepted co-host, or are deleted when nobody else is hosting them. [L174](../src/backend/graph/events.py#L174)
-  - `tag(subject_id: str, tag_id: str, by_person_id: str, now: datetime) -> Tagged`: Orgs and events are tagged by their admins. [L189](../src/backend/graph/events.py#L189)
+- **`EventService`**: Event lifecycle, hosts (people or orgs), co-host invites, and tagging. `graph.events`. [L46](../src/backend/graph/events.py#L46)
+  - `host_edges(event_id: str) -> list[Hosts]`: An event's accepted host links. [L53](../src/backend/graph/events.py#L53)
+  - `primary_host_id(event_id: str) -> str`: Id of the event's primary host (error unless there is exactly one). [L56](../src/backend/graph/events.py#L56)
+  - `host_ids(event_id: str) -> set[str]`: Every accepted host, people and orgs. [L62](../src/backend/graph/events.py#L62)
+  - `host_org_ids(event_id: str) -> set[str]`: Ids of the accepted hosts that are orgs. [L66](../src/backend/graph/events.py#L66)
+  - `acts_for(person_id: str, host_id: str) -> bool`: A person acts for themselves, and for orgs they are an admin of. [L73](../src/backend/graph/events.py#L73)
+  - `can_edit(person_id: str, event_id: str) -> bool`: Whether a person may edit the event (they act for an accepted host). [L80](../src/backend/graph/events.py#L80)
+  - `host_node(host_id: str) -> Person | Organization`: Load a host (person or org); `NotFoundError` for anything else. [L83](../src/backend/graph/events.py#L83)
+  - `create(event: Event, host_id: str, by_person_id: str) -> Event`: `host_id` is the primary host: the creator themselves, or an org the creator is an admin of. [L91](../src/backend/graph/events.py#L91)
+  - `publish(event_id: str, by_person_id: str, now: datetime) -> Event`: Publish a draft (must start in the future); updates the primary org's last-published time. [L111](../src/backend/graph/events.py#L111)
+  - `revise(event_id: str, by_person_id: str, now: datetime, **changes) -> Event`: Edit an event's details; time and location changes are logged once it's published. [L119](../src/backend/graph/events.py#L119)
+  - `cancel(event_id: str, by_person_id: str) -> Event`: Cancel an event (primary host only); closes pending co-host links. A published one stays listed as cancelled until it ends. [L125](../src/backend/graph/events.py#L125)
+  - `archive(event_id: str, by_person_id: str) -> Event`: Archive an event (primary host only): closes pending co-host links, drops it from discovery, keeps it for history. [L130](../src/backend/graph/events.py#L130)
+  - `invite_co_host(event_id: str, host_id: str, by_person_id: str, now: datetime) -> Hosts`: An existing host asks a person or org to co-host. Nothing changes for the invited party until it accepts. [L137](../src/backend/graph/events.py#L137)
+  - `accept_co_host(edge_id: str, by_person_id: str) -> Hosts`: Approve a pending co-host link. An invitation is approved by the invited person (or an admin of the invited org); a request to join is approved by anyone acting for a current host of the event. [L156](../src/backend/graph/events.py#L156)
+  - `remove_co_host(edge_id: str, by_person_id: str) -> Hosts`: Decline, withdraw, leave or remove. The co-host itself and the primary host can always do it; any current host can also decline a pending request to join. [L178](../src/backend/graph/events.py#L178)
+  - `release_host(host_id: str) -> None`: Called when a host's account is erased. Events they were primary host of pass to the earliest accepted co-host, or are deleted when nobody else is hosting them. Links saved before acceptance was ordered (`accept_order` 0) come last. [L201](../src/backend/graph/events.py#L201)
+  - `tag(subject_id: str, tag_id: str, by_person_id: str, now: datetime) -> Tagged`: Orgs and events are tagged by their admins. [L220](../src/backend/graph/events.py#L220)
 
 ### `src/backend/graph/cohosting.py`
 
@@ -254,6 +253,26 @@ RSVP rules (user_Orgs.md, Person -> Event: RSVP).
   - `set_rsvp_visibility(person_id: str, by_person_id: str, level: Visibility) -> Person`: Who can see your RSVPs: NETWORK, CONNECTIONS or PRIVATE (nobody). [L132](../src/backend/graph/rsvps.py#L132)
   - `friends_going(viewer_id: str | None, event_id: str, *, friend_ids: set[str] | None = None) -> tuple[Person, ...]`: Your connections who are going and let you see it. Pass `friend_ids` to reuse a viewer's connections across many events. [L149](../src/backend/graph/rsvps.py#L149)
   - `going_count(event_id: str) -> int | None`: Everyone going, or None while it's under MIN_PUBLIC_COUNT. [L175](../src/backend/graph/rsvps.py#L175)
+
+### `src/backend/graph/stars.py`
+
+Stars: a person's private bookmarks on events.
+
+- **`StarService`**: [L30](../src/backend/graph/stars.py#L30)
+  - `star(event_id: str, person_id: str, now: datetime) -> Starred`: Bookmark an event (idempotent). [L35](../src/backend/graph/stars.py#L35)
+  - `unstar(event_id: str, person_id: str) -> bool`: Remove a bookmark. True if there was one. [L57](../src/backend/graph/stars.py#L57)
+  - `star_of(event_id: str, person_id: str) -> Starred | None`: A person's star on an event, if they starred it. [L64](../src/backend/graph/stars.py#L64)
+  - `starred_event_ids(person_id: str | None) -> set[str]`: Ids of the events a person has starred (empty for logged-out visitors). [L69](../src/backend/graph/stars.py#L69)
+
+### `src/backend/graph/my_calendar.py`
+
+A person's own calendar: their events, and the community's.
+
+- **`Relation`** (enum): [L48](../src/backend/graph/my_calendar.py#L48)
+- **`CalendarEntry`**: [L57](../src/backend/graph/my_calendar.py#L57)
+- **`PersonalCalendar`**: [L64](../src/backend/graph/my_calendar.py#L64)
+- **`PersonalCalendarService`**: [L72](../src/backend/graph/my_calendar.py#L72)
+  - `for_viewer(viewer_id: str | None, start: datetime, end: datetime) -> PersonalCalendar`: The viewer's events and the community's that overlap [start, end). [L85](../src/backend/graph/my_calendar.py#L85)
 
 ## Discover and ranking
 
@@ -351,11 +370,11 @@ AI search: "find me something fast paced that uses my brain".
 
 Agentic search: Claude works out what the person wants, looks up what matters about them, runs its own searches, and picks the best events.
 
-- **`AgentError`** (Exception): The agent run didn't finish properly; fall back. [L87](../src/backend/graph/search_agent.py#L87)
-- **`AgentStep`**: One tool call the search agent made: tool, input, whether it errored. [L92](../src/backend/graph/search_agent.py#L92)
-- **`AgentSearchResult`**: The agent's goal, its ranked picks, its steps, and whether it fell back. [L99](../src/backend/graph/search_agent.py#L99)
-- **`SearchAgentService`**: The search agent: Claude with tools, in a capped loop. `graph.search_agent`. [L107](../src/backend/graph/search_agent.py#L107)
-  - `search(viewer_id: str | None, sentence: str, now: datetime, *, origin: GeoPoint | None = None) -> AgentSearchResult`: Agentic search: Claude works out the goal, reads the person, runs searches and submits picks; returns ranked picks and the steps taken; falls back. [L129](../src/backend/graph/search_agent.py#L129)
+- **`AgentError`** (Exception): The agent run didn't finish properly; fall back. [L91](../src/backend/graph/search_agent.py#L91)
+- **`AgentStep`**: One tool call the search agent made: tool, input, whether it errored. [L96](../src/backend/graph/search_agent.py#L96)
+- **`AgentSearchResult`**: The agent's goal, its ranked picks, its steps, and whether it fell back. [L103](../src/backend/graph/search_agent.py#L103)
+- **`SearchAgentService`**: The search agent: Claude with tools, in a capped loop. `graph.search_agent`. [L111](../src/backend/graph/search_agent.py#L111)
+  - `search(viewer_id: str | None, sentence: str, now: datetime, *, origin: GeoPoint | None = None) -> AgentSearchResult`: Agentic search: Claude works out the goal, reads the person, runs searches and submits picks; returns ranked picks and the steps taken; falls back. [L133](../src/backend/graph/search_agent.py#L133)
 
 ### `src/backend/graph/search_tools.py`
 
@@ -372,11 +391,13 @@ The tools the search agent may call, bound to one viewer and one search.
 
 The Claude-backed interpreter for AI search.
 
-- **`ClaudeInterpreter`**: The Claude-backed `RequestInterpreter` (one structured call per search). [L97](../src/backend/graph/claude_interpreter.py#L97)
-  - `interpret(request: SearchRequest) -> Interpretation`: One Claude call (structured JSON) scoring the candidates; raises `InterpreterError` on any failure. [L111](../src/backend/graph/claude_interpreter.py#L111)
-- `make_client(timeout: float = TIMEOUT_SECONDS) -> Any`: An Anthropic client using the key from backend.credentials, or the SDK's own credential sources when no key is stored. [L152](../src/backend/graph/claude_interpreter.py#L152)
-- `build_user_message(request: SearchRequest) -> str`: The JSON Claude sees. Only fields defined on the request types, which hold no names of people, emails or positions. [L162](../src/backend/graph/claude_interpreter.py#L162)
-- `parse_answer(text: str, refs: set[str]) -> Interpretation`: Validate Claude's JSON. Unknown refs are dropped, scores must be real numbers in [0, 1] (slightly out-of-range values are clamped), duplicate refs keep the first answer, and reasons are trimmed. [L174](../src/backend/graph/claude_interpreter.py#L174)
+- **`ClaudeInterpreter`**: The Claude-backed `RequestInterpreter` (one structured call per search). [L103](../src/backend/graph/claude_interpreter.py#L103)
+  - `interpret(request: SearchRequest) -> Interpretation`: One Claude call (structured JSON) scoring the candidates; raises `InterpreterError` on any failure. [L117](../src/backend/graph/claude_interpreter.py#L117)
+- `refusal_fallback(model: str) -> dict[str, Any]`: Request options for the server-side refusal fallback, for models that have one (none for Haiku 5.5). [L158](../src/backend/graph/claude_interpreter.py#L158)
+- `thinking_options(model: str) -> dict[str, Any]`: Haiku 5.5 thinks by default; for scoring one list at low effort that mostly adds latency, so it's turned off there (allowed at effort low to high, and this call uses no tools). Other models keep adaptive thinking. [L166](../src/backend/graph/claude_interpreter.py#L166)
+- `make_client(timeout: float = TIMEOUT_SECONDS) -> Any`: An Anthropic client using the key from backend.credentials, or the SDK's own credential sources when no key is stored. [L175](../src/backend/graph/claude_interpreter.py#L175)
+- `build_user_message(request: SearchRequest) -> str`: The JSON Claude sees. Only fields defined on the request types, which hold no names of people, emails or positions. [L185](../src/backend/graph/claude_interpreter.py#L185)
+- `parse_answer(text: str, refs: set[str]) -> Interpretation`: Validate Claude's JSON. Unknown refs are dropped, scores must be real numbers in [0, 1] (slightly out-of-range values are clamped), duplicate refs keep the first answer, and reasons are trimmed. [L197](../src/backend/graph/claude_interpreter.py#L197)
 
 ## Privacy, integrity and data access
 
@@ -597,22 +618,24 @@ Edges of the Collectivize graph.
 - **`HostRole`** (enum): Primary host or co-host. [L189](../src/backend/objects/edges.py#L189)
 - **`HostOrigin`** (enum): How a co-host link started, which decides who must approve it. [L194](../src/backend/objects/edges.py#L194)
 - **`Hosts`** (Edge): Org or Person (source) is responsible for Event (target). An event has one primary host and any number of co-hosts, people or orgs. A co-host counts only once the other side approves: the invited party for an invitation, or a current host for a request to join. [L202](../src/backend/objects/edges.py#L202)
-  - Fields: `role`, `accepted`, `origin`
-  - `is_effective` (property): Active and accepted. [L216](../src/backend/objects/edges.py#L216)
-- **`InstanceOf`** (Edge): Event (source) is one occurrence of EventSeries (target). [L221](../src/backend/objects/edges.py#L221)
-- **`RsvpStatus`** (enum): Going, interested or not going. [L231](../src/backend/objects/edges.py#L231)
-- **`Rsvp`** (PersonOwnedEdge): A person's RSVP to an event (Person → Event). [L238](../src/backend/objects/edges.py#L238)
+  - Fields: `role`, `accepted`, `origin`, `accept_order`
+  - `is_effective` (property): Active and accepted. [L219](../src/backend/objects/edges.py#L219)
+- **`InstanceOf`** (Edge): Event (source) is one occurrence of EventSeries (target). [L224](../src/backend/objects/edges.py#L224)
+- **`RsvpStatus`** (enum): Going, interested or not going. [L234](../src/backend/objects/edges.py#L234)
+- **`Rsvp`** (PersonOwnedEdge): A person's RSVP to an event (Person → Event). [L241](../src/backend/objects/edges.py#L241)
   - Fields: `status`, `updated_at`, `trip_recorded`
-- **`AttendanceMethod`** (enum): How attendance was recorded: self-reported, host check-in or ticket scan. [L247](../src/backend/objects/edges.py#L247)
-- **`Attended`** (PersonOwnedEdge): Strongest signal; private by default (location history is sensitive). [L254](../src/backend/objects/edges.py#L254)
+- **`AttendanceMethod`** (enum): How attendance was recorded: self-reported, host check-in or ticket scan. [L250](../src/backend/objects/edges.py#L250)
+- **`Attended`** (PersonOwnedEdge): Strongest signal; private by default (location history is sensitive). [L257](../src/backend/objects/edges.py#L257)
   - Fields: `method`, `visibility`
-- **`ConnectionOrigin`** (enum): How a connection started: a request, or an invite. [L267](../src/backend/objects/edges.py#L267)
-- **`Connected`** (PersonOwnedEdge): Mutual connection; exists only when both people accept. The source is whoever sent the request. Visible to logged-in users by default; either person can hide their whole list (`Person.hide_connections`), and a connection shows only if neither person has. [L273](../src/backend/objects/edges.py#L273)
+- **`ConnectionOrigin`** (enum): How a connection started: a request, or an invite. [L270](../src/backend/objects/edges.py#L270)
+- **`Connected`** (PersonOwnedEdge): Mutual connection; exists only when both people accept. The source is whoever sent the request. Visible to logged-in users by default; either person can hide their whole list (`Person.hide_connections`), and a connection shows only if neither person has. [L276](../src/backend/objects/edges.py#L276)
   - Fields: `source_accepted`, `target_accepted`, `origin`, `visibility`
-  - `is_established` (property): Active and accepted by both people. [L288](../src/backend/objects/edges.py#L288)
-- **`Tagged`** (Edge): Org or Event (source) is tagged with Tag (target) by its admins. [L296](../src/backend/objects/edges.py#L296)
-- **`InterestedIn`** (PersonOwnedEdge): Later. Person (source) -> Tag (target). Set only by the person. [L304](../src/backend/objects/edges.py#L304)
+  - `is_established` (property): Active and accepted by both people. [L291](../src/backend/objects/edges.py#L291)
+- **`Tagged`** (Edge): Org or Event (source) is tagged with Tag (target) by its admins. [L299](../src/backend/objects/edges.py#L299)
+- **`InterestedIn`** (PersonOwnedEdge): Later. Person (source) -> Tag (target). Set only by the person. [L307](../src/backend/objects/edges.py#L307)
   - Fields: `visibility`
+- **`Starred`** (PersonOwnedEdge): Person (source) bookmarked Event (target): a private "save this". [L317](../src/backend/objects/edges.py#L317)
+  - Fields: `starred_at`, `visibility`
 
 ### `src/backend/objects/taxonomy.py`
 
@@ -675,24 +698,32 @@ Where secrets come from. Never from source code or files in the repo.
 
 - `anthropic_api_key() -> str | None`: The Anthropic API key: `ANTHROPIC_API_KEY`, else the macOS Keychain, else `None`. [L29](../src/backend/credentials.py#L29)
 
+### `src/backend/demo_api.py`
+
+The demo API's behaviour, independent of HTTP (server.py wraps it).
+
+- **`ApiError`** (Exception): [L57](../src/backend/demo_api.py#L57)
+- `demo_graph_factory(config: DatabaseConfig, *, use_ai: bool) -> GraphFactory`: Each request opens its own connection (SQLite connections can't be shared across the server's threads). [L83](../src/backend/demo_api.py#L83)
+- **`DiscoverApi`**: The API's behaviour, independent of HTTP (so it can be tested directly). [L107](../src/backend/demo_api.py#L107)
+  - `personas() -> dict[str, Any]`: Every demo person you can view Discover as, suggested ones first. [L120](../src/backend/demo_api.py#L120)
+  - `tags() -> dict[str, Any]`: All topic tags, by label (for the topic filter). [L142](../src/backend/demo_api.py#L142)
+  - `discover(params: dict[str, str]) -> dict[str, Any]`: One page of Discover for a viewer: `viewer`, `page`, `near=1`, `tag`. [L148](../src/backend/demo_api.py#L148)
+  - `search(body: dict[str, Any]) -> dict[str, Any]`: AI search via the search agent: `query`, `viewer`, `near`. Repeat searches come from the cache; one runs at a time. [L165](../src/backend/demo_api.py#L165)
+  - `rsvp(body: dict[str, Any]) -> dict[str, Any]`: Set or clear an RSVP: `viewer`, `event_id`, `status` ("going", "maybe", or null to clear), `near` (records the trip distance). [L203](../src/backend/demo_api.py#L203)
+  - `star(body: dict[str, Any]) -> dict[str, Any]`: Star or unstar an event: `viewer`, `event_id`, `starred` (true/false). [L218](../src/backend/demo_api.py#L218)
+  - `calendar(params: dict[str, str]) -> dict[str, Any]`: A person's calendar for a window: `viewer`, `start`, `end` (ISO 8601 with a time zone, at most 62 days apart). [L232](../src/backend/demo_api.py#L232)
+
 ### `src/backend/server.py`
 
 A small local web server for the demo: the frontend pages plus a JSON API.
 
-- **`ApiError`** (Exception): [L74](../src/backend/server.py#L74)
-- `demo_graph_factory(config: DatabaseConfig, *, use_ai: bool) -> GraphFactory`: Each request opens its own connection (SQLite connections can't be shared across the server's threads). [L100](../src/backend/server.py#L100)
-- **`DiscoverApi`**: The API's behaviour, independent of HTTP (so it can be tested directly). [L124](../src/backend/server.py#L124)
-  - `personas() -> dict[str, Any]`: Every demo person you can view Discover as, suggested ones first. [L137](../src/backend/server.py#L137)
-  - `tags() -> dict[str, Any]`: All topic tags, by label (for the topic filter). [L159](../src/backend/server.py#L159)
-  - `discover(params: dict[str, str]) -> dict[str, Any]`: One page of Discover for a viewer: `viewer`, `page`, `near=1`, `tag`. [L165](../src/backend/server.py#L165)
-  - `search(body: dict[str, Any]) -> dict[str, Any]`: AI search via the search agent: `query`, `viewer`, `near`. Repeat searches come from the cache; one runs at a time. [L181](../src/backend/server.py#L181)
-- **`DemoServer`** (ThreadingHTTPServer): [L308](../src/backend/server.py#L308)
-- **`RequestHandler`** (BaseHTTPRequestHandler): [L316](../src/backend/server.py#L316)
-  - `do_GET() -> None`: API routes, the home redirect, or a static file. [L321](../src/backend/server.py#L321)
-  - `do_POST() -> None`: POST /api/search only. [L337](../src/backend/server.py#L337)
-  - `log_message(format: str, *args) -> None`: One short log line per request (method and path, no query). [L344](../src/backend/server.py#L344)
-- `resolve_static(url_path: str, root: Path = ROOT) -> Path | None`: The file a URL path refers to, or None unless it is a real file inside one of STATIC_DIRS. Blocks '..', encoded traversal, dotfiles and symlinks that lead outside. [L420](../src/backend/server.py#L420)
-- `serve(api: DiscoverApi, port: int = 8000) -> DemoServer`: Create the server on 127.0.0.1 (call .serve_forever() to run it). [L436](../src/backend/server.py#L436)
+- **`DemoServer`** (ThreadingHTTPServer): [L60](../src/backend/server.py#L60)
+- **`RequestHandler`** (BaseHTTPRequestHandler): [L68](../src/backend/server.py#L68)
+  - `do_GET() -> None`: API routes, the home redirect, or a static file. [L73](../src/backend/server.py#L73)
+  - `do_POST() -> None`: POST /api/search, /api/rsvp and /api/star. [L90](../src/backend/server.py#L90)
+  - `log_message(format: str, *args) -> None`: One short log line per request (method and path, no query). [L100](../src/backend/server.py#L100)
+- `resolve_static(url_path: str, root: Path = ROOT) -> Path | None`: The file a URL path refers to, or None unless it is a real file inside one of STATIC_DIRS. Blocks '..', encoded traversal, dotfiles and symlinks that lead outside. [L183](../src/backend/server.py#L183)
+- `serve(api: DiscoverApi, port: int = 8000) -> DemoServer`: Create the server on 127.0.0.1 (call .serve_forever() to run it). [L199](../src/backend/server.py#L199)
 
 ### `src/backend/seed.py`
 

@@ -10,8 +10,9 @@ the policy says:
 - Only confirmed, current members are listed (pending requests and past
   members are not).
 - A list is never more visible than the org itself.
-With `hide_private_memberships` on, anyone who set their own membership
-or profile to private is left off the list.
+With `hide_private_memberships` on, a member's own stricter choice wins:
+a membership or profile set to private is left off the list, and one set
+to connections-only is listed only for that member and their connections.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from backend.objects import (
     most_restrictive,
 )
 
+from .connections import ConnectionService
 from .errors import PermissionDeniedError
 from .membership import MembershipService
 from .store import GraphStore
@@ -70,10 +72,12 @@ class RosterService:
         self,
         store: GraphStore,
         membership: MembershipService,
+        connections: ConnectionService,
         policy: RosterPolicy = DEFAULT_ROSTER_POLICY,
     ) -> None:
         self._store = store
         self._membership = membership
+        self._connections = connections
         self.policy = policy
 
     def can_see(self, viewer_id: str | None, org_id: str) -> bool:
@@ -93,7 +97,7 @@ class RosterService:
         """Whether this one membership appears on the list for this viewer."""
         if not edge.is_confirmed_current or not self.can_see(viewer_id, edge.target_id):
             return False
-        return not self._hidden(edge, self._store.node(edge.source_id, Person))
+        return not self._hidden(edge, self._store.node(edge.source_id, Person), viewer_id)
 
     def members(self, org_id: str, viewer_id: str | None) -> tuple[RosterEntry, ...]:
         if not self.can_see(viewer_id, org_id):
@@ -103,13 +107,18 @@ class RosterService:
             for edge in self._store.edges(MemberOf, target_id=org_id)
             if edge.is_confirmed_current
             and (person := self._store.node(edge.source_id, Person))
-            and not self._hidden(edge, person)
+            and not self._hidden(edge, person, viewer_id)
         ]
         return tuple(
             sorted(entries, key=lambda e: (ROLE_ORDER[e.role], e.person.display_name))
         )
 
-    def _hidden(self, edge: MemberOf, person: Person) -> bool:
+    def _hidden(self, edge: MemberOf, person: Person, viewer_id: str | None) -> bool:
         if not self.policy.hide_private_memberships:
             return False
-        return Visibility.PRIVATE in (edge.visibility, person.visibility)
+        levels = (edge.visibility, person.visibility)
+        if Visibility.PRIVATE in levels:
+            return True
+        if Visibility.CONNECTIONS not in levels or viewer_id == person.id:
+            return False
+        return viewer_id is None or not self._connections.are_connected(viewer_id, person.id)

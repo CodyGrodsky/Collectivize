@@ -28,6 +28,8 @@ from backend.graph.claude_interpreter import (
     ClaudeInterpreter,
     build_user_message,
     parse_answer,
+    refusal_fallback,
+    thinking_options,
 )
 
 REQUEST = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
@@ -78,12 +80,13 @@ def test_request_uses_the_right_model_settings_and_safeguards():
     client = FakeClient(text=answer())
     ClaudeInterpreter(client).interpret(SEARCH)
     call = client.calls[0]
-    assert call["model"] == DEFAULT_MODEL == "claude-opus-5-5"
-    assert call["betas"] == [FALLBACK_BETA] and call["fallbacks"] == "default"
+    assert call["model"] == DEFAULT_MODEL == "claude-haiku-5-5"
+    assert "fallbacks" not in call and "betas" not in call  # Haiku 5.5 has no server-side fallback
     assert call["output_config"]["format"] == {"type": "json_schema", "schema": OUTPUT_SCHEMA}
     assert call["output_config"]["effort"] == "low"
     assert call["system"][0]["cache_control"] == {"type": "ephemeral"}
-    assert "thinking" not in call and "temperature" not in call
+    assert call["thinking"] == {"type": "disabled"}  # Haiku: scoring a list needs no thinking
+    assert "temperature" not in call
     payload = json.loads(call["messages"][0]["content"])
     assert payload["request"] == "fast paced and uses my brain"
     assert [e["ref"] for e in payload["events"]] == ["e1", "e2"]
@@ -235,3 +238,26 @@ def test_without_a_stored_key_the_sdk_resolves_credentials(monkeypatch):
 def test_live_claude_ranks_a_fast_brainy_event_above_a_lecture():
     result = ClaudeInterpreter().interpret(SEARCH)
     assert result.matches["e1"].score > result.matches["e2"].score
+
+
+@pytest.mark.parametrize(("model", "expected"), [
+    ("claude-haiku-5-5", {}),
+    ("claude-sonnet-5-5", {"betas": [FALLBACK_BETA], "fallbacks": "default"}),
+    ("claude-opus-5-5", {"betas": [FALLBACK_BETA], "fallbacks": "default"}),
+])
+def test_refusal_fallback_is_only_sent_to_models_that_support_it(model, expected):
+    assert refusal_fallback(model) == expected
+
+
+def test_a_different_model_can_still_be_chosen():
+    client = FakeClient(text=answer())
+    ClaudeInterpreter(client, model="claude-sonnet-5-5").interpret(SEARCH)
+    assert client.calls[0]["model"] == "claude-sonnet-5-5"
+    assert client.calls[0]["fallbacks"] == "default"
+
+
+def test_thinking_is_turned_off_only_for_haiku():
+    assert thinking_options("claude-haiku-5-5") == {"thinking": {"type": "disabled"}}
+    assert thinking_options("claude-sonnet-5-5") == {}
+    assert thinking_options("claude-opus-5-5") == {}  # thinking can't be disabled on Opus 5.5
+

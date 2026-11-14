@@ -40,7 +40,7 @@ from backend.objects import GeoPoint
 
 from .activity import ActivityService
 from .ai_search import AiSearchService, clean_sentence
-from .claude_interpreter import DEFAULT_MODEL, FALLBACK_BETA, make_client
+from .claude_interpreter import make_client, refusal_fallback
 from .discovery import DiscoveryPage, DiscoveryQuery, DiscoveryService, RequestMatch
 from .preferences import PreferenceService
 from .privacy import PrivacyService
@@ -49,7 +49,11 @@ from .store import GraphStore
 
 log = logging.getLogger(__name__)
 
-AGENT_EFFORT = "medium"  # multi-step tool use
+# Sonnet 5.5: fast and capable for a multi-step tool loop that has to read the
+# person's data, choose searches and judge fit; `medium` is Anthropic's starting
+# point for multistep tool use on this model.
+AGENT_MODEL = "claude-sonnet-5-5"
+AGENT_EFFORT = "medium"
 MAX_TURNS = 8
 MAX_TOOL_CALLS = 20
 MAX_TOKENS = 8000
@@ -115,7 +119,7 @@ class SearchAgentService:
         fallback: AiSearchService,
         client: Any | None = None,
         *,
-        model: str = DEFAULT_MODEL,
+        model: str = AGENT_MODEL,
     ) -> None:
         self._store = store
         self._discovery = discovery
@@ -190,8 +194,7 @@ class SearchAgentService:
             return self._client.beta.messages.create(
                 model=self.model,
                 max_tokens=MAX_TOKENS,
-                betas=[FALLBACK_BETA],
-                fallbacks="default",
+                **refusal_fallback(self.model),
                 system=[{"type": "text", "text": SYSTEM_PROMPT,
                          "cache_control": {"type": "ephemeral"}}],
                 tools=[{**tool, "strict": True} for tool in TOOL_DEFINITIONS],

@@ -33,6 +33,7 @@ from .edges import (
     RecommendationUse,
     Rsvp,
     RsvpStatus,
+    Starred,
     Tagged,
 )
 from .event import Event, EventChange, EventSeries, EventStatus
@@ -81,6 +82,7 @@ __all__ = [
     "RecordState",
     "Rsvp",
     "RsvpStatus",
+    "Starred",
     "Tag",
     "Tagged",
     "Venue",

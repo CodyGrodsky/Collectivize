@@ -4,6 +4,127 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-14 — Co-hosting gaps fixed, with edge-case and fuzz tests
+
+**Request:** "can you write tests that help you determine the bugs and fix, and also test edge cases" (about caumartin-maker's `tests/backend/test_cohosting_gaps.py`, whose 14 tests were failing).
+
+### Fixes (all 14 gap tests now pass; nothing in that file was changed)
+- **Inviting co-hosts:** refused once the event is cancelled, archived or over (`status_at(now)` is ENDED). Drafts can still invite.
+- **Accepting:** refused if the event is cancelled or archived, or the link was declined or withdrawn (clear `DomainRuleError`). Accepting twice returns the link unchanged. Nobody can approve their own org's or their own request to join; another host must.
+- **Withdrawing:** whoever sent a pending invitation can withdraw it (before, only the invited party or the primary could).
+- **Cancel and archive:** only someone acting for the primary host (any admin of a primary org still can). Both close every pending invitation and request; accepted co-hosts stay.
+- **Erasing the primary host:** the co-host that *accepted* first takes over, not the one invited first. New `Hosts.accept_order` (1, 2, 3…); links saved before it existed (0) come last.
+- **Member lists:** a membership or profile set to connections-only is listed only for that member and their connections; private stays hidden; the default stays public. The network view follows the same rule. `RosterService` now takes `ConnectionService`.
+- **Host calendar window:** an event shows if it overlaps the window, so one under way at `starts_after` is kept.
+
+### Tests
+- **New `tests/backend/test_cohosting_fixes.py`:** accepting twice, accepting on an archived event, withdrawn-link message, a person admin of both sides, inviting at exactly `ends_at`, sender vs. outsider withdrawal, co-host can edit but not cancel, cancel keeps accepted co-hosts, promotion order (reverse acceptance, a removed co-host skipped, legacy links), connections-only lists for connected viewers / self / logged out, connections-only profiles, network view, exact window edges, and a Hypothesis fuzz test of random invite/request/accept/remove/cancel/archive/erase sequences checking: never two primaries, no open links on cancelled/archived events, and a clean integrity audit.
+- **Updated** `test_edge_graph.py`'s window test to the overlap rule (it pinned the old start-only window).
+- Full suite: 1590 pass.
+
+### Product decisions to confirm
+The gap file marked four of these as needing a decision; I implemented its proposed behaviour: connections-only members on lists, inviter withdrawal, acceptance order for takeover, and primary-only cancel/archive.
+
+---
+
+## 2026-11-14 — "I'm going", "Maybe" and a star, wired to a working calendar
+
+**Request:** "Add the I'm going, maybe, add a star icon and make it update the calendar, and then add errors to make sure the calendar can't break (along with anything else you think could raise errors), and make a way to unclick the I'm going button and remove from catalogue of events."
+
+### What you can do now
+- **On every Discover card:** ✓ **I'm going**, ? **Maybe** and ☆ **star** (`src/frontend/shared.js`, `EventActions`, styled in `event-actions.css`).
+  - **Each button toggles:** clicking an active choice clears it, so un-clicking "I'm going" removes your RSVP.
+  - **Updates show at once:** if the server says no (for example "this event is full"), the button goes back and the reason appears.
+  - **The card redraws from the server's answer,** which updates the "You're going" badge and the going count, and a status line confirms "…: you're going. Your calendar is updated."
+  - **When the buttons are disabled:** while logged out ("choose who you are first"). On cancelled events, Going and Maybe are disabled unless already set, so you can still undo.
+- **The calendar** (`src/frontend/calendar.js`) now shows the events of the person you're viewing as. It's the same person as on Discover, chosen in a matching "Viewing as" menu and remembered across pages.
+  - **Day cells** show your events as chips: going in solid green, maybe outlined, starred with ★, hosting in dark, and cancelled struck through. They also show "+N more" and "N on campus" for everything else, and there's a key above the grid.
+  - **The day panel** lists *My events* and *Community events*, with time, place, host and tags (Hosting, Your org, Cancelled, Draft), plus the same three buttons. Changing them reloads the calendar, so un-clicking "I'm going" moves the event out of *My events* straight away.
+  - **Deep links:** `?date=YYYY-MM-DD` opens that day; malformed dates are ignored.
+
+### Backend
+- **`Starred`** (`objects/edges.py`): Person → Event, always PRIVATE.
+  - **`StarService`** (`graph/stars.py`, `graph.stars`) handles star (idempotent), unstar (hard delete, always allowed) and `starred_event_ids`.
+  - **Rules:** you can only star listed events you can see that haven't ended. A star is never counted or shown to anyone, and erasing an account removes its stars.
+- **`PersonalCalendarService`** (`graph/my_calendar.py`, `graph.my_calendar`): for a window of at most 62 days, it lists every event the viewer may see that overlaps it.
+  - **Mine:** events you host (yourself, as an org admin or as a co-host), are going to, said maybe to, or starred.
+  - **Community:** everything else, capped at 400, with `community_truncated` reported. Your orgs' events are marked `my_org`.
+  - Drafts appear only for their editors, archived events never appear, and cancelled events stay, flagged.
+  - **Decision:** "My events" are only what you personally chose. Your org's events used to count too, but then un-clicking "I'm going" on a chapter meeting left it in "My events", which isn't what was asked.
+- **New API endpoints** (`src/backend/demo_api.py`, split out of `server.py` to keep files under 500 lines):
+  - `POST /api/rsvp {viewer, event_id, status: "going"|"maybe"|null, near}`
+  - `POST /api/star {viewer, event_id, starred}`
+  - `GET /api/calendar?viewer&start&end` (ISO 8601 with a time zone)
+
+  Discover and search results now include `starred`. **The search cache refreshes your RSVP, star and count** when it reuses an answer, so a cached search never shows stale state.
+
+### Making it hard to break
+- **Calendar page:**
+  - if loading fails, the grid still works and a banner offers **Retry**;
+  - answers to requests that have since been superseded (for example after quick month changes) are ignored;
+  - each server entry is checked: bad or missing dates are skipped, a missing title becomes "Untitled event", and an end before the start is fixed up;
+  - multi-day events appear on each day they cover, at most 14;
+  - long days collapse to "+N more", and long titles are cut off cleanly;
+  - storage being blocked doesn't matter;
+  - an unknown saved person falls back to the first one.
+- **API errors are now distinct:** missing → **404** "that isn't available (it may have been removed)"; not allowed → **403**; rule broken → **400** with the reason; database busy (two saves at once) → **503** "busy right now, please try again"; anything else → **500**, without internal details. Input checks cover the viewer (it must be a real person, and it's required to RSVP or star), the event id (type and length), the status (only going, maybe or null), `starred` (a real true/false), and dates (valid, with a time zone, start before end, at most 62 days).
+- **Fuzzing found a real crash:** `{"status": []}` crashed the RSVP endpoint with `TypeError: unhashable type`. It now returns 400.
+- **No HTML from server data:** none of the three scripts uses `innerHTML`/`outerHTML`/`insertAdjacentHTML`/`document.write`/`eval`, and a test enforces that. Icons are built from element data.
+
+### Verified
+- **Tests:** `tests/backend/test_stars_and_calendar.py` adds 95 runs, covering:
+  - stars: privacy, idempotency, visibility, ended and archived events, erasure;
+  - the calendar: mine vs community, un-clicking, my-org marking, drafts, hidden, archived and out-of-window events, events spanning the window, logged-out viewers, the cap, bad windows, time zones;
+  - the endpoints: set, change and clear; star toggle; `starred` in results; validation; RSVP rules through the API; cached search freshness;
+  - Hypothesis fuzzing of the calendar, RSVP and star inputs, which must never crash.
+
+  In total, 1515 pass, excluding the teammate's in-progress `test_cohosting_gaps.py`, which still has 28 failing. Ruff is clean.
+- **Over HTTP against the large demo world:** going → in My events; star → `["going","starred"]`; un-click both → gone. Bad viewer → 400, missing event → 404, list status → 400, bad dates → 400, a year-long window → 400.
+- **Headless Chrome screenshots:**
+  - Discover cards with the three buttons;
+  - Drew's November calendar, with hosting, going and chapter-meeting chips and "N on campus" counts;
+  - the day panel for 18 November, with *My events* (the study jam he hosts) and *Community events*, each with buttons.
+- **Backend reference:** `docs/BACKEND_REFERENCE.md` was regenerated (373 entries, all links checked).
+
+### Not done
+- **Testing the clicks themselves:** the in-browser click flow was checked over HTTP and in screenshots, not with a browser automation test (Playwright isn't set up here).
+- **Week and Day views** of the calendar are still "coming soon", as in the teammate's shell.
+- **The star's meaning:** it's a private bookmark. If it should mean something else (for example, notifying friends), that's a product decision.
+
+---
+
+## 2026-11-14 — Faster AI search: Sonnet 5.5 for the agent, Haiku 5.5 for the single call
+
+**Request:** "Can you switch the model to sonnet or haiku? A faster model that would still be appropriate for the analysis of both the data and the sentence?"
+
+### What changed
+| Path | Before | Now | Why |
+|---|---|---|---|
+| **Search agent** (`search_agent.py`, `AGENT_MODEL`) | `claude-opus-5-5`, effort medium | **`claude-sonnet-5-5`**, effort medium | A multi-step tool loop that reads the person's data, chooses searches and judges fit needs real judgment. Sonnet 5.5 is faster and half Opus's price ($2 / $10 per MTok), and `medium` is Anthropic's starting point for multistep tool use on it. |
+| **Single-call search** (`claude_interpreter.py`, `DEFAULT_MODEL`), also the agent's fallback | `claude-opus-5-5`, effort low | **`claude-haiku-5-5`**, effort low, thinking off | Scoring one list of events against one sentence is classification-style work, which Haiku is built for ($0.10 / $0.50 per MTok). |
+
+### API differences handled
+- **Haiku 5.5 has no server-side refusal fallback.** Sending `fallbacks` would do nothing, and a list form would return a 400. A new `refusal_fallback(model)` adds the fallback beta and `fallbacks: "default"` only for models that support it (Sonnet and Opus). A refusal from Haiku simply falls back to keyword search.
+- **Haiku 5.5 thinks by default.** For this one scoring call, thinking mostly added latency, so `thinking_options(model)` sends `{"type": "disabled"}` for Haiku only. That's allowed at effort low to high, and the call uses no tools, so the documented caveat about tools combined with JSON output doesn't apply. Sonnet and Opus keep adaptive thinking.
+- **Shorter answers:** the single-call prompt now asks for reasons only on scores of 0.5 or higher, and blank reasons for poor fits. The page only shows reasons for good fits, so nothing visible is lost.
+
+### Verified live (on the large mock world, as Drew, near campus, "fast paced puzzles that make me think")
+- **Agent on Sonnet 5.5: 7.1 s end to end.** It read Drew's overview first, ran one targeted search and picked "Robotics study jam" (fit 0.95: "Timed coding puzzles in quick rounds, close by, and 2 friends are going"). It also flagged "Game night" as a weaker 0.45 fit.
+- **Single call on Haiku 5.5:**
+  - 16.1 s with thinking on;
+  - 15.7 s once the answer was shortened;
+  - **9.8 s with thinking off** (about 2 s of that is Python and database start-up).
+  
+  Every run picked "Robotics study jam" first (90%) with a clear reason.
+- **Cost:** 5 live searches in total, about 5 cents.
+- **Tests:** 1418 pass, excluding the teammate's in-progress `test_cohosting_gaps.py`. New tests cover `refusal_fallback`, `thinking_options` and choosing a different model. The existing tests now assert the new models. `docs/BACKEND_REFERENCE.md` was regenerated (359 entries, all links checked).
+
+### Not done
+- **Measuring quality properly:** there's no eval set, so the only quality check is these live runs. A small set of saved requests with expected picks would show whether either model misses things Opus would catch.
+- **Lower agent effort:** if the agent needs to be faster still, effort `low` on Sonnet 5.5 is the next lever. Anthropic notes that at `low` it's more likely to stop before finishing on long tasks, which here would mean falling back.
+
+---
+
 ## 2026-11-14 — Discover page with AI search, and a local demo server
 
 **Request:** "Can you now do the discover page using the mockup database and the users, events, and orgs in it? Then hook the search function to a search bar on the top of the discover page?"
