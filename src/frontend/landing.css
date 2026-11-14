@@ -1,0 +1,37 @@
+/* Home page: the logo with the wordmark below it, centered on the screen.
+   Sizes are relative to the space beside the nav (cqw) and the screen
+   height (vh), so both always fit without scrolling. The phone top bar's
+   height (--nav-offset-top, from nav.css) is subtracted for the same reason. */
+
+body {
+    margin: 0;
+    background: #f5f4f0;
+}
+
+.cover {
+    container-type: inline-size;
+    box-sizing: border-box;
+    min-height: calc(100vh - var(--nav-offset-top, 0px));
+    min-height: calc(100dvh - var(--nav-offset-top, 0px));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(24px, 5vh, 56px);
+    padding: 24px;
+}
+
+.cover-logo {
+    display: block;
+    width: min(58vh, 80cqw);
+    width: min(58dvh, 80cqw);
+    height: auto;
+}
+
+.cover-title { margin: 0; }
+
+.cover-wordmark {
+    display: block;
+    width: min(70cqw, 520px);
+    height: auto;
+}

@@ -1,0 +1,168 @@
+/* Shared sidebar navigation (built by nav.js).
+   Desktop: a thin icon rail that expands to show page names, pushing the
+   page over. Phones (640px and under): a thin top bar whose button slides
+   the nav over the page. The open/closed state lives on <html data-nav>.
+   Pages that fill the screen can subtract --nav-offset-top (the top bar's
+   height on phones, 0 elsewhere) to avoid scrolling. */
+
+:root {
+    --nav-bg: #f5f4f0;
+    --nav-line: #e6e5df;
+    --nav-ink: #202b29;
+    --nav-muted: #5f6b67;
+    --nav-hover: rgba(32, 43, 41, .06);
+    --nav-current: rgba(32, 43, 41, .09);
+    --nav-focus: #266956;
+    --nav-rail: 56px;
+    --nav-open: 232px;
+    --nav-bar: 56px;
+    --nav-offset-top: 0px;
+    --nav-speed: .2s;
+}
+
+body {
+    padding-left: var(--nav-rail);
+    transition: padding-left var(--nav-speed) ease;
+}
+
+html[data-nav="open"] body { padding-left: var(--nav-open); }
+
+.sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 100;
+    box-sizing: border-box;
+    width: var(--nav-rail);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px 8px;
+    border-right: 1px solid var(--nav-line);
+    background: var(--nav-bg);
+    font: 500 14px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    transition: width var(--nav-speed) ease;
+}
+
+/* Clip page names while the panel widens; the closed rail must not clip,
+   so its hover labels can show beside it. */
+html[data-nav="open"] .sidebar { width: var(--nav-open); overflow: hidden; }
+
+.sidebar-links {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.sidebar-toggle,
+.sidebar-link {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-sizing: border-box;
+    height: 40px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--nav-muted);
+    font: inherit;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.sidebar-toggle { width: 40px; justify-content: center; padding: 0; }
+
+.sidebar-toggle:hover,
+.sidebar-link:hover { background: var(--nav-hover); color: var(--nav-ink); }
+
+.sidebar-link[aria-current="page"] {
+    background: var(--nav-current);
+    color: var(--nav-ink);
+    font-weight: 600;
+}
+
+.sidebar-toggle:focus-visible,
+.sidebar-link:focus-visible { outline: 2px solid var(--nav-focus); outline-offset: 2px; }
+
+.sidebar svg {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* Closed rail: page names are hidden but still read by screen readers,
+   and appear as a label beside the icon on hover or keyboard focus. */
+html[data-nav="closed"] .sidebar-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+}
+
+html[data-nav="closed"] .sidebar-link:hover .sidebar-label,
+html[data-nav="closed"] .sidebar-link:focus-visible .sidebar-label {
+    left: calc(100% + 10px);
+    top: 50%;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+    transform: translateY(-50%);
+    padding: 5px 8px;
+    border-radius: 6px;
+    background: var(--nav-ink);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+    pointer-events: none;
+}
+
+.sidebar-scrim { display: none; }
+
+@media (max-width: 640px) {
+    :root { --nav-offset-top: var(--nav-bar); }
+
+    body,
+    html[data-nav="open"] body { padding-left: 0; padding-top: var(--nav-bar); }
+
+    .sidebar { padding: 8px; }
+
+    html[data-nav="closed"] .sidebar {
+        inset: 0 0 auto 0;
+        width: auto;
+        height: var(--nav-bar);
+        border-right: 0;
+        border-bottom: 1px solid var(--nav-line);
+    }
+
+    html[data-nav="closed"] .sidebar-links { display: none; }
+
+    html[data-nav="open"] .sidebar {
+        width: min(280px, 85vw);
+        box-shadow: 0 0 32px rgba(32, 43, 41, .16);
+    }
+
+    html[data-nav="open"] .sidebar-scrim {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 99;
+        background: rgba(32, 43, 41, .25);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body,
+    .sidebar { transition: none; }
+}

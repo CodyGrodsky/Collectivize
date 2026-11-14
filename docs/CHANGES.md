@@ -4,6 +4,39 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-13 — Home page and shared navigation
+
+**Request:** "When you first enter the website, fullscreen you see the logo and wordmark… a nav bar on the left that allows you to switch between pages… similar to how the Claude nav bar works."
+
+There is now a Home page (`src/frontend/index.html`) showing only the logo with the wordmark below it, centered on an off-white background. A shared sidebar nav, which works like Claude's, switches between Home and the demo graph page (`main.html`). We stayed with plain HTML/CSS/JS instead of moving to Next.js for now.
+
+### How to use it
+- To view it, run `python3 -m http.server` from the repo root and open `http://localhost:8000/src/frontend/`.
+- To add a page to the nav, add one entry to `PAGES` at the top of `src/frontend/nav.js`, then add these two lines to the new page's `<head>`:
+  ```html
+  <link rel="stylesheet" href="nav.css">
+  <script src="nav.js"></script>
+  ```
+  Load `nav.js` without `defer`, so the open/closed state is set before the page paints.
+
+### Added
+- **`src/frontend/index.html` and `landing.css`:** the Home page. The logo is sized `min(58vh, 80% of the space beside the nav)` and the wordmark `min(70%, 520px)`, so neither ever scrolls. The tab title is "Collectivize" and the tab icon is `app/icon.svg`.
+- **`src/frontend/nav.js` and `nav.css`:** the shared nav, built from a single page list.
+  - **On desktop:** a 56px icon rail. The toggle button expands it to 232px with page names, which pushes the page over. On the closed rail, hovering or focusing an icon shows its name.
+  - **On phones (640px and under):** a thin top bar. Its button slides the nav over the page, and tapping outside or pressing Escape closes it.
+  - **Behavior:** the current page is highlighted. Desktop remembers whether the nav was open; phones always start closed. Toggling and links work from the keyboard, with a focus outline, and reduced-motion settings turn off the animation.
+
+### Changed
+- **`src/frontend/main.html`:** 2 lines in `<head>` load the nav. Nothing else on the demo page changed, and `main.css` is untouched. The nav's own CSS makes room for itself.
+- **`public/brand/wordmark-on-paper.svg`:** the fill of the wordmark's 44 dots changed from `#FDFDFB` to `#F5F4F0` so they match the page background. Everything else is unchanged.
+
+### Decisions
+- **Background color:** every page and the nav use `#F5F4F0`. It's a warm off-white close to Claude's, and it's already the demo page's background, so the pages match.
+- **Phone layout:** a top bar instead of a floating corner button, because the floating button covered the demo page's header logo.
+- **Image paths:** pages link to images with relative paths (`../../public/brand/`). These may need updating when the site is hosted.
+
+---
+
 ## 2026-11-13 — Requesting to co-host an event
 
 **Request:** "Add the ability to request to join an event as co-host."
