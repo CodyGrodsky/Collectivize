@@ -4,6 +4,24 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-14 — Codebase audit: new tests and a bug report
+
+**Request:** "Run through codebase again and write test cases and write any errors you find in a .md"
+
+### Added
+- **`docs/TEST_AUDIT.md`:** every bug found, with file:line, the failing test and what to do next. It also lists open policy questions and what was checked and found fine.
+- **New test files** (all in `tests/backend/`; 41 tests fail on purpose, one for each bug, and 24 pass as new coverage):
+  - `test_audit_server.py`
+  - `test_audit_graph.py`
+  - `test_audit_discovery_ai.py`
+  - `test_audit_seed_export.py`
+
+### Notes
+- No source code was changed. The failing tests are meant to be fixed one by one.
+- The committed `.venv` didn't have `anthropic` or `hypothesis`, so it couldn't run the suite. Both were installed with pip because `uv` isn't installed here.
+
+---
+
 ## 2026-11-14 — Discover page with AI search, and a local demo server
 
 **Request:** "Can you now do the discover page using the mockup database and the users, events, and orgs in it? Then hook the search function to a search bar on the top of the discover page?"
