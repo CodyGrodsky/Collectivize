@@ -1,0 +1,22 @@
+/* Collectivize logo spin.
+   Usage: <img src="logo.svg" class="logo-spin" alt="Collectivize" width="200" height="200">
+   One 30 s loop: clockwise (6 s speed up, 2 s at top speed, 6 s slow down), 1 s still,
+   then the same counter-clockwise, 1 s still. */
+.logo-spin{
+  transform-origin:50% 50%;
+  animation:logo-spin 30s linear infinite;
+}
+@keyframes logo-spin{
+  0%{transform:rotate(0deg);animation-timing-function:cubic-bezier(.6,0,.9,.6)}
+  20%{transform:rotate(2880deg);animation-timing-function:linear}
+  26.6667%{transform:rotate(6720deg);animation-timing-function:cubic-bezier(.1,.4,.4,1)}
+  46.6667%{transform:rotate(9600deg);animation-timing-function:linear}
+  50%{transform:rotate(9600deg);animation-timing-function:cubic-bezier(.6,0,.9,.6)}
+  70%{transform:rotate(6720deg);animation-timing-function:linear}
+  76.6667%{transform:rotate(2880deg);animation-timing-function:cubic-bezier(.1,.4,.4,1)}
+  96.6667%{transform:rotate(0deg);animation-timing-function:linear}
+  100%{transform:rotate(0deg)}
+}
+@media (prefers-reduced-motion: reduce){
+  .logo-spin{animation:none}
+}
