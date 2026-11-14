@@ -159,6 +159,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             "/api/profile": lambda: app.profile(viewer, params),
             "/api/find": lambda: app.find(viewer, params, debug=self._is_platform_admin(session)),
             "/api/requests": lambda: app.requests(viewer),
+            "/api/my-events": lambda: app.my_events(viewer),
             "/api/admin/users": lambda: app.admin_users(session.person_id, params),
             "/api/admin/audit": lambda: self._audit(session),
         }

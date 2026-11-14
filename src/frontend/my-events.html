@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#f5f4f0">
+    <title>My Events · Collectivize</title>
+    <link rel="icon" href="../../app/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="app.css">
+    <link rel="stylesheet" href="event-actions.css">
+    <link rel="stylesheet" href="my-events.css">
+    <link rel="stylesheet" href="nav.css">
+    <script src="nav.js"></script>
+    <script src="shared.js" defer></script>
+    <script src="my-events.js" defer></script>
+</head>
+<body>
+    <main class="page">
+        <h1 class="page-title">My Events</h1>
+        <p class="page-subtitle">What you're going to, thinking about, and saved for later.</p>
+
+        <div class="tabs" role="tablist" aria-label="Your events">
+            <button class="tab" role="tab" id="tab-going" aria-controls="panel" aria-selected="true" data-tab="going">Going <span class="tab-count"></span></button>
+            <button class="tab" role="tab" id="tab-maybe" aria-controls="panel" aria-selected="false" data-tab="maybe">Maybe <span class="tab-count"></span></button>
+            <button class="tab" role="tab" id="tab-saved" aria-controls="panel" aria-selected="false" data-tab="saved">Saved <span class="tab-count"></span></button>
+        </div>
+
+        <p class="status" id="status" role="status" aria-live="polite"></p>
+
+        <section id="panel" role="tabpanel" aria-labelledby="tab-going">
+            <ul class="list me-list" id="upcoming"></ul>
+            <p class="me-empty" id="upcoming-empty" hidden></p>
+            <details class="me-past" id="past-box" hidden>
+                <summary id="past-summary">Past events</summary>
+                <ul class="list me-list" id="past"></ul>
+            </details>
+        </section>
+    </main>
+</body>
+</html>

@@ -1,0 +1,57 @@
+/* My Events (my-events.js). Base styles: app.css. */
+
+.tabs { display: flex; gap: 6px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
+
+.tab {
+    padding: 10px 14px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--muted);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.tab[aria-selected="true"] { border-bottom-color: var(--ink); color: var(--ink); }
+
+.tab-count { margin-left: 2px; color: var(--faint); font-weight: 500; }
+
+.me-list { padding: 0 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
+.me-list:empty { display: none; }
+
+.me-item { flex-wrap: wrap; padding: 14px 0; }
+.me-item.is-cancelled .list-title { text-decoration: line-through; }
+
+.me-date {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 52px;
+    border-radius: 10px;
+    background: var(--green-soft);
+    color: var(--green);
+    font-size: 11px;
+    font-weight: 650;
+    text-transform: uppercase;
+    line-height: 1.1;
+}
+
+.me-date strong { font-size: 20px; }
+
+.me-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; padding-left: 60px; }
+
+.me-empty {
+    padding: 28px 16px;
+    border: 1px dashed var(--line);
+    border-radius: var(--radius);
+    color: var(--muted);
+    text-align: center;
+}
+
+.me-past { margin-top: 16px; }
+.me-past summary { margin-bottom: 8px; color: var(--muted); font-weight: 600; cursor: pointer; }
+
+@media (max-width: 640px) {
+    .me-actions { padding-left: 0; }
+}

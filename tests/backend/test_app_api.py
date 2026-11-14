@@ -210,3 +210,64 @@ def test_fake_images_are_refused(fresh):
         app.upload_photo(r.people["alice"], {"slot": 0, "content_type": "image/png", "data_b64": JPEG})
     with pytest.raises(ApiError):
         app.upload_photo(r.people["alice"], {"slot": 9, "content_type": "image/jpeg", "data_b64": JPEG})
+
+
+# --- 4.6 RSVP, Saved and My Events -------------------------------------------------
+
+
+def _calendar_ids(graph, viewer, event):
+    from datetime import timedelta
+
+    cal = graph.my_calendar.for_viewer(viewer, event.starts_at - timedelta(days=1),
+                                       event.starts_at + timedelta(days=1))
+    return {e.event.id for e in cal.mine}
+
+
+def test_going_and_saved_show_in_my_events_and_the_calendar_and_undo_everywhere(fresh):
+    from backend.demo_api import DiscoverApi
+
+    app, graph, r = fresh
+    alice, event_id = r.people["alice"], r.events["food_crawl"]
+    event = graph.store.any_node(event_id)
+
+    @contextmanager
+    def factory():
+        yield graph
+
+    rsvp_api = DiscoverApi(factory, clock=lambda: NOW)
+    body = {"viewer": alice, "event_id": event_id}
+
+    rsvp_api.rsvp({**body, "status": "going"})
+    mine = app.my_events(alice)["upcoming"]
+    assert [(e["id"], e["rsvp"]) for e in mine if e["id"] == event_id] == [(event_id, "going")]
+    assert event_id in _calendar_ids(graph, alice, event)
+
+    rsvp_api.star({**body, "starred": True})
+    entry = next(e for e in app.my_events(alice)["upcoming"] if e["id"] == event_id)
+    assert entry["saved"] and entry["rsvp"] == "going"
+
+    rsvp_api.rsvp({**body, "status": None})
+    rsvp_api.star({**body, "starred": False})
+    assert event_id not in {e["id"] for e in app.my_events(alice)["upcoming"]}
+    assert event_id not in _calendar_ids(graph, alice, event)
+
+
+def test_a_full_event_closes_going(fresh):
+    from dataclasses import replace
+
+    from backend.demo_api import DiscoverApi
+
+    app, graph, r = fresh
+    event_id = r.events["food_crawl"]
+
+    @contextmanager
+    def factory():
+        yield graph
+
+    rsvp_api = DiscoverApi(factory, clock=lambda: NOW)
+    going = graph.rsvps._going(event_id)
+    graph.store.save_node(replace(graph.store.any_node(event_id), capacity=going + 1))
+    state = rsvp_api.rsvp({"viewer": r.people["alice"], "event_id": event_id, "status": "going"})
+    assert state["is_full"]
+    with pytest.raises(DomainRuleError):
+        rsvp_api.rsvp({"viewer": r.people["carol"], "event_id": event_id, "status": "going"})

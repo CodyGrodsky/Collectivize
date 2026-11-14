@@ -451,6 +451,14 @@ class AppApi:
             "connection": connection,
         }
 
+    # --- My Events (spec 4.6) ---------------------------------------------------
+
+    def my_events(self, viewer: str) -> dict[str, Any]:
+        """Everything you're going to, said maybe to, or saved: upcoming
+        soonest first, past most recent first."""
+        with self._graphs() as graph:
+            return _my_events(graph, viewer, self._clock())
+
     # --- organizations (spec 4.9 org admins, 7.1 member lists) ---------------------
 
     def org(self, viewer: str, params: dict[str, str]) -> dict[str, Any]:
