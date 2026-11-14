@@ -211,7 +211,7 @@ def test_rsvp_endpoint_sets_changes_and_clears(world, api):
     assert api.rsvp({**body, "status": "maybe"})["my_rsvp"] == "interested"
     cleared = api.rsvp({**body, "status": None})
     assert cleared == {"event_id": event.id, "my_rsvp": None, "starred": False,
-                       "going_count": None}
+                       "going_count": None, "is_full": False}
 
 
 def test_star_endpoint_toggles(world, api):

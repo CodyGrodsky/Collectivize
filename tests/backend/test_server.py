@@ -329,7 +329,11 @@ def test_the_server_only_listens_on_this_machine(api):
         srv.server_close()
 
 
-@pytest.mark.parametrize("name", ["discover.js", "shared.js", "calendar.js"])
+FRONTEND = Path(__file__).resolve().parents[2] / "src/frontend"
+
+
+# nav.js builds its own fixed icons with innerHTML; no server text goes there.
+@pytest.mark.parametrize("name", sorted(p.name for p in FRONTEND.glob("*.js") if p.name != "nav.js"))
 def test_frontend_never_renders_server_text_as_html(name):
     script = (Path(__file__).resolve().parents[2] / "src/frontend" / name).read_text()
     for risky in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):

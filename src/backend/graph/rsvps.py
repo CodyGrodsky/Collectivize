@@ -172,6 +172,11 @@ class RsvpService:
         ]
         return tuple(sorted(going, key=lambda p: (p.display_name, p.id)))
 
+    def is_full(self, event_id: str) -> bool:
+        """At capacity: "going" is closed (spec 4.6)."""
+        event = self._store.node(event_id, Event)
+        return event.capacity is not None and self._going(event_id) >= event.capacity
+
     def going_count(self, event_id: str) -> int | None:
         """Everyone going, or None while it's under MIN_PUBLIC_COUNT."""
         count = self._going(event_id)

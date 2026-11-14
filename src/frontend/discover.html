@@ -18,37 +18,55 @@
         <header class="dc-header">
             <div class="dc-heading">
                 <h1 class="dc-title">Discover</h1>
-                <p class="dc-subtitle">Events around campus, ranked for you.</p>
+                <p class="dc-subtitle">People, organizations and events on campus.</p>
             </div>
         </header>
 
         <form class="dc-search" id="search-form" role="search">
-            <label class="dc-sr" for="search-input">Search events</label>
-            <svg class="dc-search-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/>
-            </svg>
-            <input type="search" id="search-input" maxlength="500" autocomplete="off"
-                   placeholder="Describe what you're in the mood for, like &ldquo;something fast-paced that makes me think&rdquo;">
+            <div class="dc-filter">
+                <button type="button" class="dc-filter-button" id="filter-button"
+                        aria-haspopup="true" aria-expanded="false" aria-controls="filter-panel">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6.2 7.4V18l-3.6 2v-7.6z"/></svg>
+                    <span class="dc-sr">Filters</span>
+                    <span class="dc-filter-count" id="filter-count" hidden></span>
+                </button>
+                <div class="dc-filter-panel" id="filter-panel" hidden role="group" aria-label="Filters">
+                    <fieldset class="dc-fieldset">
+                        <legend>Show</legend>
+                        <label><input type="checkbox" name="type" value="people"> People</label>
+                        <label><input type="checkbox" name="type" value="orgs"> Organizations</label>
+                        <label><input type="checkbox" name="type" value="events"> Events</label>
+                    </fieldset>
+                    <fieldset class="dc-fieldset">
+                        <legend>Topics</legend>
+                        <div class="dc-topic-boxes" id="topic-boxes"></div>
+                    </fieldset>
+                    <fieldset class="dc-fieldset">
+                        <legend>Date</legend>
+                        <label class="dc-date-field"><span class="dc-sr">Events on</span><input type="date" id="filter-date"></label>
+                    </fieldset>
+                    <div class="dc-filter-actions">
+                        <button type="button" class="dc-link-button" id="filter-clear">Clear</button>
+                        <button type="button" class="dc-search-button" id="filter-done">Done</button>
+                    </div>
+                </div>
+            </div>
+            <div class="dc-search-box">
+                <label class="dc-sr" for="search-input">Search people, organizations and events</label>
+                <svg class="dc-search-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/>
+                </svg>
+                <input type="search" id="search-input" maxlength="200" autocomplete="off"
+                       placeholder="Search, or describe it: &ldquo;people into pottery&rdquo;">
+            </div>
             <button type="submit" class="dc-search-button" id="search-button">Search</button>
         </form>
 
-        <nav class="dc-topics" id="topics" aria-label="Topics"></nav>
-
-        <section class="dc-search-summary" id="search-summary" hidden aria-live="polite">
-            <div class="dc-summary-top">
-                <p class="dc-summary-goal" id="search-goal"></p>
-                <button type="button" class="dc-link-button" id="search-clear">Back to all events</button>
-            </div>
-            <p class="dc-summary-note" id="search-note" hidden></p>
-            <details class="dc-steps" id="search-steps" hidden>
-                <summary>How we searched</summary>
-                <ol id="search-steps-list"></ol>
-            </details>
-        </section>
+        <p class="dc-understood" id="understood" hidden aria-live="polite"></p>
 
         <p class="dc-status" id="status" role="status" aria-live="polite"></p>
 
-        <ol class="dc-list" id="results" aria-label="Events"></ol>
+        <ol class="dc-list" id="results" aria-label="Results"></ol>
 
         <nav class="dc-pages" id="pages" aria-label="Pages" hidden>
             <p class="dc-count" id="count"></p>
@@ -68,7 +86,6 @@
                 <h2 class="dc-card-title"></h2>
                 <p class="dc-meta"></p>
                 <p class="dc-host"></p>
-                <p class="dc-fit" hidden></p>
                 <p class="dc-description"></p>
                 <ul class="dc-reasons" aria-label="Why this event"></ul>
                 <div class="dc-friends" hidden>
@@ -77,11 +94,6 @@
                 </div>
             </div>
             <div class="dc-side">
-                <div class="dc-match">
-                    <span class="dc-match-value"></span>
-                    <span class="dc-match-label">likely for you</span>
-                    <span class="dc-match-bar" aria-hidden="true"><span></span></span>
-                </div>
                 <p class="dc-going"></p>
             </div>
             <div class="dc-actions"><span class="dc-actions-slot"></span></div>

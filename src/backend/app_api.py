@@ -13,13 +13,16 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import datetime
+from datetime import date, datetime
 from http import HTTPStatus
 from typing import Any
 
 from backend.config import ALLOWED_EMAIL_DOMAINS
-from backend.demo_api import ApiError, GraphFactory
+from backend.demo_api import ApiError, GraphFactory, _item_json
 from backend.graph import CollectivizeGraph
+from backend.graph.query_understanding import QueryReader
+from backend.graph.unified_search import PER_PAGE as SEARCH_PER_PAGE
+from backend.graph.unified_search import SearchFilters, SearchResult, UnifiedSearchService
 from backend.graph.visibility import (
     NETWORK_ORG_CAP,
     NETWORK_PEOPLE_CAP,
@@ -36,6 +39,8 @@ from backend.objects import (
     ProfileTheme,
     Rsvp,
     RsvpStatus,
+    Tag,
+    Tagged,
     Top3,
     Person,
     Provenance,
@@ -59,15 +64,75 @@ ADMIN_SEARCH_LIMIT = 20
 MAX_NETWORK_NODES = 500
 MAX_NAME = 50
 UPCOMING_PREVIEW = 5
+MAX_QUERY = 200
+SEARCH_TYPES = ("people", "orgs", "events")
 PROFILE_EVENTS = 12  # per list, newest first
 
 
 class AppApi:
     def __init__(
-        self, graphs: GraphFactory, *, clock: Callable[[], datetime] = utc_now
+        self,
+        graphs: GraphFactory,
+        *,
+        clock: Callable[[], datetime] = utc_now,
+        reader: QueryReader | None = None,
     ) -> None:
         self._graphs = graphs
         self._clock = clock
+        # Without an extractor, sentences are read locally (no AI).
+        self._reader = reader or QueryReader()
+
+    # --- unified search (spec 4.4 / 4.5) -------------------------------------------
+
+    def find(self, viewer: str, params: dict[str, str], *, debug: bool = False) -> dict[str, Any]:
+        """People, orgs and events in one ranked list: `q`, `types`
+        (comma-separated people,orgs,events), `tags` (topic slugs), `date`
+        (YYYY-MM-DD), `page`. Scores only with `debug` (platform admins)."""
+        text = params.get("q", "")
+        if len(text) > MAX_QUERY:
+            raise ApiError(HTTPStatus.BAD_REQUEST, f"keep searches under {MAX_QUERY} characters")
+        types = _csv(params.get("types"), set(SEARCH_TYPES), "type")
+        page = params.get("page", "1")
+        if not page.isdigit() or not 1 <= int(page) <= 1000:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "page must be a whole number")
+        day = None
+        if params.get("date"):
+            try:
+                day = date.fromisoformat(params["date"])
+            except ValueError:
+                raise ApiError(HTTPStatus.BAD_REQUEST, "date must be YYYY-MM-DD") from None
+        with self._graphs() as graph:
+            slugs = {t.slug for t in graph.store.nodes(Tag)}
+            tags = _csv(params.get("tags"), slugs, "topic")
+            service = UnifiedSearchService(
+                graph.store, graph.discovery, graph.visibility, graph.privacy, self._reader
+            )
+            result = service.search(
+                viewer, text, SearchFilters(types=frozenset(types), tag_slugs=tuple(sorted(tags)), day=day),
+                self._clock(), int(page),
+            )
+            starred = graph.stars.starred_event_ids(viewer)
+            read = result.understanding.extraction
+            return {
+                "items": [_result_json(graph, viewer, r, starred, debug) for r in result.results],
+                "total": result.total,
+                "page": result.page,
+                "pages": result.pages,
+                "per_page": SEARCH_PER_PAGE,
+                "counts": result.counts,
+                "understood": {
+                    "mode": result.understanding.mode,
+                    "used_ai": result.understanding.used_ai,
+                    "note": result.understanding.note,
+                    "keywords": list(read.keywords),
+                    "summary": read.summary,
+                },
+                "filters": {
+                    "types": sorted(result.applied.types),
+                    "tags": list(result.applied.tag_slugs),
+                    "date": result.applied.day.isoformat() if result.applied.day else None,
+                },
+            }
 
     # --- sign-in (spec 4.10) -----------------------------------------------------
 
@@ -486,6 +551,45 @@ def _person(graph: CollectivizeGraph, person_id: str) -> Person:
     return node
 
 
+def _csv(value: str | None, allowed: set[str], what: str) -> set[str]:
+    chosen = {v.strip() for v in (value or "").split(",") if v.strip()}
+    unknown = chosen - allowed
+    if unknown:
+        raise ApiError(HTTPStatus.BAD_REQUEST, f"unknown {what}: {', '.join(sorted(unknown))}")
+    return chosen
+
+
+def _result_json(
+    graph: CollectivizeGraph, viewer: str, result: SearchResult, starred: set[str], debug: bool
+) -> dict[str, Any]:
+    """One search result. Every result says what it is (`type`). People
+    show only what their partial card shows; no degree, no path."""
+    if result.kind == "event" and result.event is not None:
+        item = _item_json(result.event, starred)
+        item.pop("score", None)
+        item.pop("distance_km", None)
+        event = result.event.event
+        data = {"type": "event", **item, "capacity": event.capacity,
+                "is_full": graph.rsvps.is_full(event.id),
+                "tags": sorted(graph.store.node(t, Tag).label
+                               for t in graph.discovery.event_tag_ids(event.id))}
+    elif result.kind == "person":
+        person = graph.store.node(result.id, Person)
+        data = {"type": "person", "id": person.id, "name": person.display_name,
+                "bio": person.bio, "top3_title": person.top3.title if person.top3 else None,
+                "has_photo": _has_photo(graph, person.id),
+                "connection": graph.visibility.connection_state(viewer, person.id).value}
+    else:
+        org = graph.store.node(result.id, Organization)
+        members = graph.visibility.visible_members(viewer, org.id)
+        data = {"type": "org", "id": org.id, "name": org.name, "kind": org.kind.value,
+                "tags": _org_tags(graph, org.id), "member_count": members.count,
+                "is_member": graph.membership.is_member(viewer, org.id)}
+    if debug:
+        data["score"] = round(result.score, 3)
+    return data
+
+
 def _top3(value: Any) -> Top3 | None:
     if value is None:
         return None
@@ -640,8 +744,6 @@ def _has_photo(graph: CollectivizeGraph, person_id: str) -> bool:
 
 
 def _org_tags(graph: CollectivizeGraph, org_id: str) -> list[str]:
-    from backend.objects import Tag, Tagged
-
     labels = []
     for edge in graph.store.edges(Tagged, source_id=org_id):
         node = graph.store.any_node(edge.target_id)

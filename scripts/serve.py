@@ -20,6 +20,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from backend.config import DATA_DIR, load_config
+from backend.app_api import AppApi
+from backend.graph.query_understanding import ClaudeQueryExtractor, QueryReader
 from backend.server import DiscoverApi, demo_graph_factory, serve
 from backend.sessions import SessionStore
 
@@ -42,7 +44,9 @@ def main(argv: list[str] | None = None) -> int:
     except PermissionError as error:
         log.error("%s", error)
         return 1
-    server = serve(DiscoverApi(graphs), args.port,
+    # Search reads sentences with one small Claude call; --no-ai reads them locally.
+    reader = QueryReader(None if args.no_ai else ClaudeQueryExtractor())
+    server = serve(DiscoverApi(graphs), args.port, app=AppApi(graphs, reader=reader),
                    sessions=SessionStore(audit_path=DATA_DIR / "view_as.log"))
     log.info("Collectivize demo on http://127.0.0.1:%d/  (sign in with e.g. drew.demo@northeastern.edu;"
              " platform admin: pat.demo@northeastern.edu)", args.port)

@@ -22,6 +22,8 @@ DATA_DIR = PROJECT_ROOT / "data"
 ENV_VAR = "COLLECTIVIZE_ENV"
 # Who may sign in (v1.1 spec 4.10): campus-only for now. Change it here.
 ALLOWED_EMAIL_DOMAINS: tuple[str, ...] = ("northeastern.edu",)
+# The campus's time zone: "Saturday" in a search means Saturday here.
+CAMPUS_TIMEZONE = "America/New_York"
 DB_PATH_VAR = "COLLECTIVIZE_DB_PATH"
 
 

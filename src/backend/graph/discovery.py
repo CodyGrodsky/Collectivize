@@ -193,6 +193,21 @@ class DiscoveryService:
     ) -> DiscoveryPage:
         """`request_matches` (event id -> match) comes from AI search; events
         without an entry are neutral on that signal."""
+        items = self.rank_all(query, now, request_matches=request_matches)
+        window = items[query.offset : query.offset + query.limit]
+        return DiscoveryPage(
+            items=tuple(window), total=len(items), offset=query.offset, limit=query.limit
+        )
+
+    def rank_all(
+        self,
+        query: DiscoveryQuery,
+        now: datetime,
+        *,
+        request_matches: Mapping[str, RequestMatch] | None = None,
+    ) -> list[DiscoveryItem]:
+        """Every matching event, ranked (the query's limit and offset are
+        ignored). Unified search combines these with people and orgs."""
         ctx = self._context(query, now, request_matches or {})
         items = [
             item
@@ -200,10 +215,7 @@ class DiscoveryService:
             if (item := self._consider(event, ctx))
         ]
         items.sort(key=lambda i: (i.is_cancelled, -i.score, i.event.starts_at, i.event.id))
-        window = items[query.offset : query.offset + query.limit]
-        return DiscoveryPage(
-            items=tuple(window), total=len(items), offset=query.offset, limit=query.limit
-        )
+        return items
 
     def _context(
         self,

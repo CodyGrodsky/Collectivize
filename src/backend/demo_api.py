@@ -266,6 +266,7 @@ class DiscoverApi:
             "my_rsvp": mine.status.value if mine else None,
             "starred": graph.stars.star_of(event_id, viewer) is not None,
             "going_count": graph.rsvps.going_count(event_id),
+            "is_full": graph.rsvps.is_full(event_id),
         }
 
     def _refresh(
