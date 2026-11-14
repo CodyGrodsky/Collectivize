@@ -67,10 +67,11 @@ def test_demo_flag_cannot_be_edited():
         make_event().revised(NOW, is_demo=False)
 
 
-def test_cancelled_event_visible_until_original_start():
+def test_cancelled_event_visible_until_original_end():
     event = make_event().published(NOW).cancelled()
     assert event.is_discoverable(NOW)
-    assert not event.is_discoverable(event.starts_at)
+    assert event.is_discoverable(event.starts_at)
+    assert not event.is_discoverable(event.ends_at)
 
 
 def test_published_event_reports_ended_after_end_time():

@@ -65,11 +65,9 @@ class Event(GraphRecord):
         return now >= self.ends_at
 
     def is_discoverable(self, now: datetime) -> bool:
-        """Cancelled events stay visible until their original start time."""
-        if self.status is EventStatus.PUBLISHED:
+        """Cancelled events stay visible until their original end time."""
+        if self.status in (EventStatus.PUBLISHED, EventStatus.CANCELLED):
             return now < self.ends_at
-        if self.status is EventStatus.CANCELLED:
-            return now < self.starts_at
         return False
 
     def published(self, now: datetime) -> Event:

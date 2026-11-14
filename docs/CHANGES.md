@@ -96,7 +96,7 @@ with open_graph() as graph:
 
 ### Which events can appear
 - Published events that haven't ended yet, including ones already under way.
-- Cancelled events, until their original start time. They're flagged and always ranked last, so people who planned to go find out.
+- Cancelled events, until their original end time. They're flagged with the reason "Cancelled: this event is not happening" (always listed first) and always ranked last, so people who planned to go, even late, find out.
 - Never drafts, archived events or ended events.
 - Only events the viewer is allowed to see. **The host org must be visible to the viewer too,** so an event is never more exposed than the org running it.
 
@@ -126,7 +126,7 @@ Higher scores come first. Ties are broken by start time, then by id. Every facto
 | Event details verified / disputed | +1 / −3 | "Event details verified" / "Event details are disputed" |
 | Each matching interest tag | +2.5 | "Matches your interest: Robotics" |
 | How soon it starts | up to +2, fading over 30 days | "Starts within 48 hours" (shown when it starts within 48 hours) |
-| Cancelled | −100 | "Cancelled" |
+| Cancelled | −100 | "Cancelled: this event is not happening" (always the first reason) |
 
 All weights are named constants at the top of `discovery.py`, so they're easy to adjust.
 
