@@ -96,7 +96,9 @@ class AppApi:
             starred = graph.stars.starred_event_ids(viewer)
             read = result.understanding.extraction
             return {
-                "items": [_result_json(graph, viewer, r, starred, debug) for r in result.results],
+                # `in_network`: listed first, above the divider (only when grouped).
+                "items": [{**_result_json(graph, viewer, r, starred, debug),
+                           "in_network": result.grouped and r.connected} for r in result.results],
                 "total": result.total,
                 "page": result.page,
                 "pages": result.pages,

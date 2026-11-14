@@ -4,6 +4,74 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-14 — Search lists what's in your network first, above a divider
+
+**Request:** "make it so everything you are connected to is above the top results and there is a clear divider separating the connected part and the top results."
+
+### What changed
+- **Search results are in two parts:** "In your network" first, then a ruled line and "Top results". Each part keeps its usual best-first order. If nothing in the results is in your network, there is no heading or divider.
+- **What counts as in your network:**
+  - a person you're connected to;
+  - an org you belong to;
+  - an event you're going to or marked Maybe, that you host, or whose main host is one of your orgs.
+- **Paging:** the split holds across pages (all in-network results come before any others).
+- **`graph/unified_search.py`:** `SearchResult.connected`, `SearchPage.grouped`. **`app_api.py`:** each item carries `in_network`. **`discover.js`, `discover.css`:** the heading and divider.
+
+### Decisions
+- **Plain Discover is not split.** With nothing typed and no filter ticked it stays one ranked list.
+- **"Friends are attending" alone does not count** as in your network; most events in the demo have friends going, so the top part would swallow the list.
+- When a vague request falls back to "what's coming up", the list is not split either.
+
+### Tests
+- `test_unified_search.py`: three new tests (in-network results come first across pages and each part stays best-first; what counts as connected for people, orgs and events; plain Discover is not split).
+- **In a browser:** searching "robot" as Drew shows two events under "In your network", then the divider, then the Robotics Club and Carol.
+
+---
+
+## 2026-11-14 — Search and Discover answer about five times faster
+
+**Request:** "do 1 and 2" (cache decoded records; match keywords before ranking).
+
+### What was slow
+- One search re-read about 18,000 records from the database and rebuilt each one from its stored text, mostly the same hosts, RSVPs and tags over and over. It also ranked all 413 events and only then dropped the ones that didn't match.
+
+### What changed
+- **`graph/sqlite_store.py`:** each distinct stored record is decoded once and reused (up to 100,000 remembered). It cannot serve stale data: the lookup key is the stored text itself, so a record that changes is looked up under its new text. Records are frozen, so sharing them is safe. This speeds up every page that reads the database, not only search.
+- **`graph/discovery.py`:** `rank_all` takes an optional `keep(event, host, tag_ids)` filter that runs after the visibility checks and before ranking.
+- **`graph/unified_search.py`:** the keyword check now runs through that filter, so only events that match are ranked.
+
+### Measured (demo data, AI off, same machine)
+- Keyword search ("robot"): about 0.64 s before, 0.10 s after.
+- Discover with no query: about 0.49 s before, 0.13 s after.
+- The first search after the server starts is a little slower (0.18 s) while the records are decoded for the first time.
+- Ten queries compared before and after: identical results, order and scores.
+
+### Not changed
+- The AI call for sentence searches (not timed; it is a paid call).
+
+### Tests
+- New `tests/backend/test_decode_cache.py` (decoded once, a saved change is read back at once, bad stored text fails every time) and two tests in `test_unified_search.py` (non-matching events are never ranked; the filter only sees events the viewer may see).
+
+---
+
+## 2026-11-14 — "show me something rad" no longer comes back empty
+
+**Request:** "the following comes up with no searches: show me something rad."
+
+### What was wrong
+- Search drops filler words ("show", "me", "something") and searches the rest. "fun" and "cool" were on the filler list but "rad" was not, so it searched for the word "rad", which is in no event, org or person.
+
+### What changed
+- **`graph/query_understanding.py`:** praise words that name no topic (rad, awesome, great, amazing, interesting, exciting, neat, sweet, sick, dope, epic, lit, best, whatever, random) are now filler. This also applies to keywords the AI reader returns.
+- **`graph/unified_search.py`:** a safety net for words not on the list. When a *request* (a sentence) has words that match nothing, search answers with what's coming up instead of an empty page, keeps any type, topic or day the request gave, and says so: "Nothing matched “…”, so here's what's coming up."
+- **Not changed:** a plain keyword or name that matches nothing ("zzyzx") still shows no results.
+
+### Tests
+- `test_unified_search.py`: four new tests (praise words, the vague request, the fallback with its note, a name that matches nothing).
+- **In a browser:** "show me something rad" lists events; "show me some zzyzx stuff" lists events with the note.
+
+---
+
 ## 2026-11-14 — Fixed the three failing tests (one was a broken Discover page)
 
 **Request:** "fix the three failing tests."

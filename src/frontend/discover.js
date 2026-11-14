@@ -235,7 +235,17 @@
                     : "Nothing matches these filters." }));
                 return;
             }
-            list.replaceChildren(...items.map((item) => this.card(item)));
+            // What's already in your network comes first (the server sorts it
+            // that way), under its own heading, with a divider before the rest.
+            const mine = items.filter((item) => item.in_network === true);
+            const rest = items.filter((item) => item.in_network !== true);
+            const heading = (text, extra = "") => el("li", { className: `dc-divider ${extra}`.trim() },
+                [el("h2", { className: "dc-divider-label", text })]);
+            list.replaceChildren(
+                ...(mine.length ? [heading("In your network"), ...mine.map((item) => this.card(item))] : []),
+                ...(mine.length && rest.length ? [heading("Top results", "is-rule")] : []),
+                ...rest.map((item) => this.card(item)),
+            );
         }
 
         card(item) {

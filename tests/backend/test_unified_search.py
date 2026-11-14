@@ -18,10 +18,11 @@ from backend.config import Environment
 from backend.demo_api import ApiError
 from backend.graph import CollectivizeGraph
 from backend.graph.ai_search import InterpreterError
+from backend.graph.discovery import DiscoveryQuery
 from backend.graph.query_understanding import (
     ClaudeQueryExtractor,
-    ExtractRequest,
     Extraction,
+    ExtractRequest,
     QueryReader,
     classify,
     local_extract,
@@ -402,3 +403,107 @@ def test_api_reports_how_the_query_was_read_and_the_filters_used(app, world):
 def test_bad_search_input_is_refused(app, world, params):
     with pytest.raises(ApiError):
         app.find(world[1].people["drew"], params)
+
+
+# --- vague requests ------------------------------------------------------------------
+
+
+def test_praise_words_are_not_keywords():
+    assert local_extract("show me something rad", TODAY).keywords == ()
+    assert local_extract("an awesome robot thing", TODAY).keywords == ("robot",)
+
+
+def test_a_vague_request_shows_what_is_coming_up(world):
+    graph, r = world
+    page = search(graph, r.people["drew"], "show me something rad")
+    assert page.total > 0 and kinds(page) == {"event"}
+
+
+def test_a_sentence_whose_words_match_nothing_falls_back_with_a_note(world):
+    graph, r = world
+    fake = FakeExtractor(Extraction(keywords=("zzyzx",), types=frozenset({"orgs"}), summary="zzyzx clubs"))
+    page = search(graph, r.people["drew"], "show me some zzyzx clubs please", fake)
+    assert page.total > 0 and kinds(page) == {"org"}  # the type it asked for is kept
+    assert page.understanding.extraction.keywords == ()
+    assert "zzyzx" in page.understanding.note
+
+
+def test_a_name_that_matches_nothing_still_finds_nothing(world):
+    graph, r = world
+    page = search(graph, r.people["drew"], "zzyzx")  # keywords, not a request
+    assert page.total == 0 and page.understanding.note == ""
+
+
+# --- speed: match before ranking -----------------------------------------------------
+
+
+def test_events_that_do_not_match_are_never_ranked(world, monkeypatch):
+    graph, r = world
+    ranked = []
+    rank = graph.discovery._rank
+
+    def counting(event, *args, **kwargs):
+        ranked.append(event.id)
+        return rank(event, *args, **kwargs)
+
+    monkeypatch.setattr(graph.discovery, "_rank", counting)
+    page = search(graph, r.people["drew"], "robot", types=frozenset({"events"}))
+    assert page.total > 0 and sorted(ranked) == sorted(res.id for res in page.results)
+
+
+def test_the_extra_filter_never_sees_events_the_viewer_cannot(world):
+    graph, r = world
+    asked = []
+    everything = graph.discovery.rank_all(DiscoveryQuery(viewer_id=r.people["drew"]), NOW)
+    graph.discovery.rank_all(DiscoveryQuery(viewer_id=r.people["drew"]), NOW,
+                             keep=lambda event, host, tags: asked.append(event.id) or True)
+    assert sorted(asked) == sorted(i.event.id for i in everything)
+
+
+# --- your network first --------------------------------------------------------------
+
+
+def test_a_search_lists_what_is_in_your_network_first(world):
+    graph, r = world
+    service = engine(graph)
+    results = []
+    for number in range(1, 20):
+        page = service.search(r.people["drew"], "club", SearchFilters(), NOW, number)
+        results += page.results
+        if number >= page.pages:
+            break
+    flags = [res.connected for res in results]
+    assert page.grouped and any(flags) and not all(flags)
+    assert flags == sorted(flags, reverse=True)  # every connected result comes first
+    for part in (True, False):  # each part is still best first
+        scores = [res.score for res in results if res.connected is part]
+        assert scores == sorted(scores, reverse=True)
+
+
+def test_connected_means_your_people_orgs_and_events(world):
+    graph, r = world
+    drew = r.people["drew"]
+    mine = set(graph.visibility.org_ids_of(drew))
+    friends = {i for i, degree in graph.visibility.distances(drew, 1).items() if degree == 1}
+    page = engine(graph).search(drew, "robot", SearchFilters(), NOW, 1, per_page=100)
+    assert page.results
+    for res in page.results:
+        if res.kind == "person":
+            assert res.connected == (res.id in friends)
+        elif res.kind == "org":
+            assert res.connected == (res.id in mine)
+        else:
+            rsvp = graph.rsvps.mine(res.id, drew)
+            going = rsvp is not None and rsvp.status.value in ("going", "interested")
+            assert res.connected == (going or res.event.host.id in mine | {drew})
+
+
+def test_browsing_without_a_search_is_not_split(world, app):
+    graph, r = world
+    page = search(graph, r.people["drew"], "")
+    assert not page.grouped
+    data = app.find(r.people["drew"], {"q": ""})
+    assert not any(item["in_network"] for item in data["items"])
+    data = app.find(r.people["drew"], {"q": "robot"})
+    assert [item["in_network"] for item in data["items"]] == sorted(
+        (item["in_network"] for item in data["items"]), reverse=True)

@@ -31,13 +31,21 @@ visibility rules.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from backend.config import CAMPUS_TIMEZONE
-from backend.objects import MemberOf, Organization, Person, Tag, Tagged
+from backend.objects import (
+    Event,
+    MemberOf,
+    Organization,
+    Person,
+    RsvpStatus,
+    Tag,
+    Tagged,
+)
 
 from .discovery import DiscoveryItem, DiscoveryQuery, DiscoveryService, normalize_text
 from .privacy import PrivacyService
@@ -67,6 +75,10 @@ class SearchResult:
     score: float  # for ordering (and the platform admin's debug view) only
     node: Person | Organization | None = None
     event: DiscoveryItem | None = None
+    # Already part of the viewer's network: a person they're connected to,
+    # an org they belong to, or an event they're going to (or interested
+    # in), host themselves, or that one of their orgs hosts.
+    connected: bool = False
 
 
 @dataclass(frozen=True)
@@ -78,6 +90,7 @@ class SearchPage:
     understanding: Understanding
     applied: SearchFilters  # the filters actually used, ticked or read
     counts: dict[str, int] = field(default_factory=dict)  # results per type, all pages
+    grouped: bool = False  # True when `connected` results are listed first
 
 
 class UnifiedSearchService:
@@ -109,7 +122,48 @@ class UnifiedSearchService:
         understanding = self._reader.read(text, today, tuple(t.label for t in tags.values()))
         applied = _merge(filters, understanding.extraction, tags)
         keywords = _keywords(understanding.extraction)
+        tag_ids = tuple(tags[s].id for s in applied.tag_slugs if s in tags)
 
+        results = self._gather(viewer_id, keywords, applied, tag_ids, now)
+        if not results and keywords and understanding.mode == "sentence":
+            # A request like "show me something rad": its words name nothing
+            # here, so answer with what the rest of it asked for (any type,
+            # topic or day it gave) instead of an empty page.
+            results = self._gather(viewer_id, [], applied, tag_ids, now)
+            if results:
+                missed = ", ".join(keywords)
+                understanding = replace(
+                    understanding,
+                    extraction=replace(understanding.extraction, keywords=(), summary=""),
+                    note=f"Nothing matched “{missed}”, so here's what's coming up.",
+                )
+
+        # A search for something lists what's already in your network first,
+        # then everything else; each part keeps its best-first order.
+        # Plain Discover (nothing typed or ticked) stays one ranked list.
+        grouped = bool(_keywords(understanding.extraction) or applied.types
+                       or applied.tag_slugs or applied.day)
+        if grouped:
+            results.sort(key=lambda r: not r.connected)  # stable
+
+        total = len(results)
+        pages = max(1, -(-total // per_page))
+        page = min(max(1, page), pages)
+        window = results[(page - 1) * per_page : page * per_page]
+        counts = {kind: sum(r.kind == kind for r in results) for kind in ("person", "org", "event")}
+        return SearchPage(tuple(window), total, page, pages, understanding, applied, counts, grouped)
+
+    # --- each kind ----------------------------------------------------------------
+
+    def _gather(
+        self,
+        viewer_id: str,
+        keywords: list[str],
+        applied: SearchFilters,
+        tag_ids: tuple[str, ...],
+        now: datetime,
+    ) -> list[SearchResult]:
+        """Everything that matches, best first."""
         types = set(applied.types) or set(TYPES)
         if not keywords and not applied.types:
             types = {"events"}  # nothing asked for: Discover's ranked events
@@ -117,8 +171,6 @@ class UnifiedSearchService:
             types.discard("people")  # people have no date or public topics
         if applied.day is not None:
             types.discard("orgs")
-
-        tag_ids = tuple(tags[s].id for s in applied.tag_slugs if s in tags)
         results: list[SearchResult] = []
         if "people" in types:
             results += self._people(viewer_id, keywords)
@@ -127,15 +179,7 @@ class UnifiedSearchService:
         if "events" in types:
             results += self._events(viewer_id, keywords, tag_ids, applied.day, now)
         results.sort(key=lambda r: (-r.score, _sort_name(r)))
-
-        total = len(results)
-        pages = max(1, -(-total // per_page))
-        page = min(max(1, page), pages)
-        window = results[(page - 1) * per_page : page * per_page]
-        counts = {kind: sum(r.kind == kind for r in results) for kind in ("person", "org", "event")}
-        return SearchPage(tuple(window), total, page, pages, understanding, applied, counts)
-
-    # --- each kind ----------------------------------------------------------------
+        return results
 
     def _people(self, viewer_id: str, keywords: list[str]) -> list[SearchResult]:
         degrees = self._visibility.distances(viewer_id)
@@ -156,7 +200,8 @@ class UnifiedSearchService:
             if not keywords and closeness == 0:
                 continue  # browsing people: only those within three hops
             score = 0.65 * fit + 0.35 * closeness if keywords else closeness
-            found.append(SearchResult("person", person.id, score, node=person))
+            found.append(SearchResult("person", person.id, score, node=person,
+                                      connected=degrees.get(person.id) == 1))
         return found
 
     def _orgs(self, viewer_id: str, keywords: list[str], tag_ids: set[str]) -> list[SearchResult]:
@@ -183,7 +228,7 @@ class UnifiedSearchService:
                        if m.is_confirmed_current}
             social = 1.0 if org.id in mine else min(1.0, len(members & friends) / 3)
             score = 0.8 * fit + 0.2 * social if keywords else 0.5 + 0.5 * social
-            found.append(SearchResult("org", org.id, score, node=org))
+            found.append(SearchResult("org", org.id, score, node=org, connected=org.id in mine))
         return found
 
     def _events(
@@ -199,28 +244,35 @@ class UnifiedSearchService:
             zone = ZoneInfo(CAMPUS_TIMEZONE)
             after = datetime.combine(day, time.min, zone)
             before = after + timedelta(days=1)
+        labels = {t.id: t.label for t in self._store.nodes(Tag)}
+        mine = set(self._visibility.org_ids_of(viewer_id))
+        fits: dict[str, float] = {}
+
+        def matches(event: Event, host: Organization | Person, tag_ids: set[str]) -> bool:
+            """Checked before ranking, so only events that match are ranked."""
+            host_name = host.name if isinstance(host, Organization) else host.display_name
+            fits[event.id] = keyword_fit(keywords, [
+                (event.title, NAME_WEIGHT),
+                (" ".join(labels.get(t, "") for t in tag_ids), TAG_WEIGHT),
+                (host_name, TAG_WEIGHT),
+                (event.description, TEXT_WEIGHT), (event.location, TEXT_WEIGHT),
+            ])
+            return fits[event.id] > 0
+
         items = self._discovery.rank_all(
             DiscoveryQuery(viewer_id=viewer_id, tag_ids=tag_ids,
-                           starts_after=after, starts_before=before), now
+                           starts_after=after, starts_before=before), now,
+            keep=matches if keywords else None,
         )
-        labels = {t.id: t.label for t in self._store.nodes(Tag)}
         found = []
         for item in items:
-            fit = 1.0
-            if keywords:
-                event = item.event
-                host = item.host.name if isinstance(item.host, Organization) else item.host.display_name
-                tags = " ".join(labels.get(t, "") for t in self._discovery.event_tag_ids(event.id))
-                fit = keyword_fit(keywords, [
-                    (event.title, NAME_WEIGHT), (tags, TAG_WEIGHT), (host, TAG_WEIGHT),
-                    (event.description, TEXT_WEIGHT), (event.location, TEXT_WEIGHT),
-                ])
-                if fit == 0:
-                    continue
+            fit = fits.get(item.event.id, 1.0)
             score = 0.6 * fit + 0.4 * item.score if keywords else item.score
             if item.is_cancelled:
                 score -= 1.0  # cancelled events always sink to the bottom
-            found.append(SearchResult("event", item.event.id, score, event=item))
+            connected = (item.my_rsvp in (RsvpStatus.GOING, RsvpStatus.INTERESTED)
+                         or item.host.id == viewer_id or item.host.id in mine)
+            found.append(SearchResult("event", item.event.id, score, event=item, connected=connected))
         return found
 
 

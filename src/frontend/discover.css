@@ -195,6 +195,13 @@ button, input, select { font: inherit; color: inherit; }
 
 .dc-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 0; padding: 0; list-style: none; }
 
+/* Section headings inside the results: "In your network", then a ruled
+   "Top results" where everything else begins. */
+.dc-divider { display: flex; align-items: center; gap: 12px; margin: 2px 2px 0; }
+.dc-divider.is-rule { margin-top: 18px; padding-top: 18px; border-top: 2px solid var(--ink); }
+.dc-divider-label { margin: 0; color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.dc-divider:not(.is-rule) .dc-divider-label { color: var(--green); }
+
 .dc-card {
     position: relative;
     display: grid;
