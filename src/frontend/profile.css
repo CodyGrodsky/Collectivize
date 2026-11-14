@@ -448,3 +448,48 @@ textarea.edit-input { resize: vertical; line-height: 1.45; }
     .p-events { grid-template-columns: minmax(0, 1fr); }
     .edit-preview { position: static; }
 }
+
+/* --- additions for real data: hidden rule, layout and privacy controls ---- */
+
+/* Elements styled with display: flex/grid must still hide when [hidden]. */
+[hidden] { display: none !important; }
+
+.page-message h2 { margin: 0 0 8px; font-size: 22px; font-weight: 650; }
+
+select.edit-input { height: 38px; cursor: pointer; }
+
+.edit-layout-list { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+
+.edit-layout-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+    gap: 8px;
+    align-items: center;
+    padding: 6px 8px 6px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.edit-layout-item.is-hidden { background: none; color: var(--muted); }
+
+.edit-layout-item label { font-weight: 550; cursor: pointer; }
+
+.edit-layout-state { color: var(--faint); font-size: 12px; }
+
+.edit-move {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--card);
+    cursor: pointer;
+}
+
+.edit-move:hover:not(:disabled) { background: #fff; border-color: var(--ink); }
+.edit-move:disabled { opacity: .35; cursor: not-allowed; }
+
+.edit-check { display: flex; align-items: center; gap: 8px; }
+.edit-check label { font-weight: 550; cursor: pointer; }
+.edit-layout-item input, .edit-check input { width: 16px; height: 16px; accent-color: var(--green); }

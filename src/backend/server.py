@@ -8,7 +8,8 @@ API (JSON):
     GET  /api/tags                             topic tags, for filters
     GET  /api/discover?viewer=&page=&near=1&tag=   the ranked Discover list (10 a page)
     POST /api/search  {"viewer", "query", "near"}  AI search (the search agent)
-    GET  /api/network?viewer=&center=          the network map (you or a connection)
+    GET  /api/network?viewer=&center=          a profile and its network map (you, a connection, your org)
+    POST /api/profile {"viewer", ...changes}     save your own profile and settings
 
 Safety:
 - Demo only. There is no login yet, so the server refuses to run against the
@@ -50,6 +51,8 @@ ROOT = Path(__file__).resolve().parents[2]
 STATIC_DIRS = ("src/frontend", "public", "app")
 HOME_PAGE = "/src/frontend/index.html"
 MAX_BODY_BYTES = 4096
+# A full profile edit is bigger: 1000 characters of emoji is about 4 KB alone.
+BODY_LIMITS = {"/api/profile": 8192}
 
 __all__ = ["PER_PAGE", "ApiError", "DemoServer", "DiscoverApi", "RequestHandler",
            "demo_graph_factory", "resolve_static", "serve"]
@@ -90,14 +93,17 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._static(url.path)
 
     def do_POST(self) -> None:
-        """POST /api/search, /api/rsvp and /api/star."""
+        """POST /api/search, /api/rsvp, /api/star and /api/profile."""
         routes = {
             "/api/search": self.server.api.search,
             "/api/rsvp": self.server.api.rsvp,
             "/api/star": self.server.api.star,
+            "/api/profile": self.server.api.profile,
         }
-        handler = routes.get(urlsplit(self.path).path)
-        self._api(None if handler is None else lambda: handler(self._read_json()))
+        path = urlsplit(self.path).path
+        handler = routes.get(path)
+        limit = BODY_LIMITS.get(path, MAX_BODY_BYTES)
+        self._api(None if handler is None else lambda: handler(self._read_json(limit)))
 
     def log_message(self, format: str, *args: Any) -> None:
         """One short log line per request (method and path, no query)."""
@@ -126,14 +132,14 @@ class RequestHandler(BaseHTTPRequestHandler):
             log.exception("API request failed")
             self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "something went wrong"})
 
-    def _read_json(self) -> dict[str, Any]:
+    def _read_json(self, limit: int = 0) -> dict[str, Any]:
         if "application/json" not in (self.headers.get("Content-Type") or ""):
             raise ApiError(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "send JSON")
         try:
             length = int(self.headers.get("Content-Length") or "0")
         except ValueError:
             raise ApiError(HTTPStatus.BAD_REQUEST, "bad Content-Length") from None
-        if not 0 < length <= MAX_BODY_BYTES:
+        if not 0 < length <= (limit or MAX_BODY_BYTES):
             raise ApiError(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request too large")
         try:
             body = json.loads(self.rfile.read(length))

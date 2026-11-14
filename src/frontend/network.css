@@ -1,52 +1,31 @@
-/* Network page: a map of one person's communities and connections, with a
-   panel that says what you share with them. Only what is directly linked
-   to the node in the middle is drawn. Shares the Discover and
-   Calendar palette and type.
+/* The network bubble and the Network page around it. Loaded after
+   profile.css on both the Network and Profile pages.
 
-   Only nodes you can open are drawn. Squares are communities, circles are
-   people. A bold line joins two people who accepted a connection, a light
-   dashed line joins two who are only close in the network, and a green
-   line joins a community to the middle. */
+   The bubble is a small fixed-size circle. Inside it: squares are
+   communities, circles are people; a bold line joins two people who
+   accepted a connection, a light dashed line joins two who are only close
+   in the network, and a line in the accent color joins a community to the
+   middle. When the bubble sits inside someone's profile it takes on their
+   colors (--p-*); elsewhere it uses the house colors. */
 
 :root {
-    --ink: #202b29;
-    --muted: #5f6b67;
-    --faint: #a3aca8;
-    --paper: #f5f4f0;
-    --card: #fbfaf7;
-    --line: #e6e5df;
-    --green: #266956;
-    --green-soft: #e8f2ed;
     --amber: #8a5a12;
     --amber-soft: #f6ecd9;
     --red: #9b3b32;
     --red-soft: #f6e4e1;
+    --green-soft: #e8f2ed;
     --shadow: 0 1px 2px rgba(32, 43, 41, .05), 0 6px 18px rgba(32, 43, 41, .05);
-    --radius: 14px;
+    --bubble: 400px; /* the circle's size; it shrinks on narrow screens */
     --duration-fast: 150ms;
     --duration-normal: 320ms;
     --ease-out: cubic-bezier(.16, 1, .3, 1);
 }
 
-* { box-sizing: border-box; }
+select { font: inherit; color: inherit; }
 
-[hidden] { display: none !important; }
+.network-page { max-width: 1100px; margin: 0 auto; padding: 28px 32px 48px; }
 
-body {
-    margin: 0;
-    background: var(--paper);
-    color: var(--ink);
-    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    -webkit-font-smoothing: antialiased;
-}
-
-button, select { font: inherit; color: inherit; }
-
-:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
-
-.network-page { max-width: 1240px; margin: 0 auto; padding: 28px 32px 48px; }
-
-/* --- header ------------------------------------------------------------- */
+/* --- page header (shared with the Profile page) -------------------------- */
 
 .nw-header {
     display: flex;
@@ -63,23 +42,7 @@ button, select { font: inherit; color: inherit; }
 
 .nw-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
 
-.nw-button {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    height: 34px;
-    padding: 0 14px 0 8px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--card);
-    font-weight: 500;
-    cursor: pointer;
-    transition: background var(--duration-fast);
-}
-
-.nw-button:hover { background: #fff; }
-
-.nw-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.nw-controls .page-button svg { width: 18px; height: 18px; margin-left: -6px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
 .nw-persona { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 13px; }
 
@@ -107,8 +70,6 @@ button, select { font: inherit; color: inherit; }
     color: var(--red);
 }
 
-.nw-banner .nw-button { padding: 0 14px; color: var(--ink); }
-
 .nw-notice {
     margin: 0 0 14px;
     padding: 10px 16px;
@@ -118,57 +79,81 @@ button, select { font: inherit; color: inherit; }
     color: var(--amber);
 }
 
-/* --- layout ------------------------------------------------------------- */
+.nw-empty { margin: 0; padding: 90px 24px; color: var(--muted); text-align: center; }
 
-.nw-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 20px; align-items: start; }
+/* --- the bubble ---------------------------------------------------------- */
 
-.nw-map-card {
-    position: relative;
-    padding: 14px 16px 12px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    background:
-        radial-gradient(circle at 50% 46%, #fff 0, rgba(255, 255, 255, 0) 58%),
-        var(--card);
-    box-shadow: var(--shadow);
+.nw-bubble {
+    --b-bg: var(--p-bg, var(--card));
+    --b-ink: var(--p-ink, var(--ink));
+    --b-muted: var(--p-muted, var(--muted));
+    --b-accent: var(--p-line, var(--green));
+    display: grid;
+    justify-items: center;
+}
+
+.nw-circle { width: min(100%, var(--bubble)); aspect-ratio: 1; border-radius: 50%; }
+
+.nw-map { display: block; width: 100%; height: 100%; border-radius: 50%; }
+
+.nw-map:focus { outline: none; }
+.nw-map:focus-visible .nw-rim { stroke: var(--b-accent); stroke-width: 3; }
+
+/* A network bigger than the bubble can be dragged around. */
+.nw-map.can-move { cursor: grab; touch-action: none; }
+.nw-map.is-dragging { cursor: grabbing; }
+
+.nw-backdrop { fill: var(--b-bg); }
+
+.nw-rim { fill: none; stroke: color-mix(in srgb, var(--b-ink) 22%, transparent); stroke-width: 1.5; pointer-events: none; }
+
+.nw-rim-fade { pointer-events: none; }
+.nw-fade-stop { stop-color: var(--b-bg); }
+
+.nw-world.is-gliding { transition: transform var(--duration-normal) var(--ease-out); }
+
+.nw-bubble-empty { margin: 8px 0 0; color: var(--b-muted); font-size: 13px; }
+
+.nw-move { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 12px; margin: 10px 0 0; color: var(--b-muted); font-size: 12px; text-align: center; }
+
+.nw-link-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--b-ink);
+    font: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
 }
 
 .nw-legend {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px 18px;
-    margin: 0 0 4px;
+    justify-content: center;
+    gap: 4px 14px;
+    margin: 10px 0 0;
     padding: 0;
     list-style: none;
-    color: var(--muted);
-    font-size: 12px;
+    color: var(--b-muted);
+    font-size: 11.5px;
 }
 
 .nw-legend li { display: flex; align-items: center; gap: 6px; }
 
-.nw-key { width: 12px; height: 12px; border: 1.5px solid var(--green); border-radius: 50%; background: #fff; }
-.nw-key.is-org { border-radius: 3px; background: var(--green-soft); }
-.nw-key.is-line { width: 22px; height: 0; border: 0; border-top: 2.2px solid #5f6b67; border-radius: 0; background: none; }
-.nw-key.is-line.is-near { border-top: 1.5px dashed #b4bbb7; }
-.nw-key.is-line.is-org { border-top: 2px solid var(--green); opacity: .6; }
+.nw-key { width: 11px; height: 11px; border: 1.5px solid var(--b-accent); border-radius: 50%; background: var(--b-bg); }
+.nw-key.is-org { border-radius: 3px; background: color-mix(in srgb, var(--b-accent) 14%, var(--b-bg)); }
+.nw-key.is-line { width: 20px; height: 0; border: 0; border-top: 2.2px solid color-mix(in srgb, var(--b-ink) 70%, var(--b-bg)); border-radius: 0; background: none; }
+.nw-key.is-line.is-near { border-top: 1.5px dashed color-mix(in srgb, var(--b-ink) 38%, var(--b-bg)); }
 
-.nw-map-scroll { overflow-x: auto; }
-
-.nw-map { display: block; width: 100%; min-width: 480px; height: auto; }
-
-.nw-empty { margin: 0; padding: 90px 24px; color: var(--muted); text-align: center; }
-
-.nw-privacy { margin: 6px 0 0; color: var(--faint); font-size: 12px; text-align: center; }
-
-/* --- the map ------------------------------------------------------------ */
+/* --- inside the bubble --------------------------------------------------- */
 
 /* Bold: a connection both people accepted, whoever is in the middle.
    Light: not connected, but close in the network. No line: no real tie. */
-.nw-link { stroke: #5f6b67; stroke-width: 2.2; }
-.nw-link.is-near { stroke: #c2c8c4; stroke-width: 1.1; stroke-dasharray: 3 5; }
-.nw-link.is-org { stroke: var(--green); stroke-width: 2; opacity: .6; }
-
-.nw-node { transition: opacity var(--duration-fast); }
+.nw-link { stroke: color-mix(in srgb, var(--b-ink) 70%, var(--b-bg)); stroke-width: 2.2; }
+.nw-link.is-near { stroke: color-mix(in srgb, var(--b-ink) 30%, var(--b-bg)); stroke-width: 1.1; stroke-dasharray: 3 5; }
+.nw-link.is-org { stroke: var(--b-accent); stroke-width: 2; opacity: .6; }
 
 .nw-node-inner {
     transform-box: fill-box;
@@ -183,99 +168,128 @@ button, select { font: inherit; color: inherit; }
     to { transform: scale(1); }
 }
 
-.nw-shape { fill: #fff; stroke: var(--faint); stroke-width: 1.5; transition: stroke-width var(--duration-fast), fill var(--duration-fast); }
+.nw-shape { fill: var(--b-bg); stroke: var(--b-accent); stroke-width: 2; transition: stroke-width var(--duration-fast), fill var(--duration-fast); }
 
 .nw-initials {
-    fill: var(--ink);
+    fill: var(--b-ink);
     font-size: 13px;
     font-weight: 650;
     letter-spacing: .02em;
     text-anchor: middle;
     dominant-baseline: middle;
     pointer-events: none;
+    user-select: none;
 }
 
 .nw-label {
-    fill: var(--muted);
+    fill: var(--b-muted);
     font-size: 13px;
     text-anchor: middle;
     pointer-events: none;
-    /* A paper-coloured halo keeps labels readable where a link passes behind. */
+    user-select: none;
+    /* A halo in the background color keeps labels readable over a line. */
     paint-order: stroke;
-    stroke: var(--card);
+    stroke: var(--b-bg);
     stroke-width: 4px;
     stroke-linejoin: round;
 }
 
-.nw-node.is-center .nw-shape { fill: var(--ink); stroke: var(--ink); stroke-dasharray: none; }
-.nw-node.is-center .nw-initials { fill: #fff; font-size: 17px; }
-.nw-node.is-center .nw-label { fill: var(--ink); font-size: 14.5px; font-weight: 650; }
+.is-org .nw-shape { fill: color-mix(in srgb, var(--b-accent) 14%, var(--b-bg)); }
+.is-org .nw-label { fill: var(--b-ink); font-weight: 600; }
 
-.is-org .nw-label { fill: var(--ink); font-weight: 600; }
-.is-org .nw-shape { fill: var(--green-soft); stroke: var(--green); }
-.is-org .nw-initials { fill: var(--green); }
-
-.is-person .nw-shape { stroke: var(--green); stroke-width: 2; }
-.is-person.is-you .nw-shape { fill: var(--ink); stroke: var(--ink); }
-.is-person.is-you .nw-initials { fill: #fff; }
-.is-person.is-you .nw-label { fill: var(--ink); font-weight: 650; }
+/* The node in the middle, and you wherever you appear: filled in. */
+.nw-node.is-center .nw-shape,
+.is-person.is-you .nw-shape { fill: var(--b-ink); stroke: var(--b-ink); }
+.nw-node.is-center .nw-initials,
+.is-person.is-you .nw-initials { fill: var(--b-bg); }
+.nw-node.is-center .nw-initials { font-size: 17px; }
+.nw-node.is-center .nw-label { fill: var(--b-ink); font-size: 14.5px; font-weight: 650; }
+.is-person.is-you .nw-label { fill: var(--b-ink); font-weight: 650; }
 
 .is-pressable { cursor: pointer; }
 .is-pressable:focus { outline: none; }
-.is-pressable:hover .nw-shape { stroke-width: 3; }
-.is-pressable:focus-visible .nw-shape { stroke: var(--green); stroke-width: 3.5; }
-.is-pressable:active .nw-shape { fill: var(--green-soft); }
+.is-pressable:hover .nw-shape { stroke-width: 3.5; }
+.is-pressable:focus-visible .nw-shape { stroke-width: 4.5; }
+.is-pressable:active .nw-shape { fill: color-mix(in srgb, var(--b-accent) 30%, var(--b-bg)); }
+.nw-map.is-dragging .is-pressable { cursor: grabbing; }
 
-/* --- side panel --------------------------------------------------------- */
+/* --- a community's page -------------------------------------------------- */
 
-.nw-panel {
-    padding: 20px 20px 8px;
+.nw-org {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 6px 20px;
+    align-items: start;
+    padding: 22px 24px;
     border: 1px solid var(--line);
-    border-radius: var(--radius);
+    border-radius: 16px;
     background: var(--card);
-    box-shadow: var(--shadow);
+}
+
+.nw-org-mark {
+    display: grid;
+    place-items: center;
+    width: 72px;
+    height: 72px;
+    border-radius: 20px;
+    background: var(--ink);
+    color: #fff;
+    font-size: 24px;
+    font-weight: 650;
+    letter-spacing: .02em;
 }
 
 .nw-eyebrow { margin: 0; color: var(--green); font-size: 11px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
 
-.nw-panel-title { margin: 2px 0 4px; font-size: 21px; font-weight: 650; letter-spacing: -.01em; }
+.nw-name { margin: 1px 0 2px; font-size: 26px; font-weight: 650; letter-spacing: -.015em; line-height: 1.15; overflow-wrap: anywhere; }
 
-.nw-summary { margin: 0 0 6px; color: var(--muted); }
+.nw-meta { margin: 0; color: var(--muted); }
 
-.nw-section { margin: 0 -20px; padding: 14px 20px 12px; border-top: 1px solid var(--line); }
+.nw-facts { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
 
-.nw-section h3 { margin: 0 0 6px; font-size: 12px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.nw-fact { padding: 4px 11px; border: 1px solid var(--line); border-radius: 999px; background: #fff; font-size: 13px; }
 
-.nw-hint { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+.nw-org-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: start; margin-top: 16px; }
+
+.nw-box { margin-top: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.nw-org-grid .nw-box { margin-top: 0; }
+
+.nw-box-title,
+.nw-section h3 { margin: 0 0 10px; font-size: 12px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+
+.nw-upcoming-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+
+.nw-event-link {
+    display: grid;
+    gap: 1px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    color: inherit;
+    text-decoration: none;
+    transition: background var(--duration-fast);
+}
+
+.nw-event-link:hover { background: rgba(32, 43, 41, .05); }
+
+.nw-event-when { color: var(--green); font-size: 13px; font-weight: 600; }
+
+.nw-event-title { font-weight: 550; }
+
+.nw-event-where { color: var(--muted); font-size: 12px; }
+
+/* --- the lists under the page -------------------------------------------- */
+
+.nw-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; align-items: start; margin-top: 16px; }
+
+.nw-section { padding: 16px 16px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
 
 .nw-list { margin: 0; padding: 0; list-style: none; }
 
-.nw-item + .nw-item { margin-top: 4px; }
-
-.nw-item.is-text { padding: 6px 4px 2px; color: var(--muted); font-size: 13px; }
-
-.nw-row { display: flex; align-items: center; gap: 10px; padding: 5px 8px; }
+.nw-row { display: flex; align-items: center; gap: 10px; padding: 5px 4px; }
 
 .nw-row-text { display: grid; flex: 1; min-width: 0; }
 
-.nw-badge {
-    display: grid;
-    flex: none;
-    place-items: center;
-    width: 30px;
-    height: 30px;
-    border: 1.5px solid var(--green);
-    border-radius: 8px;
-    background: var(--green-soft);
-    color: var(--green);
-    font-size: 11px;
-    font-weight: 650;
-}
-
-.nw-item-name { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.nw-item-sub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
+.nw-badge,
 .nw-avatar {
     display: grid;
     flex: none;
@@ -283,13 +297,17 @@ button, select { font: inherit; color: inherit; }
     width: 30px;
     height: 30px;
     border: 1.5px solid var(--green);
-    border-radius: 50%;
-    background: #fff;
-    color: var(--ink);
     font-size: 11px;
     font-weight: 650;
 }
 
+.nw-badge { border-radius: 8px; background: var(--green-soft); color: var(--green); }
+
+.nw-avatar { border-radius: 50%; background: #fff; color: var(--ink); }
+
+.nw-item-name { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.nw-item-sub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .nw-open {
     flex: none;
@@ -298,6 +316,7 @@ button, select { font: inherit; color: inherit; }
     border: 1px solid var(--line);
     border-radius: 999px;
     background: #fff;
+    font: inherit;
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
@@ -305,20 +324,19 @@ button, select { font: inherit; color: inherit; }
 }
 
 .nw-open:hover { border-color: var(--green); background: var(--green); color: #fff; }
-.nw-open:active { transform: translateY(1px); }
 
-/* --- small screens ------------------------------------------------------ */
+/* --- small screens ------------------------------------------------------- */
 
-@media (max-width: 1020px) {
-    .nw-layout { grid-template-columns: minmax(0, 1fr); }
-}
-
-@media (max-width: 640px) {
-    .network-page { padding: 18px 16px 36px; }
+@media (max-width: 768px) {
+    .network-page { padding: 20px 16px 32px; }
     .nw-persona select { max-width: 200px; }
+    .nw-org { grid-template-columns: auto minmax(0, 1fr); padding: 18px 16px; column-gap: 14px; }
+    .nw-org-mark { width: 52px; height: 52px; border-radius: 14px; font-size: 18px; }
+    .nw-name { font-size: 22px; }
+    .nw-org > .page-button { grid-column: 1 / -1; justify-self: start; }
 }
 
 @media (prefers-reduced-motion: reduce) {
     .nw-node-inner { animation: none; }
-    .nw-button, .nw-open, .nw-node, .nw-link, .nw-shape { transition: none; }
+    .nw-open, .nw-shape, .nw-event-link, .nw-world.is-gliding { transition: none; }
 }

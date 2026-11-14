@@ -312,7 +312,10 @@ def test_the_server_only_listens_on_this_machine(api):
         srv.server_close()
 
 
-@pytest.mark.parametrize("name", ["discover.js", "shared.js", "calendar.js", "network.js", "network-layout.js"])
+@pytest.mark.parametrize("name", [
+    "discover.js", "shared.js", "calendar.js", "network.js", "network-layout.js", "network-view.js",
+    "network-data.js", "profile.js", "profile-render.js", "profile-editor.js",
+])
 def test_frontend_never_renders_server_text_as_html(name):
     script = (Path(__file__).resolve().parents[2] / "src/frontend" / name).read_text()
     for risky in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
@@ -326,4 +329,4 @@ def test_network_map_over_http(server, seeded):
     assert fetch(f"{server}/api/network")[0] == 400  # no viewer
     assert fetch(f"{server}/api/network?viewer={drew}&center=nobody")[0] == 404
     status, _, body = fetch(f"{server}/src/frontend/network.html")
-    assert status == 200 and b'id="nw-map"' in body
+    assert status == 200 and b'id="nw-root"' in body

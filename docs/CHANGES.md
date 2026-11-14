@@ -4,19 +4,75 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
-## 2026-11-14 — Home page: spinning logo replaces the still logo
+## 2026-11-14 — Profile page and network bubble combined, on real data, with editing
 
-**Request:** "make sure it all displays correctly seamlessly replacing the old logo with the new spinning animation loop."
+**Request:** "imagine combining profile page information display and then displaying the small graph bubble in the same page. Then in the profile page you can change settings, layout of the public profile display, colors, what events you want shown to who, etc."
 
-### What changed
-- **New logo:** `public/brand/logo.svg` (600×600, drawn around its center so it spins in place without clipping). It replaces `logo-on-paper.svg` on the home page only.
-- **Spin:** `src/frontend/logo-spin.css`, used as-is. It rotates the whole `<img>`: one 30 s loop that speeds up clockwise, slows, pauses 1 s, then does the same counter-clockwise and pauses again. Anyone who turns on "reduce motion" sees a still logo.
-- **`index.html`:** links `logo-spin.css`, adds the `logo-spin` class to the logo, and sets its size to 600×600 so the page doesn't jump while it loads. The sizing in `landing.css` is unchanged.
-- **Demo:** `public/brand/logo-demo.html` shows the still and spinning logo side by side (its links updated to the new paths). The temporary `public/brand/incoming/` folder is gone.
+This replaces the thin profile header and large circle described in the entry below.
+
+### What you can do now
+- **One page per person: their profile with their network bubble inside it.** James's profile design (card with name, badge, bio and website; sections for About, Top 3, Orgs, Events) now runs on real data, and "Network" is one of its sections: a small circle (400px) you can drag or move with the arrow keys when the network doesn't fit.
+- **Network tab:** starts on your page. Clicking a connection in the bubble opens their page and bubble, in the colors and layout they chose. Clicking a community opens its page (kind, website, upcoming events) and its bubble of members. "Back to you" and "Edit your page" are in the header.
+- **Profile tab:** your own page, with **Edit page** and **View as visitor**. Editing has a live preview and covers:
+  - **Text:** display name, bio, About, Top 3, website.
+  - **Colors:** background and outline; the bubble takes them on too.
+  - **Layout:** tick which sections visitors see and move them up or down, including where the network bubble sits (or hide it).
+  - **Who can see what:** your profile (everyone signed in, connections only, only you), the events you're going to (same choices), and whether to hide who you're connected to.
+- **Locked profiles:** if someone limits their profile and you don't qualify, you see their name, badge and colors and the network you share, nothing else.
+
+### Backend
+- **`Person`** (`objects/person.py`) gains `bio`, `top3_title`, `top3_items`, `website` (https only), `color_background`, `color_outline`, `profile_visibility` and `profile_sections`, all with defaults and all validated by the record. `profile` stays as the About text. Existing databases load without re-seeding.
+- **New `ProfileService`** (`graph/profiles.py`, `graph.profiles`):
+  - **`view(person_id, viewer_id, now)`**: full or locked, connection state, and the orgs, hosted events and "going" events the viewer may see. Hidden people look missing.
+  - **`update(person_id, by_person_id, **changes)`**: only you, only the listed fields, every limit checked, all or nothing. Changing who sees your events updates your existing RSVPs.
+- **API** (`network_api.py`, `demo_api.py`, `server.py`): `GET /api/network` returns the full profile (with `settings` on your own); new `POST /api/profile` saves edits, with its own 8 KB limit.
+
+### Frontend
+- **Split James's `profile.js`** (732 lines, sample data) into `profile-render.js` (renderer, rules, theme), `profile-editor.js` (the editor, plus Layout and Who-can-see-what) and a new `profile.js` (the page). `profile-mock.js` is deleted; nothing uses it.
+- **New `network-data.js`**: loads and checks the server's answer for both pages. `network-view.js` gains `NetworkBubble`. `network.js` now draws people with the shared renderer.
+
+### Decisions to confirm
+- **No usernames yet.** The proposal makes `username` required, which would break the seed data and 26 test calls and needs agreeing with the team. Pages are addressed by id for now (`network.html?center=<id>`).
+- **The Connect button only shows the state** ("Connected", "Request sent"); sending requests from the page isn't wired up.
+- **On the Network tab the bubble always shows,** even if the person left the network section out of their layout: it appears under their page. On their own Profile tab it follows their layout.
+- **A person's Orgs section lists every org the viewer may see them in,** including ones the viewer hasn't joined. The bubble still shows only what the viewer can open.
+- **Saving keeps a demo person's "(demo role)" tag** unless the name itself was changed.
+
+### Tests
+- **New `tests/backend/test_profiles.py`** (142 runs): every limit just inside and outside, only you can edit, protected fields refused, failed edits change nothing, full vs. locked for stranger / connection / self, connection states, hidden looks missing, private memberships and RSVPs never leak, upcoming-only events, and the API including malformed bodies, the size limit over HTTP and the demo-name rule.
+- Full suite apart from the `test_audit_*` files: 1810 pass.
+- **In a browser:** edited bio, background color, section order, a hidden section and profile visibility through the real form, saved, and confirmed the page redrew with them; then restored that demo person. No script errors on either page.
+
+---
+
+## 2026-11-14 — Network page: profile on top, network in a fixed circle you can move around
+
+**Request:** "make it so the network is inside a certain size circle, and if the network doesn't fit in the circle, only show what does fit, and allow arrow key or touch movement to navigate… The circle should be positioned below whoever you are viewing… If you click another node on the graph it should appear different profile info. If it is an organization, it should navigate to the organization page and their graph."
+
+### What you can do now
+- **Profile first, network below.** The Network tab opens on your own profile (name, role, how many connections and communities), with your network in a circle right under it. Clicking a node swaps both: the profile becomes theirs and the circle shows their network.
+  - **A connection:** their name and role, what you have in common (mutual connections, shared communities), and their profile text if they wrote one.
+  - **A community:** its page: what kind of org it is, a Website button when it has one, how many members you're connected to, and its next three upcoming events (each links to that day on the Calendar). Its network of members is below. There was no organization page in the app before, so this is it; the address is `network.html?center=<org id>`.
+- **A fixed-size circle.** The map is always the same circle (600px wide, smaller on a phone). Whatever fits is shown and the rest is cut off at the edge, which fades to show there's more.
+- **Moving around a big network:** drag with a mouse or finger, or press the arrow keys while the map has focus. Tabbing to a node that is out of sight brings it into view. "Back to the middle" returns to the center. A network that fits doesn't move, and the hint only appears when there's more to see.
+- **The lists** of communities and connections moved under the circle.
+
+### Backend
+- **New `src/backend/network_api.py`**: `network_json` builds the answer to `GET /api/network`, now with a `profile` for whoever is in the middle. Moved out of `demo_api.py` to keep that file under 500 lines.
+  - **Person:** `name`, `role`, `about`, `verified`, `in_common` (null for yourself). Never the email or any setting.
+  - **Org:** `org_kind`, `website` (http/https only), `upcoming_count` and up to three `upcoming` events the viewer may see (published, not cancelled, not ended).
+
+### Frontend
+- **New `network-view.js`** (`NetworkView`): the circle, clipping, dragging, arrow keys and the nodes. `network-layout.js` no longer squeezes nodes into a box; it reports how far the network reaches. `network.js` is the page: loading, profile, lists.
+- **Layout tweak:** someone tied to many others is pulled less by each tie, so a tightly knit group no longer collapses into a clump.
 
 ### Decisions
-- **Old files kept:** `logo-on-paper.svg` and `logo-on-black.svg` stay, since the black version and the favicon haven't been redrawn yet.
-- **CSS kept separate, not pasted into the SVG:** it spins the image from the page, so a normal stylesheet works and any page can reuse it with one class.
+- **The org "page" lives on the Network tab** rather than a new separate page, so the profile-then-circle layout is the same for people and communities.
+- **Profile counts only cover what's on the map** (your own connections and communities), in line with leaving out nodes you can't open.
+
+### Tests
+- `tests/backend/test_person_map.py` (70 runs) adds the profile: yours, a connection's in-common, an org's kind and upcoming events, cancelled and draft events left out, and website links.
+- Checked in a browser: three arrow presses move the map and stop at the limit, "Back to the middle" resets, a touch drag moves it, and a network that fits stays put. Screenshots at desktop and phone widths.
 
 ---
 

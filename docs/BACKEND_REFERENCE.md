@@ -194,6 +194,16 @@ The network view: people and orgs as nodes, linked by accepted connections (pers
   - `focus(viewer_id: str | None, focus_id: str) -> NetworkView`: What the graph shows when you click a node: the node, its direct links, and the path from you to it (if there's a close one). [L296](../src/backend/graph/network.py#L296)
   - `in_common(viewer_id: str | None, other_id: str) -> InCommon`: Mutual friends and shared orgs, as the viewer is allowed to see them. [L313](../src/backend/graph/network.py#L313)
 
+### `src/backend/graph/profiles.py`
+
+A person's profile page: what a viewer may read, and the owner's edits.
+
+- **`ProfileAccess`** (enum): [L64](../src/backend/graph/profiles.py#L64)
+- **`ProfileView`**: [L70](../src/backend/graph/profiles.py#L70)
+- **`ProfileService`**: [L80](../src/backend/graph/profiles.py#L80)
+  - `view(person_id: str, viewer_id: str | None, now: datetime) -> ProfileView`: A person's profile as this viewer may read it: full or locked, with only the orgs and upcoming events the viewer is allowed to see. [L99](../src/backend/graph/profiles.py#L99)
+  - `update(person_id: str, by_person_id: str, **changes) -> Person`: Change your own profile and its settings. Returns the saved person. [L170](../src/backend/graph/profiles.py#L170)
+
 ## Events
 
 Creating, publishing and editing events; people and orgs as hosts; co-hosting by invite or request; series; calendars (host and personal); RSVPs and stars.
@@ -549,10 +559,10 @@ Cross-cutting rules every node and edge follows (see user_Orgs.md).
 
 Person node: one real human with an account.
 
-- **`VerificationLevel`** (enum): Which level of identity verification was achieved (not how). [L16](../src/backend/objects/person.py#L16)
-- **`Person`** (GraphRecord): A person with an account: display name, private email, settings, and a private travel average. [L26](../src/backend/objects/person.py#L26)
-  - Fields: `display_name`, `email`, `profile`, `verification_level`, `embedding`, `visibility`, `hide_connections`, `rsvp_visibility`, `travel_log_km`, `travel_samples`, `ai_uses_history`, `analytics_consent`
-  - `with_hide_connections(hidden: bool) -> Person`: A copy with "hide my connections" turned on or off. [L66](../src/backend/objects/person.py#L66)
+- **`VerificationLevel`** (enum): Which level of identity verification was achieved (not how). [L34](../src/backend/objects/person.py#L34)
+- **`Person`** (GraphRecord): A person with an account: display name, private email, settings, and a private travel average. [L44](../src/backend/objects/person.py#L44)
+  - Fields: `display_name`, `email`, `profile`, `verification_level`, `embedding`, `visibility`, `hide_connections`, `rsvp_visibility`, `travel_log_km`, `travel_samples`, `ai_uses_history`, `analytics_consent`, `bio`, `top3_title`, `top3_items`, `website`, `color_background`, `color_outline`, `profile_visibility`, `profile_sections`
+  - `with_hide_connections(hidden: bool) -> Person`: A copy with "hide my connections" turned on or off. [L121](../src/backend/objects/person.py#L121)
 
 ### `src/backend/objects/organization.py`
 
@@ -718,19 +728,29 @@ The demo API's behaviour, independent of HTTP (server.py wraps it).
   - `rsvp(body: dict[str, Any]) -> dict[str, Any]`: Set or clear an RSVP: `viewer`, `event_id`, `status` ("going", "maybe", or null to clear), `near` (records the trip distance). [L205](../src/backend/demo_api.py#L205)
   - `star(body: dict[str, Any]) -> dict[str, Any]`: Star or unstar an event: `viewer`, `event_id`, `starred` (true/false). [L220](../src/backend/demo_api.py#L220)
   - `calendar(params: dict[str, str]) -> dict[str, Any]`: A person's calendar for a window: `viewer`, `start`, `end` (ISO 8601 with a time zone, at most 62 days apart). [L234](../src/backend/demo_api.py#L234)
-  - `network(params: dict[str, str]) -> dict[str, Any]`: The network map: `viewer` (required) and `center` (the viewer, one of their connections, or an org they belong to; default the viewer). [L250](../src/backend/demo_api.py#L250)
+  - `network(params: dict[str, str]) -> dict[str, Any]`: The network map and the profile of whoever is in the middle: `viewer` (required) and `center` (the viewer, one of their connections, or an org they belong to; default the viewer). [L250](../src/backend/demo_api.py#L250)
+  - `profile(body: dict[str, Any]) -> dict[str, Any]`: Save your own profile and settings: `viewer` plus any of `display_name`, `bio`, `about`, `top3`, `website`, `colors`, `sections`, `profile_visibility`, `rsvp_visibility`, `hide_connections`. Returns your page again (as GET /api/network). [L261](../src/backend/demo_api.py#L261)
+
+### `src/backend/network_api.py`
+
+JSON for the Network and Profile pages: the map around one node, the profile of whoever is in the middle, and saving your own profile.
+
+- `network_json(graph: CollectivizeGraph, viewer: str, center: str | None, now: datetime) -> dict[str, Any]`: The answer to GET /api/network: the map and the center's profile. [L29](../src/backend/network_api.py#L29)
+- `clean_name(name: str) -> str`: A demo name without its "[Demo]" prefix or "(demo role)" suffix. [L37](../src/backend/network_api.py#L37)
+- `person_profile_json(graph: CollectivizeGraph, viewer: str, person_id: str, now: datetime) -> dict[str, Any]`: A person's profile page as the viewer may read it (the shape docs/profile-backend-proposal.md describes, without usernames). Never the email. `settings` is only included on your own profile. [L71](../src/backend/network_api.py#L71)
+- `profile_changes(body: dict[str, Any]) -> dict[str, Any]`: Turn a POST /api/profile body into `ProfileService.update` changes. Only keys that are present are changed. Raises ValueError (with a message safe to show) for anything malformed; the limits themselves are checked by the Person record. [L152](../src/backend/network_api.py#L152)
 
 ### `src/backend/server.py`
 
 A small local web server for the demo: the frontend pages plus a JSON API.
 
-- **`DemoServer`** (ThreadingHTTPServer): [L61](../src/backend/server.py#L61)
-- **`RequestHandler`** (BaseHTTPRequestHandler): [L69](../src/backend/server.py#L69)
-  - `do_GET() -> None`: API routes, the home redirect, or a static file. [L74](../src/backend/server.py#L74)
-  - `do_POST() -> None`: POST /api/search, /api/rsvp and /api/star. [L92](../src/backend/server.py#L92)
-  - `log_message(format: str, *args) -> None`: One short log line per request (method and path, no query). [L102](../src/backend/server.py#L102)
-- `resolve_static(url_path: str, root: Path = ROOT) -> Path | None`: The file a URL path refers to, or None unless it is a real file inside one of STATIC_DIRS. Blocks '..', encoded traversal, dotfiles and symlinks that lead outside. [L185](../src/backend/server.py#L185)
-- `serve(api: DiscoverApi, port: int = 8000) -> DemoServer`: Create the server on 127.0.0.1 (call .serve_forever() to run it). [L201](../src/backend/server.py#L201)
+- **`DemoServer`** (ThreadingHTTPServer): [L64](../src/backend/server.py#L64)
+- **`RequestHandler`** (BaseHTTPRequestHandler): [L72](../src/backend/server.py#L72)
+  - `do_GET() -> None`: API routes, the home redirect, or a static file. [L77](../src/backend/server.py#L77)
+  - `do_POST() -> None`: POST /api/search, /api/rsvp, /api/star and /api/profile. [L95](../src/backend/server.py#L95)
+  - `log_message(format: str, *args) -> None`: One short log line per request (method and path, no query). [L108](../src/backend/server.py#L108)
+- `resolve_static(url_path: str, root: Path = ROOT) -> Path | None`: The file a URL path refers to, or None unless it is a real file inside one of STATIC_DIRS. Blocks '..', encoded traversal, dotfiles and symlinks that lead outside. [L191](../src/backend/server.py#L191)
+- `serve(api: DiscoverApi, port: int = 8000) -> DemoServer`: Create the server on 127.0.0.1 (call .serve_forever() to run it). [L207](../src/backend/server.py#L207)
 
 ### `src/backend/seed.py`
 

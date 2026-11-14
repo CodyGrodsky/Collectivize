@@ -6,25 +6,30 @@
     <meta name="theme-color" content="#f5f4f0">
     <title>Network · Collectivize</title>
     <link rel="icon" href="../../app/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="profile.css">
     <link rel="stylesheet" href="network.css">
     <link rel="stylesheet" href="nav.css">
     <script src="nav.js"></script>
     <script src="shared.js" defer></script>
+    <script src="network-data.js" defer></script>
     <script src="network-layout.js" defer></script>
+    <script src="network-view.js" defer></script>
+    <script src="profile-render.js" defer></script>
     <script src="network.js" defer></script>
 </head>
 <body>
     <main class="network-page">
         <header class="nw-header">
             <div>
-                <h1 class="nw-title" id="nw-title" aria-live="polite">Network</h1>
-                <p class="nw-subtitle" id="nw-subtitle">Your connections and communities. Click one to put it in the middle.</p>
+                <h1 class="nw-title">Network</h1>
+                <p class="nw-subtitle">Click anyone or any community in the bubble to see their page and their network.</p>
             </div>
             <div class="nw-controls">
-                <button type="button" class="nw-button" id="nw-home" hidden>
+                <button type="button" class="page-button" id="nw-home" hidden>
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 6-6 6 6 6"/></svg>
-                    Back to your network
+                    Back to you
                 </button>
+                <a class="page-button" id="nw-edit" href="profile.html" hidden>Edit your page</a>
                 <label class="nw-persona">
                     <span>Viewing as</span>
                     <select id="nw-persona"></select>
@@ -34,44 +39,25 @@
 
         <div class="nw-banner" id="nw-banner" role="alert" hidden>
             <span id="nw-banner-text"></span>
-            <button type="button" class="nw-button" id="nw-retry">Retry</button>
+            <button type="button" class="page-button" id="nw-retry">Retry</button>
         </div>
 
         <p class="nw-notice" id="nw-notice" role="status" aria-live="polite" hidden></p>
 
-        <div class="nw-layout">
-            <section class="nw-map-card" aria-labelledby="nw-title">
-                <ul class="nw-legend" aria-label="Key">
-                    <li><span class="nw-key is-org"></span>Your community</li>
-                    <li><span class="nw-key"></span>Your connection</li>
-                    <li><span class="nw-key is-line"></span>Connected (both accepted)</li>
-                    <li><span class="nw-key is-line is-near"></span>Close, not connected</li>
-                    <li><span class="nw-key is-line is-org"></span>Member of the community</li>
-                </ul>
-                <div class="nw-map-scroll">
-                    <svg class="nw-map" id="nw-map" viewBox="0 0 900 640" role="group"
-                         aria-label="Network map"></svg>
-                </div>
-                <p class="nw-empty" id="nw-empty" hidden></p>
-                <p class="nw-privacy">Only your own connections and communities appear here, and only what each person has chosen to show you.</p>
+        <p class="nw-empty" id="nw-empty" hidden></p>
+
+        <!-- The page of whoever is in the middle, with their network bubble inside it. -->
+        <div id="nw-root" aria-live="polite"></div>
+
+        <div class="nw-lists" id="nw-lists" hidden>
+            <section class="nw-section" id="nw-shared" hidden>
+                <h3 id="nw-shared-title">Your communities</h3>
+                <ul class="nw-list" id="nw-shared-list"></ul>
             </section>
-
-            <aside class="nw-panel" aria-label="About this network">
-                <p class="nw-eyebrow" id="nw-eyebrow"></p>
-                <h2 class="nw-panel-title" id="nw-panel-title"></h2>
-                <p class="nw-summary" id="nw-summary"></p>
-
-                <section class="nw-section" id="nw-shared" hidden>
-                    <h3 id="nw-shared-title">Your communities</h3>
-                    <ul class="nw-list" id="nw-shared-list"></ul>
-                </section>
-
-                <section class="nw-section" id="nw-people" hidden>
-                    <h3 id="nw-people-title">Connections</h3>
-                    <p class="nw-hint" id="nw-people-hint"></p>
-                    <ul class="nw-list" id="nw-people-list"></ul>
-                </section>
-            </aside>
+            <section class="nw-section" id="nw-people" hidden>
+                <h3 id="nw-people-title">Connections</h3>
+                <ul class="nw-list" id="nw-people-list"></ul>
+            </section>
         </div>
     </main>
 </body>

@@ -40,11 +40,12 @@ from .event import Event, EventChange, EventSeries, EventStatus
 from .geo import GeoPoint, haversine_km
 from .invite import Invite
 from .organization import ClaimState, Freshness, Organization, OrgKind
-from .person import Person, VerificationLevel
+from .person import PROFILE_SECTIONS, Person, VerificationLevel
 from .taxonomy import Tag, Venue
 
 __all__ = [
     "ERASED_CONFIRMER",
+    "PROFILE_SECTIONS",
     "AttendanceMethod",
     "Attended",
     "ClaimState",

@@ -12,11 +12,11 @@ import pytest
 from backend.config import Environment
 from backend.graph import CollectivizeGraph, NotFoundError, PermissionDeniedError
 from backend.graph.network import MAX_MAP_PEOPLE, NodeKind
-from backend.objects import Visibility
+from backend.objects import DomainRuleError, Visibility
 from backend.seed import seed_mock_data
 from backend.server import ApiError, DiscoverApi
 
-from .conftest import NOW, make_person
+from .conftest import NOW, make_event, make_person
 
 
 def connect(world, a, b):
@@ -361,3 +361,70 @@ def test_api_rejects_bad_centers(api, seeded):
         api.network({"viewer": drew, "center": "x" * 65})
     with pytest.raises(NotFoundError):
         api.network({"viewer": drew, "center": "nobody"})
+
+
+# --- the profile above the map -------------------------------------------------------
+
+
+def test_your_own_profile_has_no_in_common_and_nothing_private(api, seeded):
+    drew = seeded[1].people["drew"]
+    profile = api.network({"viewer": drew})["profile"]
+    assert profile["kind"] == "person" and profile["name"] == "Drew"
+    assert profile["role"] == "student" and profile["in_common"] is None
+    assert profile["is_self"] and profile["access"] == "full" and "settings" in profile
+    assert "email" not in profile and "@" not in str(profile)
+
+
+def test_a_connections_profile_says_what_you_have_in_common(api, seeded):
+    drew = seeded[1].people["drew"]
+    own = api.network({"viewer": drew})
+    friend = max(own["people"], key=lambda p: p["closeness"])
+    data = api.network({"viewer": drew, "center": friend["id"]})
+    profile = data["profile"]
+    assert profile["kind"] == "person" and profile["name"] == friend["name"]
+    assert profile["connection"] == "connected" and "settings" not in profile
+    shown = len([p for p in data["people"] if not p["is_you"]])
+    assert (f"{shown} mutual connection" in profile["in_common"]) == (shown > 0)
+    assert all(o["name"] in profile["in_common"] for o in data["orgs"])
+    assert "[Demo]" not in str(profile) and "@" not in str(profile)
+
+
+def test_an_orgs_profile_has_its_kind_and_upcoming_events(api, seeded):
+    drew = seeded[1].people["drew"]
+    org = api.network({"viewer": drew})["orgs"][0]
+    profile = api.network({"viewer": drew, "center": org["id"]})["profile"]
+    assert profile["kind"] == "org" and profile["name"] == org["name"]
+    assert profile["org_kind"] in {"chapter", "national", "council", "club", "institution"}
+    assert profile["upcoming_count"] >= len(profile["upcoming"]) and len(profile["upcoming"]) <= 3
+    starts = [e["starts_at"] for e in profile["upcoming"]]
+    assert starts == sorted(starts) and all(s >= NOW.isoformat() for s in starts)
+    assert all(set(e) == {"id", "title", "starts_at", "location"} for e in profile["upcoming"])
+
+
+def test_an_org_website_is_only_sent_when_it_is_a_web_link(world):
+    from dataclasses import replace
+
+    from backend.network_api import network_json
+
+    def website(url):
+        world.graph.store.save_node(replace(world.chapter, website_url=url))
+        return network_json(world.graph, world.alice.id, world.chapter.id, NOW)["profile"]["website"]
+
+    assert website("https://chapter.example/") == "https://chapter.example/"
+    assert website(None) is None
+    with pytest.raises(DomainRuleError):  # the org itself refuses anything else
+        website("javascript:alert(1)")
+
+
+def test_an_orgs_profile_leaves_out_cancelled_and_draft_events(world):
+    from backend.network_api import network_json
+
+    ev = world.graph.events
+    kept = ev.create(make_event("Kept", days_ahead=2), world.chapter.id, world.alice.id)
+    ev.publish(kept.id, world.alice.id, NOW)
+    gone = ev.create(make_event("Cancelled", days_ahead=3), world.chapter.id, world.alice.id)
+    ev.publish(gone.id, world.alice.id, NOW)
+    ev.cancel(gone.id, world.alice.id)
+    ev.create(make_event("Draft", days_ahead=4), world.chapter.id, world.alice.id)
+    profile = network_json(world.graph, world.alice.id, world.chapter.id, NOW)["profile"]
+    assert [e["title"] for e in profile["upcoming"]] == ["Kept"] and profile["upcoming_count"] == 1

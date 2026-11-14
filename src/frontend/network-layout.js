@@ -1,10 +1,12 @@
 "use strict";
 
 // Where everything sits on the network map. Pure maths, no DOM:
-//   Collectivize.NetworkLayout.arrange(map, random?) -> { center, orgs, people, links, width, height }
+//   Collectivize.NetworkLayout.arrange(map, random?) -> { center, orgs, people, links, reach }
 //
-// The node in focus is pinned in the middle. Everything else starts at a
-// random spot and is then pulled into place:
+// The node in focus is pinned at (0, 0). Everything else starts at a
+// random spot and is then pulled into place, as far out as it needs to go
+// (the page shows a fixed-size circle of it and lets you move around;
+// `reach` is how far the furthest node ended up from the middle):
 //   - every node is tied to the center, on a shorter tie the more it
 //     shares with the center (its `closeness`), so close ones sit nearer;
 //   - people who are connected to each other are tied together, so
@@ -15,27 +17,24 @@
 // differently each time. Pass a `random` function to make it repeatable.
 
 (() => {
-    const WIDTH = 900;
-    const HEIGHT = 640;
-    const MARGIN = { x: 60, top: 44, bottom: 64 }; // room for nodes and their labels
     const STEPS = 320;
-    const FAR = 250; // tie to the center for a node that shares nothing with it
-    const NEAR = 120; // ...and for one that shares a lot
-    const PEER_TIE = 105; // between two connected people
-    const NEAR_TIE = 150; // between two people who are close but not connected
+    const FAR = 150; // tie to the center for a node that shares nothing with it
+    const NEAR = 85; // ...and for one that shares a lot
+    const PEER_TIE = 90; // between two connected people
+    const NEAR_TIE = 125; // between two people who are close but not connected
     const PUSH = 5200; // how hard nodes push each other apart
     const MIN_GAP = 74; // nodes closer than this are pushed apart firmly
     const CENTER_PULL = 0.05;
     const PEER_PULL = 0.03;
     const NEAR_PULL = 0.012;
 
-    const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
+    const clamp = (value, limit) => Math.min(limit, Math.max(-limit, value));
 
     /** Tie length to the center: shorter the more the node shares with it. */
     const tieLength = (closeness, most) => (most > 0 ? FAR - (FAR - NEAR) * (closeness / most) : (FAR + NEAR) / 2);
 
     function arrange(map, random = Math.random) {
-        const center = { x: WIDTH / 2, y: HEIGHT / 2 };
+        const center = { x: 0, y: 0 };
         const nodes = [...map.orgs.map((org) => ({ ...org, isOrg: true })), ...map.people];
         const most = Math.max(0, ...nodes.map((node) => node.closeness));
         // Crowded maps get longer ties so the rings don't jam.
@@ -43,7 +42,7 @@
 
         const spots = nodes.map((node) => {
             const angle = random() * Math.PI * 2;
-            const distance = 90 + random() * 170;
+            const distance = 70 + random() * 110;
             return {
                 node,
                 x: center.x + Math.cos(angle) * distance,
@@ -59,6 +58,15 @@
             ...tied(map.links, "peer", PEER_TIE, PEER_PULL),
             ...tied(map.near, "near", NEAR_TIE, NEAR_PULL),
         ];
+        // Someone tied to many others is pulled less by each, so a tightly
+        // knit group gathers on one side without collapsing into a clump.
+        const tieCount = new Map();
+        for (const tie of ties) {
+            for (const end of [tie.a, tie.b]) tieCount.set(end, (tieCount.get(end) || 0) + 1);
+        }
+        for (const tie of ties) {
+            tie.pull /= Math.max(1, Math.sqrt(tieCount.get(tie.a) * tieCount.get(tie.b)) / 2);
+        }
 
         for (let step = 0; step < STEPS; step += 1) {
             const cooling = 1 - step / STEPS;
@@ -98,8 +106,8 @@
             }
             spots.forEach((spot, i) => {
                 const limit = 4 + 26 * cooling; // big moves early, small ones late
-                spot.x = clamp(spot.x + clamp(moves[i].x, -limit, limit), MARGIN.x, WIDTH - MARGIN.x);
-                spot.y = clamp(spot.y + clamp(moves[i].y, -limit, limit), MARGIN.top, HEIGHT - MARGIN.bottom);
+                spot.x += clamp(moves[i].x, limit);
+                spot.y += clamp(moves[i].y, limit);
             });
         }
 
@@ -117,8 +125,7 @@
             orgs: placed.filter((node) => node.isOrg),
             people: placed.filter((node) => !node.isOrg),
             links,
-            width: WIDTH,
-            height: HEIGHT,
+            reach: Math.max(0, ...placed.map((node) => Math.hypot(node.x, node.y))),
         };
     }
 

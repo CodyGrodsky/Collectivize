@@ -29,9 +29,9 @@ from backend.graph import (
 from backend.graph.ai_search import InterpreterError
 from backend.graph.discovery import DiscoveryItem
 from backend.graph.my_calendar import CalendarEntry
-from backend.graph.network import NetworkMap, NodeKind
 from backend.graph.search_agent import AgentStep
 from backend.graph.sqlite_store import SqliteGraphStore
+from backend.network_api import clean_name, network_json, profile_changes
 from backend.objects import (
     EventStatus,
     MemberOf,
@@ -248,14 +248,34 @@ class DiscoverApi:
             }
 
     def network(self, params: dict[str, str]) -> dict[str, Any]:
-        """The network map: `viewer` (required) and `center` (the viewer, one
-        of their connections, or an org they belong to; default the viewer)."""
+        """The network map and the profile of whoever is in the middle:
+        `viewer` (required) and `center` (the viewer, one of their
+        connections, or an org they belong to; default the viewer)."""
         center = params.get("center") or None
         if center is not None and len(center) > MAX_ID_LENGTH:
             raise ApiError(HTTPStatus.BAD_REQUEST, "unknown person or org")
         with self._graphs() as graph:
             viewer = self._required_viewer(graph, params.get("viewer"))
-            return _map_json(graph.network.node_map(viewer, center))
+            return network_json(graph, viewer, center, self._clock())
+
+    def profile(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Save your own profile and settings: `viewer` plus any of
+        `display_name`, `bio`, `about`, `top3`, `website`, `colors`,
+        `sections`, `profile_visibility`, `rsvp_visibility`,
+        `hide_connections`. Returns your page again (as GET /api/network)."""
+        try:
+            changes = profile_changes(body)
+        except ValueError as error:
+            raise ApiError(HTTPStatus.BAD_REQUEST, str(error)) from None
+        with self._graphs() as graph:
+            viewer = self._required_viewer(graph, body.get("viewer"))
+            # The page shows demo names without their "(demo role)" tag, so a
+            # name sent back unchanged must not overwrite the stored one.
+            stored = graph.store.node(viewer, Person).display_name
+            if changes.get("display_name") == clean_name(stored):
+                del changes["display_name"]
+            graph.profiles.update(viewer, viewer, **changes)
+            return network_json(graph, viewer, None, self._clock())
 
     # --- helpers -------------------------------------------------------------------
 
@@ -368,32 +388,6 @@ def _describe(display_name: str, orgs: list[tuple[str, bool]]) -> str:
     names = [name.removeprefix("[Demo] ") for name, _ in orgs]
     where = ", ".join(names[:2]) + (f" +{len(names) - 2}" if len(names) > 2 else "")
     return " · ".join(part for part in (role.removeprefix("demo "), where) if part)
-
-
-def _clean(name: str) -> str:
-    """A demo name without its "[Demo]" prefix or "(demo role)" suffix."""
-    return name.removeprefix("[Demo] ").split(" (demo", 1)[0]
-
-
-def _map_json(view: NetworkMap) -> dict[str, Any]:
-    return {
-        "center": {
-            "id": view.center.id,
-            "name": _clean(view.center.label),
-            "kind": "org" if view.center.kind is NodeKind.ORG else "person",
-        },
-        "is_self": view.is_self,
-        "orgs": [
-            {"id": o.id, "name": _clean(o.name), "closeness": o.closeness} for o in view.orgs
-        ],
-        "people": [
-            {"id": p.id, "name": _clean(p.name), "is_you": p.is_viewer, "closeness": p.closeness}
-            for p in view.people
-        ],
-        "links": [list(pair) for pair in view.links],
-        "near": [list(pair) for pair in view.near],
-        "truncated": view.truncated,
-    }
 
 
 def _int_param(value: str, name: str, low: int, high: int) -> int:

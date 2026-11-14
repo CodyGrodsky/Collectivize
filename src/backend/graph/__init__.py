@@ -20,6 +20,7 @@ from .my_calendar import PersonalCalendar, PersonalCalendarService, Relation
 from .network import NetworkService
 from .preferences import PreferenceService, TasteProfile
 from .privacy import PrivacyService
+from .profiles import ProfileAccess, ProfileService, ProfileView
 from .ranking import DEFAULT_WEIGHTS, RankingWeights
 from .roster import DEFAULT_ROSTER_POLICY, RosterEntry, RosterPolicy, RosterService
 from .rsvps import RsvpService
@@ -76,6 +77,9 @@ class CollectivizeGraph:
             self.store, self.events, self.privacy, self.stars
         )
         self.network = NetworkService(self.store, self.privacy, self.roster)
+        self.profiles = ProfileService(
+            self.store, self.privacy, self.connections, self.roster, self.calendar, self.rsvps
+        )
         self.activity = ActivityService(self.store)
         self.ai_search = AiSearchService(
             self.store,
@@ -133,6 +137,9 @@ __all__ = [
     "PersonalCalendarService",
     "PreferenceService",
     "PrivacyService",
+    "ProfileAccess",
+    "ProfileService",
+    "ProfileView",
     "RankingWeights",
     "Redemption",
     "Relation",
