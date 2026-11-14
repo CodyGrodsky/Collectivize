@@ -11,3 +11,4 @@ wheels/
 
 # Local databases (never commit real data)
 data/
+.coverage

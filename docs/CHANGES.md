@@ -4,6 +4,521 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-14 — Edge-case hunt: 26 bugs found and fixed
+
+**Requests:** "Can you make tests to test as many edge cases as possible and figure out where the bugs are", followed by "fix the bugs they find".
+
+**How the bugs were found:** four independent reviewers each wrote an edge-case test file without changing the app:
+- `test_edge_ranking.py` (72 runs)
+- `test_edge_ai.py` (221 runs)
+- `test_edge_graph.py` (101 runs)
+- `test_edge_storage.py` (103 runs)
+
+Every bug became a test of the **correct** behaviour, marked `xfail(strict=True, reason="BUG: …")`. Each fix removed its marker, so all of them now run as ordinary regression tests. **1361 pass, 3 are skipped (opt-in live AI tests), and 0 are xfail.** Ruff is clean.
+
+### Privacy and permissions
+1. **A non-member friend could see an RSVP to a members-only event** (high). Visibility took only the strictest single level, but "members only" and "connections only" are different groups, so passing one doesn't mean passing the other. `PrivacyService.can_view` now requires **every** party to allow it: the edge's own setting and both endpoints.
+2. **Claiming an org gave admin rights before staff approval** (high). A confirmed member who claimed a released org became admin straight away. A claim is now always unconfirmed until `approve_claim`, which also means the claimant's membership is on hold while the claim is pending.
+3. **The network showed people the viewer can't see** (medium). Member links and paths ignored the member's own profile visibility. `_membership_shown` now checks `can_view(viewer, person)`.
+4. **Friends going ignored the RSVP consent flag** (medium). RSVPs marked `recommendation_use=NONE` are now never named or counted.
+5. **You could RSVP to, or request to co-host, an event hidden by its host** (medium). The new `PrivacyService.can_view_listing` (event and host both visible) is now used by RSVPs and co-host requests, matching Discover.
+6. **An org's admins couldn't see their own org's private or connections-only event** (medium). Anyone who can edit an event can now always see it.
+7. **The ML export included private drafts of people who hadn't consented** (medium). It now exports only events that were published, aren't private or connections-only, and are hosted by an org or only by consenting people. Interactions with other events are left out as well.
+8. **Anyone who could edit an event could add it to another org's series** (low). Adding now requires being an admin of the series' org.
+
+### Data safety
+9. **Changing a published event's coordinates crashed on SQLite** (high). The change log stored `GeoPoint`s the codec couldn't encode. They're now tagged `$geo` and round-trip.
+10. **A failed COMMIT left the connection mid-transaction** (medium-high). Later writes were silently lost. The store now rolls back and re-raises.
+11. **`seed_test_db.py --reset` could delete an unstamped database** (medium). It now reads the stamp read-only (`read_environment_stamp`) and deletes only files stamped `test`. A file that isn't a database is refused cleanly instead of crashing.
+12. **`seed_mock_data` trusted its argument over the store's own stamp** (low-medium). It now refuses any store that isn't stamped test.
+13. **The export script quietly created a missing database** (low). It now stops with an error.
+14. **Unloadable records raised `TypeError`/`AttributeError`** (low). The codec now raises `ValueError`, so `check_graph` reports them instead of crashing.
+
+### AI search and agent robustness
+15. **A malformed model answer could crash search instead of falling back** (medium). Unhashable refs, huge integers, deeply nested JSON and over-long numbers now all become `InterpreterError`, then keyword fallback. Absurd scores are skipped like NaN.
+16. **An unhashable pick ref crashed the agent** (medium), and **huge numbers raised `OverflowError`** in tool input (low). Both now return a tool error the agent can fix.
+17. **Agent picks could vanish with more than 100 events** (medium). The new `DiscoveryQuery.event_ids` filter ranks exactly the picks.
+18. **Short or non-ASCII keywords matched nothing** (medium). "AI", "Go", "5K" and "日本語" now work: tokenizing is Unicode-aware with a 2-character minimum, and filler-only keywords no longer filter.
+19. **Bad `limit`/`offset` was only rejected after the paid model call** (low). It's now validated first.
+20. **Undecodable Keychain output raised** (low). It now returns `None`, as documented.
+
+### Ranking and RSVPs
+21. **Search didn't Unicode-normalize** (low). "café" typed with a combining accent missed "Café night". Text is now NFKC-normalized and case-folded (`normalize_text`).
+22. **`DiscoveryQuery` accepted naive datetimes** (low), and the search then crashed. They're now rejected up front.
+23. **An event already under way said "Starts within 48 hours"** (low). It now says "Happening now".
+24. **Going → not going → going counted the same trip twice** (low-medium). The new `Rsvp.trip_recorded` flag limits it to one trip per RSVP.
+
+### Integrity audit false alarms
+25. **Memberships confirmed by an admin who was later demoted were flagged** (low-medium). The new `MemberOf.was_admin` remembers confirmed admin rights after a demotion, and the audit accepts it.
+26. **Memberships confirmed by an admin whose account was erased were flagged** (low-medium). Erasure now rewrites their `confirmed_by` to `ERASED_CONFIRMER`, which keeps the fact that an admin confirmed it without keeping who.
+
+### Tests changed (behaviour improved, not weakened)
+- **`test_edge_storage.py::test_seed_script_reset_on_a_non_database_file_does_not_delete_it`** expected a `DatabaseError` crash. The script now refuses cleanly (exit code 1), and the test still asserts the file is untouched.
+- **`test_data_access.py::test_person_hosts_appear_only_if_they_consented`** became `…exported_only_when_published_and_their_host_consented`, following fix 7.
+
+### Reported but left as is (need a decision, not a bug fix)
+- **Staff checks:** `person_data(staff_purpose=…)` doesn't verify the caller is staff. That needs the login and API layer.
+- **Friends going and consent:** friends going uses RSVPs with `OWN_ONLY` consent. Read strictly, the spec reserves "placing someone in front of others" for `NETWORK`.
+- **Member lists:** they show members whose profile is CONNECTIONS or MEMBERS. This is documented roster policy, but it's lenient.
+- **Error messages:** `calendar` and `roster` give a different error for a hidden org than for a missing one, which could reveal that the org exists.
+- **Cancelled events:** learned categories count RSVPs to events that were later cancelled. A co-host invite can also be accepted on a cancelled event.
+- **Email aliases:** `a+x@northeastern.edu` can create a second account.
+
+---
+
+## 2026-11-13 — Search agent: goal → person → searches → best events
+
+**Request:** "Can you make it so the search bar is analyzed by the anthropic agent, the agent determines the goal of the person, then looks at the most important information about the person, then chooses the best things to search for the events and present the best events."
+
+### How it works (`graph/search_agent.py`, `graph/search_tools.py`)
+```python
+result = graph.search_agent.search(viewer_id, "fast paced puzzles that make me think", now,
+                                   origin=GeoPoint(...))
+result.goal     # "Find a fast-paced event built around puzzles or problem solving…"
+result.steps    # the tools it used, in order, with inputs
+result.page     # its picks, ranked by the full likelihood model
+```
+Claude (`claude-opus-5-5`, effort `medium`) runs a capped tool loop:
+1. **Goal:** it reads the search text and works out what the person wants, along with any limits they mentioned.
+2. **The person:** it **always** calls `get_person_overview` (interests, categories they go to, usual travel distance, whether their location is known). It also calls `get_active_orgs` and `get_recent_events` when they'd sharpen the search.
+3. **Searches:** it calls `search_events` with keywords (matching any word, best first), tags (`list_tags` gives the valid slugs), an org (including the orgs under it), a time window or a radius. It can try several angles.
+4. **Presents:** it calls `submit_picks` with the goal and up to 5 events, each with a fit score from 0 to 1 and a reason. The fit scores become `request_match` signals:
+   - picks get their fit score;
+   - events it looked at but didn't pick count as 0.25;
+   - everything else is neutral.
+
+   Discover then ranks **only the picks**, so friends going, distance, tastes and trust still decide the order among them.
+
+### Guard rails
+- **Scope:** tools are bound to one viewer and one search. Searches go through Discover with the viewer's id, so visibility rules apply.
+- **Privacy:** tool output never includes names of people, emails, positions or database ids. Events are `e1`, `e2`… and friends going is a count. `ai_uses_history` turns off the person tools.
+- **Untrusted input:** the agent's inputs are validated. Types, ranges, text length, tag slugs, org names, the radius needing a location, fit scores in 0–1, no duplicate picks, and refs it has actually seen are all checked. Bad input goes back to the agent as an `is_error` result it can fix; it never crashes the run.
+- **Cost caps:** at most **8 turns and 20 tool calls**, and a 60-second timeout per request. The loop is append-only, so the conversation is never edited. Tools are `strict: true`, and the request uses refusal fallback (`fallbacks: "default"`) and prompt caching.
+- **Fallback:** a refusal, a cut-off, answering in prose without submitting, too many turns or calls, or any API or credential error falls back to the single-call AI search, and from there to keywords. `note` says what happened.
+- **Why a manual loop** rather than the SDK's tool runner: it allows hard caps on turns and calls, a finishing tool, and a client that tests can replace.
+
+### Tests: never calling the real API
+- ⚠️ **What went wrong:** while I was building this, the agent's fallback tests created a real single-call interpreter, which read the Keychain key and **made real API calls**. That happened over two test runs, about 25 small low-effort requests, an estimated cost under $1. It should not have happened.
+- **Fix:** an autouse fixture in `tests/backend/conftest.py` now replaces `anthropic.Anthropic` with a stand-in that refuses to construct, so **no test can reach the API** unless `COLLECTIVIZE_LIVE_AI=1` is set. A guard test (`test_the_suite_can_never_reach_the_real_api`) keeps it that way. The agent tests went from 40 seconds to 1.5.
+- **`test_search_agent.py`** (70 runs, plus 1 opt-in live test) uses a scripted fake client. It covers:
+  - the full loop;
+  - an append-only conversation, with all tool results in one message and matching ids;
+  - request settings;
+  - schemas that strict mode accepts;
+  - ranking of picks, with only picks presented and empty picks allowed;
+  - recovery from bad tags, made-up refs and unknown tools;
+  - every way a run can fail falling back;
+  - visibility, **no identifying data in any tool output**, and the opt-out;
+  - every search filter and input validation;
+  - Hypothesis feeding random input to every tool, which always gets JSON back and never raises.
+- **Totals:** 864 pass and 3 are skipped (the opt-in live tests). Ruff is clean.
+
+### Live run (one search, about 4 API calls, with the user's key)
+`uv run python scripts/ai_search.py --as Drew --near-campus "fast paced puzzles that make me think"`:
+```
+Goal: Find a fast-paced event built around puzzles or problem solving that makes them think hard.
+Steps:
+  - search_events {'keywords': 'puzzle puzzles speed timed escape room trivia brain teaser', 'limit': 15}
+  - list_tags
+  - search_events {'keywords': 'problem solving challenge competition game strategy chess quiz hackathon', 'limit': 15}
+  - submit_picks {... 'e1', fit 0.85, 'Quick rounds of timed coding puzzles in pairs, with lots of problem solving.'}
+Results:
+   80%  Robotics study jam   Fits what you asked for: Quick rounds of timed coding puzzles… | 2 friends going | Close to you (500 m away)
+```
+- **Prompt change afterwards:** in that run the agent skipped the person lookups for a specific request. The prompt now makes it **always** read the person's overview first, as requested. That change hasn't been run live yet.
+- **Script:** `scripts/ai_search.py` now runs the agent by default and shows the goal, steps and picks. `--single` runs the one-call search.
+
+### Not done
+- **Speed:** a search takes several seconds over several calls. A search bar UI should show progress, such as the steps.
+- **Evaluation:** there's no eval set for the agent's picks yet.
+
+---
+
+## 2026-11-13 — API key stored securely; first live AI search
+
+**Request:** "Can you add the following to a secure method for a key: sk-ant-…", followed by the earlier request to "run the live search as Drew".
+
+### Key storage
+- **Where it lives:** the key is stored in the **macOS login Keychain** as the item `collectivize-anthropic-api-key`. It's encrypted at rest and in no file in the repo. A search of the repository confirms no copy exists.
+- **`src/backend/credentials.py`:** `anthropic_api_key()` returns `ANTHROPIC_API_KEY` if that's set (for servers and CI), otherwise the Keychain item on macOS, otherwise `None`. With `None`, the SDK falls back to its own sources, such as an `ant auth login` profile.
+  - It calls `/usr/bin/security` with a fixed argument list, no shell and a 5-second timeout.
+  - Any failure returns `None`, and the key is never logged.
+- **`ClaudeInterpreter`** now builds its client with that key.
+- **Tests:** `test_credentials.py` (7) plus 2 new interpreter tests. **Tests never read the real Keychain;** it's replaced by fakes. In total, 793 pass and 1 is skipped. Ruff is clean.
+- ⚠️ **The key was pasted into a chat, so treat it as exposed and rotate it** in the Claude Console. To store a replacement without it appearing anywhere, run `security add-generic-password -U -a "$USER" -s collectivize-anthropic-api-key -w`, which prompts for the value. To remove it, run `security delete-generic-password -s collectivize-anthropic-api-key`.
+
+### First live AI search (one paid call)
+`uv run python scripts/ai_search.py --as Drew --near-campus "fast paced puzzles that make me think"`:
+
+```
+Understood as: You want quick, brain-teasing puzzle activities that challenge your thinking.
+Used AI: True
+   87%  Robotics study jam   Fits what you asked for: Quick timed coding puzzles in pairs,
+                             lots of problem solving. | 2 friends going | Close to you (500 m away)
+   75%  Chapter meeting      3 friends going | Not much like what you asked for | Like your orgs: Social
+   74%  Spring philanthropy 5K   3 friends going | Like your orgs: Social | Not much like what you asked for
+```
+- **Compared with the keyword fallback:** the fallback had ranked Drew's chapter meetings first, on friends and his org. Claude recognised the study jam as the puzzle event and moved it to the top, while the other signals (friends going, distance) still shaped the rest of the list.
+
+---
+
+## 2026-11-13 — AI search from a sentence + user data access for ML
+
+**Request:** "I need it to look at both the requested sentence and the user profile and most interacted with organizations and events to then make the best search of the closest weighted event (along with all other weights that have already been included). I believe this analysis should be done using AI that analyses both your request and your past history. Also make a function to query each user's data to be able to run machine learning analysis or whatever else we might need later on."
+
+### AI search (`graph/ai_search.py`, `graph/claude_interpreter.py`)
+```python
+result = graph.ai_search.search(viewer_id, "something fast paced that uses my brain", now,
+                                origin=GeoPoint(...), max_distance_km=5, limit=10)
+result.page            # a normal DiscoveryPage, best fit first
+result.understood_as   # how the request was read
+result.used_ai, result.note
+```
+1. **Candidates:** Discover finds every event the viewer may see (filters and radius apply). Cancelled events are left out, and at most 60 candidates go to the model.
+2. **Claude scores them.** It reads the sentence and the viewer's context:
+   - interests they chose;
+   - learned categories;
+   - their orgs' tags;
+   - **top 5 most-interacted orgs** and **8 most recent events** (`graph/activity.py`);
+   - their usual travel distance.
+
+   It returns a 0–1 fit score and a reason of at most 12 words for each candidate.
+3. **The score becomes the `request_match` signal** in the likelihood model, weighted 2.5 because it was asked for directly. The other signals (friends, distance, tastes, trust, soonness) still count, so friends going breaks a tie between two equal fits, a strong fit beats a weak one that has friends, and a nearer event wins between equals. Reasons include "Fits what you asked for: fast team strategy…".
+4. **Fallback:** if the model call fails for any reason (no credentials, network, rate limit, refusal, a cut-off or malformed answer), keyword matching takes over and `note` says why. A keyword miss is neutral rather than negative, because missing keywords are weak evidence.
+
+**Claude call details:**
+- **Model and effort:** `claude-opus-5-5` at `effort: "low"`, since scoring a list is a judgment task.
+- **Output:** structured JSON (`output_config.format`), validated again locally:
+  - unknown refs are dropped;
+  - scores must be finite numbers, and out-of-range ones are clamped to 0–1;
+  - duplicates are dropped;
+  - reasons and the summary are trimmed.
+- **Refusal fallback is on** (`fallbacks: "default"`).
+- **Caching:** the system prompt is fixed and cached.
+- **Client:** it's created on first use, with a 30-second timeout and 1 retry. Credentials come only from the environment.
+
+**Privacy decisions:**
+- **What the model receives:** the sentence, tag and org names, titles of events the viewer interacted with, and candidate events under refs like `e1`. It never receives database ids, other people's names, emails, positions or friend identities. Friends going is sent as a number, and person hosts appear as "a student".
+- **Injection guard:** host-written event text is placed in JSON data fields, and the system prompt says never to follow instructions found there.
+- **Consent:** history marked `recommendation_use=NONE` is never sent. The new `Person.ai_uses_history` setting (default on: your own data, for your own results) turns history off entirely, and then only the request is sent.
+
+### User data access (`graph/data_access.py`)
+- **`person_data(person_id, requested_by, now, staff_purpose=None)`:** everything held about one person, including memberships, connections, RSVPs, interests, invites sent (never codes), hosted events, settings, travel average, learned categories and top orgs. The person can always get their own. Staff need a stated purpose, and their access is recorded.
+- **`ml_dataset(staff_id, purpose, now, key)`:** tables of `people`, `interactions` (RSVPs), `memberships`, `connections`, `events` and `orgs` for analytics and ML.
+  - **Opt-in only:** it includes only people with the new **`Person.analytics_consent`**, which defaults to off, following user_Orgs.md's "the default is the narrower choice". Facts marked `NONE` are skipped, and a connection appears only if both people opted in.
+  - **Pseudonymized:** each person id becomes an HMAC-SHA256 of the real id under a secret key (`COLLECTIVIZE_EXPORT_KEY`, at least 16 bytes, never hard-coded). The same key gives stable pseudonyms across exports, and without it they can't be reversed.
+  - **What's left out:** names, emails, positions and invites. Travel distance is rounded to 0.5 km, and join dates are kept to the month.
+  - **Recorded:** every export saves a `DataExport` node saying who ran it, why, and how many people and rows it covered.
+- **Scripts:**
+  - `scripts/export_ml_dataset.py --staff ID --purpose "…"` writes JSONL tables and a manifest to `data/exports/<timestamp>/`, and refuses any path outside that folder.
+  - `scripts/ai_search.py --as Drew --near-campus "…"` tries AI search from the terminal.
+
+### Other changes
+- `RankingWeights.request_match = 2.5`, and `EventSignals.request_match` (`None` is neutral, matching 0.5).
+- `DiscoveryService.search(..., request_matches=...)` and `event_tag_ids()` are new, along with the new `RequestMatch` type.
+- **Seed:** demo events have descriptions the AI can read, and 29 of the 32 demo students opted in to analytics (3 deliberately didn't).
+- **Dependencies:** `anthropic` (SDK 2.8.0) was added, and `.coverage` is now git-ignored.
+
+### Verified
+- **Tests:** 785 pass and 1 is skipped. Coverage is 99% overall, and 100% for `ai_search`, `claude_interpreter` and `ranking`. Ruff is clean.
+  - `test_ai_search.py` (57) uses a fake interpreter. It covers ranking (fit, friends and distance interplay), the context sent (history, consent, opt-out, logged out), **nothing identifying being sent**, visibility, the candidate cap, the fallback, validation, paging, injection staying as data, and a Hypothesis check that any valid answer gives a sorted, sane page.
+  - `test_claude_interpreter.py` (24 + 1 opt-in live test) uses a fake client, with **no API calls in the suite**. It covers the request settings (model, effort, fallbacks, structured output, cached system prompt), answer validation (including Hypothesis over arbitrary text), refusal and cut-off handling, every SDK error class, missing credentials, and client reuse. The live test runs only with `COLLECTIVIZE_LIVE_AI=1`.
+  - `test_data_access.py` (33) covers self-access, staff access, opt-in only, pseudonym stability, **no names, emails or ids leaking**, connections needing both people to consent, `NONE` exclusion, features, export records, key handling and erasure.
+- **On the reseeded `data/test.db`:**
+  - The integrity check passes.
+  - An export wrote 29 people, 64 interactions, 61 memberships, 47 connections, 10 events and 11 orgs. That test export was then deleted.
+  - The keyword fallback works with no credentials.
+  - **No live Claude call has been made yet,** because it costs money; that needs the user's approval.
+
+### Not done
+- **A live AI run:** `uv run python scripts/ai_search.py --as Drew --near-campus "fast paced puzzles that make me think"` makes one paid Claude call (or `COLLECTIVIZE_LIVE_AI=1` for the test).
+- **An eval set** to measure how good the AI's scores are, and tuning of the request weight against it.
+- **A consent screen:** there's no UI or API yet for people to opt in to analytics or turn off AI history; the fields exist.
+- **Recalling exported files:** files already exported can't be pulled back when someone deletes their account. Keep them short-lived.
+- ⚠️ **`collectivize_plan.md` still says "no behavioral tracking in v1"** and should be updated.
+
+---
+
+## 2026-11-13 — Discover becomes a "would they go?" model: location, travel habits, tastes
+
+**Request:** "Add a weighting by location radius from the user's current position, and also gather information about how far they averagely go for events and what category. Change point system to a formula weight to determine if they would go. Also have a weight based on how closely the event is to their liked values/hobbies. Basically change the weighting to be more dynamic rather than discrete. Add large testing to make sure there are no errors in the algorithm and check edge cases."
+
+### The model (`graph/ranking.py`)
+The fixed points are gone. Each event now gets an estimated **likelihood (0–1) that this viewer would go**:
+
+```
+likelihood = sigmoid(bias + Σ weightᵢ × signalᵢ)
+```
+
+| Signal | Value | Shape |
+|---|---|---|
+| friends | log(1 + friends going) | Diminishing returns: the first friend matters most |
+| my_org_host | 1 if one of your orgs hosts or co-hosts | Counted once |
+| affinity | how well the event's tags match your tastes, 0–1 | Cosine similarity × strength of your taste |
+| proximity | closeness − 0.5, where closeness = 1 / (1 + (d/s)²) | 1 next door, 0.5 at **your usual distance s**, towards 0 beyond. Unknown distance is neutral (0) |
+| soonness | e^(−days/7) | Fades smoothly |
+| host_trust | 1 verified, 0.4 pending, 0 unclaimed or a person | |
+| staleness | 0 for 30 days, then rising smoothly towards 1 | Replaces the active/quiet/stale buckets |
+| verified / disputed | 1 or 0 | |
+
+- **Cancelled events** get likelihood 0 and always sort last.
+- **The weights** live in one `RankingWeights` object, set with `CollectivizeGraph(ranking_weights=...)`. They're hand-tuned so that an event with nothing going for it sits near 10%, a strong match lands around 90%, and the plan's order holds: friends going, then your org hosting, then sharing your orgs' tags.
+- **The weights aren't fitted to data yet.** Until they're fitted to real attendance (logistic regression), the likelihood is a ranking estimate, not a calibrated probability.
+
+### Location
+- **New query fields:** `DiscoveryQuery(origin=GeoPoint(...), max_distance_km=..., include_unlocated=True)`.
+- **Radius filter:** the radius is inclusive. Events with no location are kept by default, and `include_unlocated=False` drops them. Without an origin, distance plays no part.
+- **New fields on each result:** `distance_km`, and `factors`, which gives each signal's value and effect for "why am I seeing this?".
+- **Events have places:** `Event.coordinates` (a `GeoPoint`) is editable, and changes to it are logged like location changes. `EventSeries.default_coordinates` covers series meetings.
+- **Distance maths:** `GeoPoint` validates latitude and longitude, rejecting NaN, infinity and booleans. `haversine_km` is safe for identical points, antipodes and the date line.
+
+### Learning (`graph/preferences.py`)
+- **How far you usually go.** When you RSVP "going" and the app sends your current position (`rsvps.respond(..., origin=...)`), the distance updates a running average of log-distance on your own `Person` record. The average becomes your scale `s` after 3 trips. Before that, the scale is the search radius ÷ 2, or 2 km.
+  - Trips are counted once per event, only for "going", and only if the RSVP's consent allows it.
+  - Distances below 0 or above 500 km, or not finite, are ignored. One long trip barely moves the average.
+- **What you like.** Three sources are blended into one tag vector:
+  - interests you chose (new `add_interest` / `remove_interest` / `interests_of`; only you can set them), at weight 1.0;
+  - your orgs' tags, at weight 0.5;
+  - **categories you've gone to**, learned from your RSVPs, at weight 0.8. "Going" counts double "interested", and older RSVPs fade with a 120-day half-life.
+- **Reasons name the source:** "Matches your interest: Robotics", "Like your orgs: Social", "Like events you've gone to: Robotics".
+- **Transparency and control:** `my_profile` shows you what's been learned, and `forget_travel` resets your travel average.
+
+### Privacy decisions
+- **Your current position is used for one search or RSVP and never stored.**
+- **No per-event distance is stored either,** because many distances to known places could reveal where someone lives. Only the running average is kept, and it's private like `email`.
+- **Learned categories and the likelihood are computed per search and never stored.** This follows user_Orgs.md: "Predicted attendance… computed when ranking and then discarded".
+- **Consent:** RSVPs and interests with `recommendation_use=NONE` are never learned from, and everything learned only improves the person's own results.
+- **Erasing an account** removes the travel average, interests and RSVPs.
+- ⚠️ **This goes beyond `collectivize_plan.md`,** which says "no behavioral tracking in v1". It stays within `user_Orgs.md`'s consent rules, and the plan should be updated to match.
+
+### Reasons (`graph/explain.py`)
+- **Reasons come from the model's own contributions:** any factor that moved the estimate by at least 0.2 in log-odds is mentioned, biggest first, after the host line.
+- **New reasons:**
+  - "Close to you (600 m away)";
+  - "Farther than you usually go (40 km away)";
+  - "Like events you've gone to: …".
+- **Distances are formatted** as "under 50 m", "450 m", "2.3 km" and "40 km".
+
+### Seed
+- **Named campus places with coordinates,** and a new off-campus event, "Night market food crawl", about 6 km away. The seed now has 10 events.
+- **Interests:** students have 0–2 interests each.
+- **Travel:** each RSVP "going" passes a made-up position near campus, so travel habits are learned through the real flow. The positions are never stored.
+- **Results on the seeded `data/test.db`:** it passes the integrity check.
+  - Drew's likelihoods range from 0.96 down to 0.21.
+  - Kai, who chose Robotics as an interest, sees "Robot demo day" first.
+  - Logged-out visitors see about 0.1 across the board.
+  - A search takes 13–16 ms.
+
+### Testing
+The suite grew from 506 to **666 tests, all passing**, with **99% coverage** of `backend`.
+- **`test_ranking_math.py`** (63) covers the maths:
+  - Hypothesis property tests over thousands of inputs: distance symmetry, bounds and the triangle inequality; the sigmoid never overflowing; every curve bounded and monotonic.
+  - **Monotonicity of the estimate in every signal**: more friends, a better match, closer, sooner and a more trusted host never lower it, and a staler host never raises it.
+  - The contributions add up exactly to the likelihood.
+  - Reference values for known distances (Boston–NYC, pole to pole, across the date line, antipodes).
+  - Validation of every bad input.
+- **`test_preferences.py`** covers interests, learned categories (decay, consent, inherited tags) and travel averaging (too few trips, outliers, zero distances, NaN/∞/negative, overflow-proofing, staying between the shortest and longest trip). It also checks that **positions and single distances are never stored**.
+- **`test_discovery_location.py`** covers the radius filter and its inclusive boundary, query validation, distance ordering, neutral unknown distance, personal travel scale ("homebody" vs "traveller"), trip recording rules, taste-match ordering and distance formatting.
+- **`test_discovery_fuzz.py`** generates random worlds and searches with Hypothesis. Each world has orgs, people, events with random places, times, tags, visibility and status, plus friendships, memberships, RSVPs, hidden RSVPs, interests and trips. Every page must:
+  - give only finite probabilities;
+  - include only events the viewer may see, and never drafts;
+  - respect every filter;
+  - put cancelled events last at 0, with everything else in likelihood order;
+  - name only real friends who are going;
+  - never show a count under 5;
+  - never list an event twice;
+  - split into pages that exactly match the full list;
+  - leave the database unchanged and give the same result when repeated.
+
+  The default is 120 worlds per test. `FUZZ_EXAMPLES=2000` runs a deep hunt, and 2,000 worlds per test passed. The generator is biased towards realistic searches: 89% of cases return results, 30% involve friends going and 67% involve distances.
+- **Mutation check:** I deliberately broke the distance curve, the consent check and the sigmoid's overflow guard in turn. The suite caught each one (14, 2 and 2 failures).
+- **Changed:** 4 discovery tests that asserted exact point gaps (+2, +1) now assert ordering, the model's factors and reasons. Hypothesis was added as a dev dependency.
+
+### Not done
+- **Weights fitted to data:** this needs attendance records (ATTENDED isn't built) and enough real usage.
+- **Embedding similarity:** `Event.embedding` and `Person.embedding` aren't used yet. Tags are the taste signal.
+- **Venues:** coordinates live on events. Venue nodes (spec "Later") could supply them.
+- **Page size:** Discover still defaults to 20 results per page; the plan says 10.
+
+---
+
+## 2026-11-13 — The rest of the plan's Discover formula
+
+**Request:** "Add the rest of the plan's ranking formula."
+
+Discover now applies the whole formula from `collectivize_plan.md`: **3 × friends going + 2 × hosted by one of my orgs + 1 × tag overlap with my orgs' tags.**
+
+### How the new parts work
+- **"My orgs":** orgs you're a confirmed, current member of. Pending requests, past memberships and logged-out visitors get nothing.
+- **+2 (`MY_ORG_HOST_SCORE`):** given once when any accepted host, primary or co-host, is one of your orgs. The reason reads "Hosted by your org: …" and names every one of your orgs that's hosting.
+- **+1 per shared tag (`MY_ORG_TAG_SCORE`):** tags the event shares with the tags your orgs carry. The event's tags include those inherited from its host orgs, matching the tag filter. The reason reads "Like your orgs: Robotics, Social".
+
+### Decisions
+- **The formula adds to the existing score.** Host trust, freshness, provenance, chosen interests (+2.5 each), soonness (up to +2) and the cancelled penalty all still apply. They mostly break ties between events the network ranks equally.
+- **An event hosted by your org usually gets both bonuses**, because it inherits its host's tags. It gets +2 for the host and +1 per inherited tag that's also one of your orgs' tags. This follows the plan's formula literally. If it pushes your own orgs' events too high, the fix is to count only the event's own tags.
+
+### Verified
+- **Tests:** `test_discovery.py` gained 5 tests (10 runs), covering:
+  - an exact +2 gap;
+  - co-hosting counting, with the bonus given only once;
+  - no bonus for pending members or logged-out visitors;
+  - +1 per shared tag;
+  - the full formula's order: friends going above my org's event, above a shared tag.
+
+  In total, 506 pass and ruff is clean.
+- **On `data/test.db`:**
+  - Drew's top events are chapter meetings, with "4 friends going | Hosted by your org | Like your orgs: Social".
+  - Casey's are the Robotics Club events.
+  - A search takes 10–17 ms.
+
+### Not done
+- **Page size:** Discover still defaults to 20 results per page. The plan says 10.
+
+---
+
+## 2026-11-13 — RSVPs and "friends going" in Discover
+
+**Request:** "Add RSVPs and friends going to discover."
+
+This is demo step 5 from `collectivize_plan.md` ("Results are paginated cards with '3 friends going.' Open the event and RSVP"). The rules come from the RSVP section of `user_Orgs.md`.
+
+```python
+graph.rsvps.respond(event_id, person_id, RsvpStatus.GOING, now)   # or INTERESTED / NOT_GOING
+graph.rsvps.respond(event_id, person_id, None, now)               # clear it
+graph.rsvps.mine(event_id, person_id)
+graph.rsvps.friends_going(viewer_id, event_id)                    # tuple of Person
+graph.rsvps.going_count(event_id)                                 # int, or None when small
+graph.rsvps.set_rsvp_visibility(person_id, by, Visibility.PRIVATE)  # "who can see my RSVPs"
+```
+
+### RSVP rules
+- **Responding:** there's one RSVP per person per event, and it can be changed or cleared. RSVPs are only allowed while an event is published and hasn't ended. After it ends they freeze, so they can't be changed or cleared.
+- **Visibility:** you can only RSVP to events you can see. Drafts and other orgs' members-only events look like missing events.
+- **Capacity:** a full event refuses new "going" RSVPs, but "interested" still works.
+- **Who sees your RSVPs:** this is your setting, `Person.rsvp_visibility`. The choices are logged-in users (NETWORK), your connections (CONNECTIONS, the default) or nobody (PRIVATE). Each RSVP carries the setting, so the normal privacy rules decide who sees it. Changing the setting updates all your existing RSVPs.
+- **Counts:** totals count everyone, including people who hide their RSVPs. A total is hidden (`None`) below 5 (`MIN_PUBLIC_COUNT`), so a small number can't identify anyone.
+
+### Discover changes
+- **New fields on each result:**
+  - `friends_going`: your connections who are going and whose setting lets you see it;
+  - `my_rsvp`;
+  - `going_count`.
+- **Ranking:** each friend going adds +3, following the plan's formula, with the reason "N friends going". The existing factors (trust, freshness, interests, soonness) are unchanged.
+- **Logged-out visitors** get no friends and no RSVP, but they do see counts.
+- **Refactor:** a search's settings now travel in one internal context object instead of a growing argument list.
+
+### Seed
+About 80 RSVPs, clustered:
+- Members tend to go to their own org's events (55%).
+- People whose friends are going are more likely to go (30%).
+- Anyone else rarely goes (4%).
+- 85% say "going" and the rest "interested".
+
+The seeded `data/test.db` has 78 RSVPs (69 going, 9 interested) and passes the integrity check. Drew's Discover ranks chapter meetings first with "4 friends going", and a search takes about 15 ms.
+
+### Tests
+`tests/backend/test_rsvps.py` adds 27 runs. In total, 496 pass and ruff is clean.
+
+### Not done
+- **Notifications:** nobody is told when an event's time or location changes, although the change is logged on the event.
+- **Attendance:** recording who actually attended after an event isn't built.
+- ~~The rest of the plan's ranking formula~~: added in the entry above.
+- **Page size:** Discover still defaults to 20 results per page. The plan says 10.
+
+---
+
+## 2026-11-13 — Invites: your inviter is your first connection
+
+**Request:** "Add invites so the inviter becomes the first connection."
+
+This is demo step 1 from `collectivize_plan.md`. `graph.invites` (`graph/invites.py`):
+
+```python
+issued = graph.invites.create(inviter_id, now)        # issued.code: show it once
+joined = graph.invites.redeem(code, email, display_name, now)
+joined.person, joined.inviter, joined.connection      # "You're connected to …"
+graph.invites.revoke(invite_id, by_person_id)         # inviter only, unused invites
+graph.invites.invites_of(person_id, by_person_id)     # your own invites only
+```
+
+### Rules
+- **Codes:** any person can invite. Codes are random (16 URL-safe characters) and single-use, and they expire after 14 days. Each person can have at most 20 open invites.
+- **Redeeming:** checks the email, creates the person, connects them to the inviter and marks the invite used. It all happens in one transaction, so a failure leaves the invite unused.
+- **First connection:** it starts out accepted by both people. The inviter agreed by inviting, and the new person by joining. It's marked `origin=INVITE`, and either person can remove it like any other connection.
+- **Email:** it has to be a valid address on an allowed domain, matched exactly. The default is `northeastern.edu`, so `mail.northeastern.edu` and look-alikes such as `northeastern.edu.evil.com` are rejected. Addresses are normalized to lowercase, and each one can have only one account. Change the domains with `CollectivizeGraph(invite_email_domains=(...))`.
+
+### Security decisions
+- **The code itself is never stored.** An `Invite`'s id is the SHA-256 fingerprint of its code, so reading the database doesn't give anyone a usable invite.
+- **Every failure looks the same.** Unknown, used, expired, revoked, or sent by an erased account all give "invalid or expired invite", so codes can't be probed. Spaces around a pasted code are ignored.
+- **Email is private.** `Person.email` is never part of network or member-list results, and a future API must not send it to other users.
+- **Erasure covers invites.** Deleting an account also deletes invites the person sent or redeemed.
+
+### Added
+- **Data model:**
+  - the `Invite` node (`objects/invite.py`);
+  - `Person.email`;
+  - `ConnectionOrigin` (`REQUEST` / `INVITE`) on `Connected`;
+  - `ConnectionService.connect_via_invite`.
+- **Seed:** an open invite from Drew with the fixed code `demo-join-from-drew`, so the join screen can be demoed. The seed script prints it, and `SeedResult.invite_code` holds it.
+- **Tests:** `tests/backend/test_invites.py` adds 46 runs, and `test_seed.py` gained one test. In total, 469 pass and ruff is clean. `data/test.db` was re-seeded, its demo invite is unused, and it passes the integrity check.
+
+### Not done
+- **Email verification:** nothing proves the person owns the address yet. That needs a magic link or login, which is part of the future login layer.
+- **Rate limiting:** there's no limit on redeem attempts yet. Codes have 96 bits of randomness, so guessing isn't practical, but the API layer should still rate-limit attempts.
+- **Picking orgs:** choosing "the orgs you're in" during onboarding uses the existing `membership.request`. There's no single call that combines it with joining.
+
+---
+
+## 2026-11-13 — Network graph: neighborhoods, paths, in common
+
+**Request:** "Build the network graph with those recommendations."
+
+This is demo step 2 from `collectivize_plan.md`. `graph.network` (`graph/network.py`) answers four questions for a logged-in viewer:
+
+```python
+graph.network.neighborhood(viewer_id, center_id=None, depth=1, max_nodes=150)  # nodes + links
+graph.network.find_path(viewer_id, target_id)        # shortest route, at most 4 links, or None
+graph.network.focus(viewer_id, focus_id)             # a clicked node: its links + the path from you
+graph.network.in_common(viewer_id, other_id)         # mutual friends + shared orgs, .summary
+```
+
+Results are plain data the frontend can draw directly: `NetworkNode(id, kind=person|org, label)` and `NetworkLink(source, target, kind=connection|membership)`.
+
+### Decisions (the three recommendations)
+1. **Paths can run through people or orgs.** When two routes are equally short, the one through fewer orgs wins, so You → Maria → Jordan beats You → Surf Club → Jordan. Paths longer than 4 links return `None` ("No close connection yet").
+2. **Only links the viewer may see are used.** That applies to drawing, paths and in-common alike. Hidden things are left out entirely, with no "anonymous" placeholder. This is stricter than the plan's anonymous "a mutual connection" node, which would still reveal that a link exists.
+   - **Connections:** a connection shows if you're one of the two people, or if neither person has turned on hide-connections.
+   - **Memberships:** a membership shows if it's yours, or if the org's member list shows it to you.
+   - **Not shown:** pending requests, past memberships, private memberships, and orgs or people you can't see.
+3. **Member links follow the member-list policy.** Changing `RosterPolicy` changes the graph too.
+
+### Added
+- **`Person.hide_connections`:** set it with `graph.connections.set_hide_connections(person, by, hidden)`. Only the person can change it, and it hides only their connections, not their memberships.
+- **`RosterService.shows(viewer, edge)`:** checks whether a single membership is listed for a viewer.
+- **Denser demo data** (`src/backend/seed_network.py`):
+  - 5 new orgs: Surf Club, Club Soccer, Cooking Club, and two more chapters under the IFC. That makes 11 orgs.
+  - 5 new org admins and 32 students, for 42 people in total.
+  - Each student belongs to 1–3 orgs, and every membership was confirmed by that org's admin.
+  - Each person has 3–6 friendships, about 75% of them with people who share an org, and each one accepted by both people.
+  - Quinn has hide-connections turned on.
+  - The data is deterministic (fixed random seed), so the demo is the same every time.
+
+### Changed
+- **`Connected` visibility now defaults to logged-in users (NETWORK).** It was connections-only. That default would have limited the network to friends-of-friends, so searching for a stranger would rarely find a path. Each person's own switch is now `hide_connections`, which matches the plan's "hide my connections" setting.
+
+### Verified
+- **Seeded `data/test.db`:** it passes the integrity check.
+  - Drew can reach all 41 other people within 3 links: 6 direct, 16 at two links, 19 at three.
+  - On SQLite, a depth-1 view takes about 11 ms and a depth-2 view about 45 ms. Each path takes about 35 ms.
+- **Tests:** `tests/backend/test_network.py` adds 43 runs. In total, 422 pass and ruff is clean.
+
+### Not done
+- **Invites:** the inviter doesn't become your first connection yet.
+- **Org-to-org links:** PART_OF and PARTNERS_WITH aren't part of the graph.
+- **Speed at scale:** path search is plain Python over the store, which is fine for the pilot. At scale it would need caching or a graph index.
+
+---
+
 ## 2026-11-13 — Calendar page shell and nav placeholders
 
 **Request:** "Add the following pages to the navigation: calendar, discover, network, and profile. Then add an empty calendar to the calendar page with all the basic things that a calendar has that won't really affect the backend."
@@ -37,6 +552,35 @@ There is now a Calendar page (`src/frontend/calendar.html`), and the nav lists t
 - **Locations are free text.** There's no address or map until `Venue` is built.
 - **Plan mismatch:** the plan's visibility levels (public / members / invite) don't match the backend's (public / network / members / connections / private). The backend has no "invite specific people".
 - **Restored entry:** the "Home page and shared navigation" entry below was dropped by commit `5fad060` and has been put back unchanged.
+
+---
+
+## 2026-11-13 — Fixed the 4 known bugs
+
+**Request:** "Fix the 4 known bugs first."
+
+These are the bugs the edge-case tests had marked as expected failures (`xfail`). The markers are removed, so those tests now run as normal tests. I also added tests for two related holes.
+
+### Fixes
+1. **Cancelling a draft made it public.** `Event` now records `published_at` when it's first published, and a `was_published` property reads it. A draft cancelled before publishing stays hidden everywhere:
+   - **Privacy:** only its editors can see it.
+   - **Discovery:** it's never listed.
+   - **Calendars:** it appears only in the hosts' private list.
+
+   A published event that's later cancelled still shows until it ends. Older records with no `published_at` count as published if their status says so.
+2. **Publishing a series wasn't all-or-nothing.** `SeriesService.publish_occurrences` now runs inside one transaction, so if any occurrence is rejected, none are created.
+3. **SQLite nested transactions.** A failure caught inside an inner block still committed the inner block's writes. Now the outermost `transaction()` is a real `BEGIN … COMMIT`, and each nested block is a SQLite `SAVEPOINT`. A failed inner block rolls back only its own writes, matching the in-memory store. The connection now runs in autocommit mode, and the store issues every transaction statement itself.
+4. **A pending claim could leave an org stuck.** Erasing the account of someone with an unapproved claim left the org in `claim_pending`, so nobody else could claim it. Now erasing that account reopens the org. Withdrawing the claim with `leave` reopens it too; that path had the same hole.
+
+### Tests
+Added these tests, which now pass:
+- three levels of nested transactions on both stores;
+- nested SQLite work surviving a reopen;
+- a cancelled draft staying off outsiders' calendars but showing in the hosts' private list;
+- a published event that's cancelled staying visible;
+- withdrawing a claim reopening the org.
+
+In total, 379 pass and nothing is marked `xfail` any more. Ruff is clean. `data/test.db` was re-seeded and passes the integrity check.
 
 ---
 

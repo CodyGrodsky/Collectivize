@@ -10,10 +10,13 @@ from .base import (
     Visibility,
     most_restrictive,
 )
+from .data_export import DataExport
 from .edges import (
+    ERASED_CONFIRMER,
     AttendanceMethod,
     Attended,
     Connected,
+    ConnectionOrigin,
     Edge,
     Follows,
     HostOrigin,
@@ -33,15 +36,20 @@ from .edges import (
     Tagged,
 )
 from .event import Event, EventChange, EventSeries, EventStatus
+from .geo import GeoPoint, haversine_km
+from .invite import Invite
 from .organization import ClaimState, Freshness, Organization, OrgKind
 from .person import Person, VerificationLevel
 from .taxonomy import Tag, Venue
 
 __all__ = [
+    "ERASED_CONFIRMER",
     "AttendanceMethod",
     "Attended",
     "ClaimState",
     "Connected",
+    "ConnectionOrigin",
+    "DataExport",
     "DomainRuleError",
     "Edge",
     "Event",
@@ -50,12 +58,14 @@ __all__ = [
     "EventStatus",
     "Follows",
     "Freshness",
+    "GeoPoint",
     "GraphRecord",
     "HostOrigin",
     "HostRole",
     "Hosts",
     "InstanceOf",
     "InterestedIn",
+    "Invite",
     "MemberOf",
     "MemberRole",
     "OrgKind",
@@ -77,5 +87,6 @@ __all__ = [
     "VerificationLevel",
     "VerificationStatus",
     "Visibility",
+    "haversine_km",
     "most_restrictive",
 ]

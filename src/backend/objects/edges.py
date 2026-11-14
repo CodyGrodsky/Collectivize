@@ -74,6 +74,9 @@ class PersonOwnedEdge(Edge):
 # --- Person -> Org -----------------------------------------------------------
 
 
+ERASED_CONFIRMER = "erased-account"  # confirmed_by after the confirmer's erasure
+
+
 class MemberRole(Enum):
     MEMBER = "member"
     OFFICER = "officer"
@@ -93,7 +96,8 @@ class MemberOf(PersonOwnedEdge):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     org_confirmed: bool = False
-    confirmed_by: str | None = None
+    confirmed_by: str | None = None  # or ERASED_CONFIRMER once their account is gone
+    was_admin: bool = False  # has held confirmed admin rights here (kept after demotion)
     visibility: Visibility = Visibility.MEMBERS
 
     def __post_init__(self) -> None:
@@ -237,6 +241,7 @@ class Rsvp(PersonOwnedEdge):
 
     status: RsvpStatus
     updated_at: datetime
+    trip_recorded: bool = False  # this RSVP already fed the travel average once
 
 
 class AttendanceMethod(Enum):
@@ -259,17 +264,25 @@ class Attended(PersonOwnedEdge):
 # --- Person <-> Person (Later) -----------------------------------------------
 
 
+class ConnectionOrigin(Enum):
+    REQUEST = "request"  # one person asked, the other accepted
+    INVITE = "invite"  # the inviter's invite, redeemed by the new person
+
+
 @dataclass(frozen=True, kw_only=True)
 class Connected(PersonOwnedEdge):
     """Mutual connection; exists only when both people accept. The source
-    is whoever sent the request."""
+    is whoever sent the request. Visible to logged-in users by default;
+    either person can hide their whole list (`Person.hide_connections`),
+    and a connection shows only if neither person has."""
 
     SOURCE_TYPES = (Person,)
     TARGET_TYPES = (Person,)
 
     source_accepted: bool = False
     target_accepted: bool = False
-    visibility: Visibility = Visibility.CONNECTIONS
+    origin: ConnectionOrigin = ConnectionOrigin.REQUEST
+    visibility: Visibility = Visibility.NETWORK
 
     @property
     def is_established(self) -> bool:

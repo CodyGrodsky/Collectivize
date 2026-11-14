@@ -61,6 +61,14 @@ class Organization(GraphRecord):
     def is_claimed(self) -> bool:
         return self.claim_state is ClaimState.CLAIMED
 
+    def inactive_days(self, now: datetime) -> float:
+        """Days since the latest of profile confirmation and last event
+        (0 if that is in the future)."""
+        candidates = [self.provenance.last_known_good]
+        if self.last_event_published_at is not None:
+            candidates.append(self.last_event_published_at)
+        return max((now - max(candidates)).total_seconds() / 86400, 0.0)
+
     def freshness(self, now: datetime) -> Freshness:
         """Derived from the latest of profile confirmation and last event."""
         candidates = [self.provenance.last_known_good]

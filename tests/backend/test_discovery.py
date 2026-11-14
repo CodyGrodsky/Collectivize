@@ -12,6 +12,7 @@ from backend.objects import (
     Organization,
     OrgKind,
     PartOfKind,
+    RsvpStatus,
     Tag,
     Visibility,
 )
@@ -193,3 +194,88 @@ def test_pagination(world):
 def test_invalid_queries_are_rejected(bad):
     with pytest.raises(DomainRuleError):
         DiscoveryQuery(**bad)
+
+
+# --- the plan's formula: my orgs and their tags ------------------------------
+
+
+def join(world, person, org, admin):
+    edge = world.graph.membership.request(person.id, org.id, NOW)
+    world.graph.membership.confirm(edge.id, admin.id)
+
+
+def by_title(page) -> dict:
+    return {item.event.title: item for item in page.items}
+
+
+def test_events_hosted_by_my_org_rank_higher_and_say_so(world):
+    join(world, world.carol, world.chapter, world.alice)
+    publish(world, "Chapter social")
+    publish(world, "National social", org=world.national, admin=world.bob)
+    items = by_title(discover(world, world.carol))
+    assert items["Chapter social"].score > items["National social"].score
+    assert "Hosted by your org: Alpha Chapter" in items["Chapter social"].reasons
+    effect = {f.name: f.effect for f in items["Chapter social"].factors}
+    assert effect["my_org_host"] > 0
+
+
+def test_co_hosting_counts_and_the_bonus_is_given_once(world):
+    join(world, world.carol, world.chapter, world.alice)
+    join(world, world.carol, world.national, world.bob)
+    event = publish(world, "Joint 5K", org=world.national, admin=world.bob)
+    invite = world.graph.events.invite_co_host(event.id, world.chapter.id, world.bob.id, NOW)
+    world.graph.events.accept_co_host(invite.id, world.alice.id)
+    publish(world, "Plain", org=world.national, admin=world.bob)
+    items = by_title(discover(world, world.alice))
+    assert items["Joint 5K"].score > items["Plain"].score
+    carol = by_title(discover(world, world.carol))  # member of both hosts
+    values = {f.name: f.value for f in carol["Joint 5K"].factors}
+    assert values["my_org_host"] == 1.0  # counted once, not once per org
+    reasons = carol["Joint 5K"].reasons
+    assert sum(r.startswith("Hosted by your org") for r in reasons) == 1
+
+
+def test_pending_memberships_and_logged_out_visitors_get_no_org_bonus(world):
+    world.graph.membership.request(world.carol.id, world.chapter.id, NOW)
+    publish(world, "Chapter social")
+    publish(world, "National social", org=world.national, admin=world.bob)
+    for viewer in (world.carol, None):
+        items = by_title(discover(world, viewer))
+        assert items["Chapter social"].score == pytest.approx(items["National social"].score)
+
+
+def test_sharing_more_of_my_orgs_tags_ranks_higher(world):
+    robotics, social = make_tag(world, "robotics"), make_tag(world, "social")
+    join(world, world.carol, world.chapter, world.alice)
+    for tag in (robotics, social):
+        world.graph.events.tag(world.chapter.id, tag.id, world.alice.id, NOW)
+    one = publish(world, "One shared tag", org=world.national, admin=world.bob)
+    two = publish(world, "Two shared tags", org=world.national, admin=world.bob)
+    publish(world, "No shared tags", org=world.national, admin=world.bob)
+    world.graph.events.tag(one.id, robotics.id, world.bob.id, NOW)
+    for tag in (robotics, social):
+        world.graph.events.tag(two.id, tag.id, world.bob.id, NOW)
+    items = by_title(discover(world, world.carol))
+    assert (
+        items["Two shared tags"].score
+        > items["One shared tag"].score
+        > items["No shared tags"].score
+    )
+    assert "Like your orgs: Robotics, Social" in items["Two shared tags"].reasons
+
+
+def test_network_order_friends_beat_my_org_which_beats_shared_tags(world):
+    robotics = make_tag(world, "robotics")
+    join(world, world.carol, world.chapter, world.alice)
+    world.graph.events.tag(world.chapter.id, robotics.id, world.alice.id, NOW)
+    friends = publish(world, "Friends going", org=world.national, admin=world.bob)
+    publish(world, "My org hosts")  # chapter event: your org, and its tag
+    tagged = publish(world, "Shares a tag", org=world.national, admin=world.bob)
+    world.graph.events.tag(tagged.id, robotics.id, world.bob.id, NOW)
+    for friend in (world.alice, world.bob):
+        request = world.graph.connections.request(world.carol.id, friend.id, NOW)
+        world.graph.connections.accept(request.id, friend.id)
+        world.graph.rsvps.respond(friends.id, friend.id, RsvpStatus.GOING, NOW)
+    assert titles(discover(world, world.carol)) == [
+        "Friends going", "My org hosts", "Shares a tag",
+    ]

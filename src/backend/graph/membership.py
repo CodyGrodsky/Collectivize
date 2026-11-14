@@ -129,7 +129,8 @@ class MembershipService:
         )
         if demoting_last_admin:
             raise DomainRuleError("an org must always have at least one admin")
-        return self._store.save_edge(edge.with_role(role))
+        promoted = replace(edge.with_role(role), was_admin=edge.was_admin or role is MemberRole.ADMIN)
+        return self._store.save_edge(promoted)
 
     # --- claiming ------------------------------------------------------------
 
@@ -139,7 +140,10 @@ class MembershipService:
         if org.claim_state is not ClaimState.UNCLAIMED:
             raise DomainRuleError("org is not open for claiming")
         edge = self.current(person_id, org_id) or self.request(person_id, org_id, now)
-        edge = self._store.save_edge(edge.with_role(MemberRole.ADMIN))
+        # A claim is unconfirmed until staff approve it, even for someone who
+        # was already a confirmed member: no admin rights before approval.
+        pending = replace(edge, role=MemberRole.ADMIN, org_confirmed=False, confirmed_by=None)
+        edge = self._store.save_edge(pending)
         self._store.save_node(org.with_claim_state(ClaimState.CLAIM_PENDING))
         return edge
 
@@ -155,7 +159,7 @@ class MembershipService:
             last_confirmed_at=now,
             verification=VerificationStatus.VERIFIED,
         )
-        edge = self._store.save_edge(edge.confirmed(by=staff_id).with_provenance(verified))
+        edge = self._store.save_edge(replace(edge.confirmed(by=staff_id), was_admin=True).with_provenance(verified))
         org_provenance = replace(org.provenance, last_confirmed_at=now)
         self._store.save_node(
             org.with_claim_state(ClaimState.CLAIMED).with_provenance(org_provenance)

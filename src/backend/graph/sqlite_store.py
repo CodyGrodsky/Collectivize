@@ -54,6 +54,22 @@ class EnvironmentMismatchError(RuntimeError):
     """A database file was opened under the wrong environment."""
 
 
+def read_environment_stamp(path: Path | str) -> str | None:
+    """The environment a database file is stamped with, read without changing
+    the file. None if it isn't a stamped Collectivize database."""
+    try:
+        conn = sqlite3.connect(f"file:{Path(path)}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return None
+    try:
+        row = conn.execute("SELECT value FROM meta WHERE key = 'environment'").fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+    return row[0] if row else None
+
+
 class SqliteGraphStore:
     def __init__(self, path: Path | str, environment: Environment) -> None:
         if str(path) != IN_MEMORY:
@@ -195,7 +211,14 @@ class SqliteGraphStore:
                 self._conn.execute(f"RELEASE {savepoint}")
             raise
         self._depth -= 1
-        self._conn.execute("COMMIT" if is_outer else f"RELEASE {savepoint}")
+        try:
+            self._conn.execute("COMMIT" if is_outer else f"RELEASE {savepoint}")
+        except BaseException:
+            # e.g. "database is locked": don't leave the connection inside an
+            # open transaction, where later writes would silently be lost.
+            if is_outer and self._conn.in_transaction:
+                self._conn.execute("ROLLBACK")
+            raise
 
     def close(self) -> None:
         self._conn.close()

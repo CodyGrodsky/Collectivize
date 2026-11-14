@@ -1,6 +1,8 @@
+import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+import anthropic
 import pytest
 
 from backend.config import Environment
@@ -16,6 +18,23 @@ from backend.objects import (
 )
 
 NOW = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
+LIVE_AI = os.environ.get("COLLECTIVIZE_LIVE_AI") == "1"
+
+
+class _NoNetworkClient:
+    """Stands in for anthropic.Anthropic during tests: any attempt to create
+    a real client fails like missing credentials, so code falls back and no
+    request is ever sent (or paid for). Tests that need a client pass a fake.
+    Live tests opt in with COLLECTIVIZE_LIVE_AI=1."""
+
+    def __init__(self, *args, **kwargs):
+        raise anthropic.AnthropicError("real API calls are disabled in tests")
+
+
+@pytest.fixture(autouse=True)
+def _block_real_api_calls(monkeypatch):
+    if not LIVE_AI:
+        monkeypatch.setattr(anthropic, "Anthropic", _NoNetworkClient)
 STAFF = "staff-1"
 
 

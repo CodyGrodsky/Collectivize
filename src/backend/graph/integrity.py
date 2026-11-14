@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from backend.objects import (
+    ERASED_CONFIRMER,
     ClaimState,
     Connected,
     DomainRuleError,
@@ -140,8 +141,10 @@ class IntegrityService:
         """Is, or ever was, a confirmed admin of the org."""
         if person_id is None:
             return False
+        if person_id == ERASED_CONFIRMER:
+            return True  # confirmed by an admin whose account was since erased
         return any(
-            m.org_confirmed and m.role is MemberRole.ADMIN
+            m.org_confirmed and (m.role is MemberRole.ADMIN or m.was_admin)
             for m in self._store.edges(
                 MemberOf, source_id=person_id, target_id=org_id, include_inactive=True
             )

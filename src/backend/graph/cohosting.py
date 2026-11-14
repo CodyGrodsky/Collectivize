@@ -88,6 +88,6 @@ class CoHostingService:
             event = self._store.node(event_id, Event)
         except NotFoundError:
             event = None
-        if event is None or not event.is_active or not self._privacy.can_view(viewer_id, event):
+        if event is None or not self._privacy.can_view_listing(viewer_id, event):
             raise NotFoundError(f"event {event_id!r} not found")
         return event
