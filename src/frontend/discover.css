@@ -312,6 +312,9 @@ button, input, select { font: inherit; color: inherit; }
 
 .dc-side { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; text-align: right; }
 
+/* Event cards show no head count (only "Friends are attending"), so no side column. */
+.dc-event { grid-template-columns: 64px minmax(0, 1fr); }
+
 
 
 

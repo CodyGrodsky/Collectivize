@@ -338,7 +338,6 @@
             );
             q(".dc-reasons").replaceChildren(...shown.slice(0, 3).map((reason) => el("li", { text: reason })));
             this.friends(q(".dc-friends"), item.friends_going);
-            this.going(q(".dc-going"), item);
             q(".dc-actions-slot").replaceWith(this.actions(item, node));
             return node;
         }
@@ -390,16 +389,6 @@
             if (!names.length) return;
             container.hidden = false;
             container.querySelector(".dc-friends-text").textContent = "Friends are attending";
-        }
-
-        going(element, item) {
-            element.replaceChildren();
-            if (item.going_count == null) {
-                element.textContent = item.is_cancelled ? "" : "Be one of the first";
-                return;
-            }
-            element.append(el("strong", { text: String(item.going_count) }),
-                           document.createTextNode(item.capacity ? ` of ${item.capacity} going` : " going"));
         }
 
         renderPages(data) {
