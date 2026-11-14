@@ -292,6 +292,12 @@
                     onError: (message) => this.setDayStatus(message, { error: true }),
                 });
                 item.append(controls.element);
+                if (window.AddToCalendar && !entry.cancelled) {
+                    item.append(window.AddToCalendar.menu({
+                        id: entry.id, title: entry.title, location: entry.location, description: "",
+                        starts_at: entry.start.toISOString(), ends_at: entry.end.toISOString(),
+                    }));
+                }
             }
             return item;
         }
