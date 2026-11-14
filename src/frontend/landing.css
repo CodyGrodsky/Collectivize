@@ -101,3 +101,13 @@ body {
 .signin-note { margin: 4px 0 0; color: #5f6b67; font-size: 12.5px; }
 
 .signin-note code { font-size: 12px; }
+
+/* The animated logo replaces the static one (logo-particles.js). */
+.logo-particles {
+    display: block;
+    width: min(92cqw, 640px);
+    aspect-ratio: 16 / 11;
+    max-height: 52vh;
+    max-height: 52dvh;
+    touch-action: pan-y;
+}

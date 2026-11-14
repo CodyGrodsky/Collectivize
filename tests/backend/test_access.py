@@ -98,6 +98,8 @@ def test_signed_out_visitors_reach_only_landing_invite_and_assets(world):
     base = world[0]
     for path in ("index.html", "invite.html", "landing.css", "shared.js"):
         assert call(f"{base}/src/frontend/{path}")[0] == 200, path
+    status, _, body = call(f"{base}/api/session")  # the landing page's quiet check
+    assert status == 200 and json.loads(body) == {"signed_in": False}
     assert call(f"{base}/api/discover")[0] == 401
     assert call(f"{base}/api/me")[0] == 401
     assert call(f"{base}/api/rsvp", {"event_id": "x", "status": "going"})[0] == 401

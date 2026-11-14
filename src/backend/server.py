@@ -136,6 +136,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._api(lambda: app.invite_preview(params))
             return
         session = self._session()
+        if path == "/api/session":  # public: lets the landing page check quietly
+            self._json(HTTPStatus.OK, {"signed_in": session is not None})
+            return
         if session is None:
             self._json(HTTPStatus.UNAUTHORIZED, {"error": "sign in first", "signed_out": True})
             return
