@@ -4,6 +4,22 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-14 — Home page: spinning logo replaces the still logo
+
+**Request:** "make sure it all displays correctly seamlessly replacing the old logo with the new spinning animation loop."
+
+### What changed
+- **New logo:** `public/brand/logo.svg` (600×600, drawn around its center so it spins in place without clipping). It replaces `logo-on-paper.svg` on the home page only.
+- **Spin:** `src/frontend/logo-spin.css`, used as-is. It rotates the whole `<img>`: one 30 s loop that speeds up clockwise, slows, pauses 1 s, then does the same counter-clockwise and pauses again. Anyone who turns on "reduce motion" sees a still logo.
+- **`index.html`:** links `logo-spin.css`, adds the `logo-spin` class to the logo, and sets its size to 600×600 so the page doesn't jump while it loads. The sizing in `landing.css` is unchanged.
+- **Demo:** `public/brand/logo-demo.html` shows the still and spinning logo side by side (its links updated to the new paths). The temporary `public/brand/incoming/` folder is gone.
+
+### Decisions
+- **Old files kept:** `logo-on-paper.svg` and `logo-on-black.svg` stay, since the black version and the favicon haven't been redrawn yet.
+- **CSS kept separate, not pasted into the SVG:** it spins the image from the page, so a normal stylesheet works and any page can reuse it with one class.
+
+---
+
 ## 2026-11-14 — Network map lines: bold for connections, light for "close", none otherwise
 
 **Request:** "I wanted a mix of bold and light. Bold represents a connection/friend request that the parties accepted from each other… light is those who are connected within a certain proximity in the backend graph, and no line means the people don't really have a connection."

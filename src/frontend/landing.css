@@ -1,4 +1,4 @@
-/* Home page: the logo with the wordmark below it, centered on the screen.
+/* Home page: the logo (spun by logo-spin.css) with the wordmark below it, centered on the screen.
    Sizes are relative to the space beside the nav (cqw) and the screen
    height (vh), so both always fit without scrolling. The phone top bar's
    height (--nav-offset-top, from nav.css) is subtracted for the same reason. */
