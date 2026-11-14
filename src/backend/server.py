@@ -3,6 +3,16 @@
     uv run python scripts/serve.py            # http://127.0.0.1:8000/
     uv run python scripts/serve.py --no-ai    # search uses keywords only, no API calls
 
+API (JSON; the viewer is always the signed-in person):
+    POST /api/signin {"email"}, /api/signout; GET /api/session, /api/me
+    GET  /api/find?q=&types=&tags=&date=&page=   unified search (people, orgs, events)
+    GET  /api/network?center=                    a profile and its network map
+    POST /api/profile {...changes}               save your own profile and settings
+    GET  /api/discover, /api/calendar, /api/my-calendar, /api/my-events, /api/tags
+    POST /api/rsvp, /api/star, /api/connect, /api/connection, /api/invites
+    GET  /api/requests, /api/org, /api/invite (public); POST /api/org, /api/org/members
+    GET  /api/admin/users, /api/admin/audit; POST /api/admin/view-as (platform admins)
+
 Access (v1.1 spec 4.10): campus-only. Signing in with a Northeastern email
 starts a session (an HttpOnly cookie). Signed out, only the landing/sign-in
 page, the invite page, their assets and POST /api/signin answer; every
@@ -69,8 +79,8 @@ ADMIN_PAGE = "/src/frontend/admin.html"
 INVITE_PAGE = "/src/frontend/invite.html"
 PUBLIC_PAGES = frozenset({LANDING_PAGE, INVITE_PAGE})
 MAX_BODY_BYTES = 4096
-MAX_UPLOAD_BYTES = 300_000  # profile pictures, resized in the browser first
-UPLOAD_ROUTES = frozenset({"/api/profile/photo"})
+# A full profile edit is bigger: 1000 characters of emoji is about 4 KB alone.
+BODY_LIMITS = {"/api/profile": 8192}
 READ_ONLY_ALLOWED = frozenset({"/api/signout", "/api/admin/view-as"})
 
 __all__ = ["PER_PAGE", "ApiError", "DemoServer", "DiscoverApi", "RequestHandler",
@@ -145,7 +155,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
         routes = self._post_routes(session)
         handler = routes.get(path)
-        limit = MAX_UPLOAD_BYTES if path in UPLOAD_ROUTES else MAX_BODY_BYTES
+        limit = BODY_LIMITS.get(path, MAX_BODY_BYTES)
         self._api(None if handler is None else lambda: handler(self._read_json(limit)))
 
     def _get_api(self, path: str, params: dict[str, str]) -> None:
@@ -162,9 +172,6 @@ class RequestHandler(BaseHTTPRequestHandler):
         if session is None:
             self._json(HTTPStatus.UNAUTHORIZED, {"error": "sign in first", "signed_out": True})
             return
-        if path == "/api/photo":
-            self._photo(session.viewer_id, params)
-            return
         self._api(self._get_routes(session, params).get(path))
 
     def _get_routes(
@@ -178,8 +185,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             "/api/discover": lambda: api.discover(own),
             "/api/calendar": lambda: api.calendar(own),
             "/api/org": lambda: app.org(viewer, params),
-            "/api/network": lambda: app.network(viewer, params),
-            "/api/profile": lambda: app.profile(viewer, params),
+            "/api/network": lambda: api.network({**params, "viewer": viewer}),
             "/api/find": lambda: app.find(viewer, params, debug=self._is_platform_admin(session)),
             "/api/requests": lambda: app.requests(viewer),
             "/api/my-events": lambda: app.my_events(viewer),
@@ -201,8 +207,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             "/api/org": lambda body: app.update_org(viewer, body),
             "/api/connect": lambda body: app.connect(viewer, body),
             "/api/invites": lambda body: app.create_invite(viewer),
-            "/api/profile": lambda body: app.update_profile(viewer, body),
-            "/api/profile/photo": lambda body: app.upload_photo(viewer, body),
+            "/api/profile": lambda body: api.profile({**body, "viewer": viewer}),
             "/api/connection": lambda body: app.connection(viewer, body),
             "/api/org/members": lambda body: app.org_members(viewer, body),
             "/api/admin/view-as": lambda body: self._view_as(session, body),
@@ -277,24 +282,6 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _audit(self, session: Session) -> dict[str, Any]:
         self.server.app.require_platform_admin(session.person_id)
         return {"entries": list(reversed(self.server.sessions.audit[-100:]))}
-
-    def _photo(self, viewer: str, params: dict[str, str]) -> None:
-        try:
-            content_type, data = self.server.app.photo(viewer, params)
-        except ApiError as error:
-            self._json(error.status, {"error": error.message})
-            return
-        except Exception:
-            log.exception("photo request failed")
-            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "something went wrong"})
-            return
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "private, no-cache")
-        self._security_headers()
-        self.end_headers()
-        self.wfile.write(data)
 
     def log_message(self, format: str, *args: Any) -> None:
         """One short log line per request (method and path, no query)."""

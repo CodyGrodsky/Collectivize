@@ -6,20 +6,37 @@
     <meta name="theme-color" content="#f5f4f0">
     <title>Profile · Collectivize</title>
     <link rel="icon" href="../../app/icon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="app.css">
-    <link rel="stylesheet" href="profile-card.css">
-    <link rel="stylesheet" href="network-graph.css">
     <link rel="stylesheet" href="profile.css">
+    <link rel="stylesheet" href="network.css">
     <link rel="stylesheet" href="nav.css">
     <script src="nav.js"></script>
     <script src="shared.js" defer></script>
-    <script src="profile-card.js" defer></script>
-    <script src="network-graph.js" defer></script>
+    <script src="network-data.js" defer></script>
+    <script src="network-layout.js" defer></script>
+    <script src="network-view.js" defer></script>
+    <script src="profile-render.js" defer></script>
+    <script src="profile-editor.js" defer></script>
     <script src="profile.js" defer></script>
 </head>
 <body>
-    <main class="page profile-page" id="profile-root" aria-live="polite">
-        <noscript><p class="page-message">The profile page needs JavaScript turned on.</p></noscript>
+    <main class="profile-page">
+        <header class="nw-header">
+            <div>
+                <h1 class="nw-title">Profile</h1>
+                <p class="nw-subtitle">Your page, your network, and who gets to see what.</p>
+            </div>
+            <div class="nw-controls">
+            </div>
+        </header>
+
+        <div class="nw-banner" id="profile-banner" role="alert" hidden>
+            <span id="profile-banner-text"></span>
+            <button type="button" class="page-button" id="profile-retry">Retry</button>
+        </div>
+
+        <div id="profile-root" aria-live="polite">
+            <noscript><p class="page-message">The profile page needs JavaScript turned on.</p></noscript>
+        </div>
     </main>
 </body>
 </html>

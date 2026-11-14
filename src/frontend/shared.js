@@ -233,21 +233,16 @@
             return String(name || "").replace(/^\[Demo\]\s*/, "").replace(/\s*\(demo[^)]*\)$/, "");
         },
 
-        /** A round photo, or the person's initial. */
+        /** A round badge with the person's initial. */
         avatar(person, className = "avatar") {
-            const box = Ui.el("span", { className, attrs: { "aria-hidden": "true" } });
-            if (person.has_photo) {
-                box.append(Ui.el("img", { attrs: {
-                    src: `/api/photo?${new URLSearchParams({ id: person.id, slot: "0" })}`, alt: "",
-                } }));
-            } else {
-                box.textContent = Ui.cleanName(person.name).charAt(0).toUpperCase() || "?";
-            }
-            return box;
+            return Ui.el("span", { className, text: Ui.cleanName(person.name).charAt(0).toUpperCase() || "?",
+                                   attrs: { "aria-hidden": "true" } });
         },
 
+        /** Someone's page: the network page with them in the middle (it
+         *  falls back to your own page if you may not open theirs). */
         profileHref(id) {
-            return `profile.html?${new URLSearchParams({ id })}`;
+            return `network.html?${new URLSearchParams({ center: id })}`;
         },
 
         orgHref(id) {

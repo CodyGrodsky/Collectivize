@@ -1,6 +1,8 @@
 # Profile backend proposal
 
-**Status:** proposal only. Nothing here is implemented. The profile page (`src/frontend/profile.html`) currently runs on sample data. Its `ProfileDataSource` class in `profile.js` expects the `GET /api/profile` JSON described in section 2f.
+**Status (updated 2026-11-14):** partly implemented; see the top entry in `docs/CHANGES.md`. Built: the profile fields (except `username`; `profile` was kept as the About text rather than renamed), `profile_visibility`, `ProfileService` (`graph/profiles.py`), `GET /api/network` returning the profile, `POST /api/profile` with the 8 KB limit, and the page on real data. Not built: usernames and `/p/<username>`, connection requests from the page, avatars, the signup change. The rest of this document is the original proposal, unchanged.
+
+**Original status:** proposal only. Nothing here was implemented when it was written. The profile page (`src/frontend/profile.html`) currently runs on sample data. Its `ProfileDataSource` class in `profile.js` expects the `GET /api/profile` JSON described in section 2f.
 
 Written 2026-11-14 against `main` at `23663c7`. If line numbers have moved, search for the names.
 

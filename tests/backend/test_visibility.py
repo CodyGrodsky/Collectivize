@@ -4,10 +4,10 @@ import pytest
 
 from backend.config import Environment
 from backend.graph import CollectivizeGraph, InMemoryGraphStore
-from backend.graph.visibility import NETWORK_PEOPLE_CAP, Card, ConnectionState
+from backend.graph.visibility import Card, ConnectionState
 from backend.objects import Person
 from backend.seed import seed_mock_data
-from backend.seed_profiles import HUB_CONNECTIONS, email_for
+from backend.seed_profiles import email_for
 
 from .conftest import NOW
 
@@ -29,32 +29,14 @@ def test_degrees_along_the_alice_bob_carol_chain(demo):
     assert v.degree(carol, people["drew"]) == 3  # Carol-Bob-Alice-Drew
 
 
-def test_alice_sees_bob_but_not_carol_in_her_network(demo):
-    graph, people, _ = demo
-    view = graph.visibility.visible_network(people["alice"], people["alice"])
-    shown = {n.id for n in view.people}
-    assert people["bob"] in shown
-    assert people["carol"] not in shown
-
-
-def test_a_connections_network_shows_their_connections_and_orgs(demo):
-    graph, people, orgs = demo
-    view = graph.visibility.visible_network(people["alice"], people["bob"])
-    shown = {n.id: n for n in view.people}
-    assert people["carol"] in shown
-    assert shown[people["alice"]].is_viewer
-    assert not shown[people["carol"]].viewer_connected
-    assert shown[people["carol"]].connection is ConnectionState.NONE
-    assert orgs["surf"] in {n.id for n in view.orgs}
-
-
 def test_one_hop_only_no_network_for_second_degree(demo):
     graph, people, _ = demo
     v = graph.visibility
-    assert v.visible_network(people["alice"], people["carol"]) is None
+    assert not v.can_view_network(people["alice"], people["carol"])
+    assert v.can_view_network(people["alice"], people["bob"])
     sections = v.visible_profile_sections(people["alice"], people["carol"])
     assert sections.card is Card.PARTIAL
-    assert not (sections.orgs or sections.events or sections.network or sections.pictures)
+    assert not (sections.orgs or sections.events or sections.network)
 
 
 def test_connections_see_every_profile_section(demo):
@@ -82,20 +64,8 @@ def test_connecting_makes_carol_first_degree():
     assert graph.visibility.connection_state(alice, carol) is ConnectionState.PENDING_OUT
     assert graph.visibility.connection_state(carol, alice) is ConnectionState.PENDING_IN
     graph.connections.accept(request.id, carol)
-    assert carol in {n.id for n in graph.visibility.visible_network(alice, alice).people}
+    assert graph.visibility.can_view_network(alice, carol)
     assert graph.visibility.degree(alice, carol) == 1
-
-
-def test_big_networks_are_capped_with_show_more(demo):
-    graph, people, _ = demo
-    rowan = people["rowan"]
-    view = graph.visibility.visible_network(rowan, rowan)
-    assert view.people_total >= HUB_CONNECTIONS > 100
-    assert len(view.people) == NETWORK_PEOPLE_CAP
-    assert view.has_more
-    more = graph.visibility.visible_network(rowan, rowan, people_limit=2 * NETWORK_PEOPLE_CAP)
-    assert len(more.people) == 2 * NETWORK_PEOPLE_CAP
-    assert [n.id for n in more.people[:NETWORK_PEOPLE_CAP]] == [n.id for n in view.people]
 
 
 def test_membership_shows_even_when_set_private(demo):
@@ -104,8 +74,7 @@ def test_membership_shows_even_when_set_private(demo):
 
     edge = graph.store.edges(MemberOf, source_id=people["bob"], target_id=orgs["surf"])[0]
     graph.membership.set_visibility(edge.id, people["bob"], Visibility.PRIVATE)
-    view = graph.visibility.visible_network(people["alice"], people["bob"])
-    assert orgs["surf"] in {n.id for n in view.orgs}
+    assert orgs["surf"] in graph.visibility.org_ids_of(people["bob"])
 
 
 def test_org_members_see_full_list_others_see_count_and_connections(demo):
@@ -134,18 +103,3 @@ def test_demo_people_have_fictional_university_emails(demo):
     graph, people, _ = demo
     alice = graph.store.node(people["alice"], Person)
     assert alice.email == email_for("alice") == "alice.demo@northeastern.edu"
-
-
-def test_profile_fields_are_validated():
-    from backend.objects import DomainRuleError, ProfileTheme, Top3
-
-    with pytest.raises(DomainRuleError):
-        Top3(title="", items=("a", "b", "c"))
-    with pytest.raises(DomainRuleError):
-        Top3(title="spots", items=("a", "b"))
-    with pytest.raises(DomainRuleError):
-        Top3(title="spots", items=("a", "b", "x" * 41))
-    with pytest.raises(DomainRuleError):
-        ProfileTheme(outline="#123456")
-    with pytest.raises(DomainRuleError):
-        ProfileTheme(background="neon")

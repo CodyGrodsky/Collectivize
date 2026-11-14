@@ -4,14 +4,14 @@ The rules depend only on how the viewer is connected to the subject:
 
 - degree: 0 (self), 1 (connected), 2 (a connection's connection), 3 (three
   or more hops) or None (no path). Breadth-first, capped at 3 hops.
-- Network: you see your own (your connections and your orgs), and a 1st-
-  degree connection's (their connections and orgs, i.e. your 2nd degree).
-  Never further: one hop only. Non-connections' networks are not shown.
-- Org membership can't be hidden: a membership appears wherever its
-  member's network is visible.
-- Profile: you and your connections see everything; anyone else signed in
-  sees the partial card (photo, name, bio, Top 3); a preview card (on a
-  connection request or invite) is the full card and nothing below it.
+- Network: you may open your own and a 1st-degree connection's, never
+  further (one hop only). The network map itself is NetworkService's.
+- Org membership can't be hidden: `org_ids_of` ignores a membership's own
+  visibility setting.
+- Profile sections: you and your connections see everything; anyone else
+  signed in sees the partial card; a preview card (on a connection request
+  or invite) is the card and nothing below it. The profile page itself is
+  ProfileService's.
 - Org member lists: an org's members see the whole list; everyone else sees
   the count plus the members they're connected to.
 
@@ -21,7 +21,6 @@ never sent to the browser.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
 
@@ -32,13 +31,11 @@ from .membership import MembershipService
 from .store import GraphStore
 
 MAX_DEGREE = 3  # "3" means three or more
-NETWORK_PEOPLE_CAP = 25  # SPEC-ASSUMPTION: the spec's suggested default cap
-NETWORK_ORG_CAP = 10
 
 
 class Card(Enum):
-    FULL = "full"  # photo, name, bio, pictures, Top 3
-    PARTIAL = "partial"  # photo, name, bio, Top 3 (spec 7.3 default)
+    FULL = "full"  # name, bio, Top 3 and the rest of the card
+    PARTIAL = "partial"  # name, bio, Top 3 (spec 7.3 default)
 
 
 class ConnectionState(Enum):
@@ -55,34 +52,6 @@ class ProfileSections:
     orgs: bool
     events: bool
     network: bool
-    pictures: bool  # the extra pictures on the card (not in the partial card)
-
-
-@dataclass(frozen=True)
-class NetworkNode:
-    id: str
-    kind: str  # "person" or "org"
-    label: str
-    is_center: bool = False
-    is_viewer: bool = False
-    # Already the viewer's 1st-degree connection (marked in a friend's network).
-    viewer_connected: bool = False
-    connection: ConnectionState = ConnectionState.NONE
-
-
-@dataclass(frozen=True)
-class NetworkView:
-    center: NetworkNode
-    people: tuple[NetworkNode, ...]
-    orgs: tuple[NetworkNode, ...]
-    links: tuple[tuple[str, str], ...]  # center -> each shown node
-    people_total: int
-    orgs_total: int
-    connections_hidden: bool = False  # the subject turned off showing connections
-
-    @property
-    def has_more(self) -> bool:
-        return len(self.people) < self.people_total or len(self.orgs) < self.orgs_total
 
 
 @dataclass(frozen=True)
@@ -160,13 +129,10 @@ class VisibilityService:
         self, viewer_id: str, subject_id: str, *, preview: bool = False
     ) -> ProfileSections:
         if preview:  # the card shown with a connection request or invite
-            return ProfileSections(Card.FULL, orgs=False, events=False, network=False,
-                                   pictures=True)
+            return ProfileSections(Card.FULL, orgs=False, events=False, network=False)
         if self.can_view_network(viewer_id, subject_id):
-            return ProfileSections(Card.FULL, orgs=True, events=True, network=True,
-                                   pictures=True)
-        return ProfileSections(Card.PARTIAL, orgs=False, events=False, network=False,
-                               pictures=False)
+            return ProfileSections(Card.FULL, orgs=True, events=True, network=True)
+        return ProfileSections(Card.PARTIAL, orgs=False, events=False, network=False)
 
     def org_ids_of(self, person_id: str) -> list[str]:
         """Confirmed, current memberships. These can't be hidden (spec 4.2
@@ -176,56 +142,6 @@ class VisibilityService:
             for m in self._store.edges(MemberOf, source_id=person_id)
             if m.is_confirmed_current
         ]
-
-    def visible_network(
-        self,
-        viewer_id: str,
-        subject_id: str,
-        *,
-        people_limit: int = NETWORK_PEOPLE_CAP,
-        org_limit: int = NETWORK_ORG_CAP,
-    ) -> NetworkView | None:
-        """The subject's network as the viewer may see it, or None when the
-        viewer may not see it at all. Never the whole network: at most
-        `people_limit` people and `org_limit` orgs (ask again with higher
-        limits for "Show more")."""
-        if not self.can_view_network(viewer_id, subject_id):
-            return None
-        subject = self._store.node(subject_id, Person)
-        is_own = viewer_id == subject_id
-        mine = set(self._connections.connections_of(viewer_id))
-        hidden = subject.hide_connections and not is_own
-        people_ids = [] if hidden else self._connections.connections_of(subject_id)
-        people_ids = self._order_people(people_ids, mine, viewer_id, is_own)
-        org_ids = sorted(self.org_ids_of(subject_id), key=lambda i: self._org_name(i))
-
-        def person(pid: str) -> NetworkNode:
-            return NetworkNode(
-                id=pid, kind="person", label=self._store.node(pid, Person).display_name,
-                is_viewer=pid == viewer_id,
-                viewer_connected=pid in mine,
-                connection=self.connection_state(viewer_id, pid),
-            )
-
-        center = NetworkNode(
-            id=subject_id, kind="person", label=subject.display_name, is_center=True,
-            is_viewer=is_own, viewer_connected=subject_id in mine,
-            connection=self.connection_state(viewer_id, subject_id),
-        )
-        people = tuple(person(pid) for pid in people_ids[: max(0, people_limit)])
-        orgs = tuple(
-            NetworkNode(id=oid, kind="org", label=self._org_name(oid))
-            for oid in org_ids[: max(0, org_limit)]
-        )
-        return NetworkView(
-            center=center,
-            people=people,
-            orgs=orgs,
-            links=tuple((subject_id, n.id) for n in people + orgs),
-            people_total=len(people_ids),
-            orgs_total=len(org_ids),
-            connections_hidden=hidden,
-        )
 
     # --- organizations -------------------------------------------------------
 
@@ -272,21 +188,3 @@ class VisibilityService:
                         following.append(other)
             frontier = following
         return False
-
-    def _order_people(
-        self, ids: Iterable[str], mine: set[str], viewer_id: str, is_own: bool
-    ) -> list[str]:
-        """In a friend's network: you, then people you already know, then
-        the rest. In your own: the people you share the most friends with
-        first. Ties by name, so the order is stable."""
-        def name(pid: str) -> str:
-            return self._store.node(pid, Person).display_name.casefold()
-
-        ids = list(ids)
-        if is_own:
-            shared = {pid: len(mine & set(self._connections.connections_of(pid))) for pid in ids}
-            return sorted(ids, key=lambda pid: (-shared[pid], name(pid)))
-        return sorted(ids, key=lambda pid: (pid != viewer_id, pid not in mine, name(pid)))
-
-    def _org_name(self, org_id: str) -> str:
-        return self._store.node(org_id, Organization).name

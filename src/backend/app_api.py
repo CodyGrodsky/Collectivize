@@ -1,6 +1,7 @@
 """The v1.1 API's behaviour, independent of HTTP (server.py wraps it):
-sign-in, profiles, networks, connections, unified search, orgs, My Events
-and the platform admin tools.
+sign-in, invites, connections, unified search, orgs, My Events, the
+personal calendar and the platform admin tools. (Profiles and the network
+map are network_api.py's.)
 
 Every method takes the signed-in viewer's id from the server (never from
 the request), and every privacy decision goes through
@@ -19,56 +20,35 @@ from typing import Any
 
 from backend.config import ALLOWED_EMAIL_DOMAINS
 from backend.demo_api import ApiError, GraphFactory, _datetime_param, _entry_json, _item_json
-from backend.graph.my_calendar import Relation
 from backend.graph import CollectivizeGraph
+from backend.graph.my_calendar import Relation
 from backend.graph.query_understanding import QueryReader
 from backend.graph.unified_search import PER_PAGE as SEARCH_PER_PAGE
 from backend.graph.unified_search import SearchFilters, SearchResult, UnifiedSearchService
-from backend.graph.visibility import (
-    NETWORK_ORG_CAP,
-    NETWORK_PEOPLE_CAP,
-    NetworkNode,
-)
 from backend.objects import (
     Connected,
     DomainRuleError,
     Event,
     EventStatus,
-    Hosts,
     Organization,
-    ProfileImage,
-    ProfileTheme,
+    Person,
+    Provenance,
+    ProvenanceMethod,
     Rsvp,
     RsvpStatus,
     Tag,
     Tagged,
-    Top3,
-    Person,
-    Provenance,
-    ProvenanceMethod,
     VerificationLevel,
 )
 from backend.objects.base import utc_now
-from backend.objects.person import (
-    BACKGROUND_PRESETS,
-    BIO_MAX_CHARS,
-    OUTLINE_PRESETS,
-    TOP3_ITEM_MAX_CHARS,
-    TOP3_TITLE_MAX_CHARS,
-)
-from backend.objects.profile_image import PHOTO_SLOT, PICTURE_SLOTS, image_id
 
 EMAIL_SHAPE = re.compile(r"^[a-z0-9._%+-]+@([a-z0-9-]+(?:\.[a-z0-9-]+)+)$")
 MAX_EMAIL_LENGTH = 254
 MAX_INVITE_CODE = 100
 MAX_ID_LENGTH = 64
 ADMIN_SEARCH_LIMIT = 20
-MAX_NETWORK_NODES = 500
-MAX_NAME = 50
-UPCOMING_PREVIEW = 5
 MAX_QUERY = 200
 SEARCH_TYPES = ("people", "orgs", "events")
-PROFILE_EVENTS = 12  # per list, newest first
 
 
 class AppApi:
@@ -258,33 +238,7 @@ class AppApi:
         with self._graphs() as graph:
             return _person(graph, _id(target, "person")).id
 
-    # --- connections and networks (spec 4.2) --------------------------------------
-
-    def network(self, viewer: str, params: dict[str, str]) -> dict[str, Any]:
-        """A network as the viewer may see it: their own, or a 1st-degree
-        connection's. `people` / `orgs` raise the caps for "Show more"."""
-        people = _bounded(params.get("people"), NETWORK_PEOPLE_CAP, MAX_NETWORK_NODES)
-        orgs = _bounded(params.get("orgs"), NETWORK_ORG_CAP, MAX_NETWORK_NODES)
-        with self._graphs() as graph:
-            subject = _person(graph, _id(params.get("id") or viewer, "person"))
-            view = graph.visibility.visible_network(
-                viewer, subject.id, people_limit=people, org_limit=orgs
-            )
-            if view is None:
-                return {"visible": False, "id": subject.id}
-            node = lambda n: _node_json(graph, n)  # noqa: E731
-            return {
-                "visible": True,
-                "id": subject.id,
-                "is_own": subject.id == viewer,
-                "center": node(view.center),
-                "people": [node(n) for n in view.people],
-                "orgs": [node(n) for n in view.orgs],
-                "links": [list(link) for link in view.links],
-                "people_total": view.people_total,
-                "orgs_total": view.orgs_total,
-                "connections_hidden": view.connections_hidden,
-            }
+    # --- connections (spec 4.2) ------------------------------------------------------
 
     def connect(self, viewer: str, body: dict[str, Any]) -> dict[str, Any]:
         """Send a connection request. Anyone can ask anyone (spec 4.2 rule 1)."""
@@ -350,147 +304,24 @@ class AppApi:
                 ],
             }
 
-    # --- profiles (spec 4.3) -----------------------------------------------------
-
-    def profile(self, viewer: str, params: dict[str, str]) -> dict[str, Any]:
-        """A profile as the viewer may see it. Self and 1st-degree
-        connections: everything. Anyone else: the partial card only."""
-        with self._graphs() as graph:
-            subject = _person(graph, _id(params.get("id") or viewer, "person"))
-            sections = graph.visibility.visible_profile_sections(viewer, subject.id)
-            now = self._clock()
-            result: dict[str, Any] = {
-                "card": self._card(graph, viewer, subject.id),
-                "is_self": subject.id == viewer,
-                "sections": {"orgs": sections.orgs, "events": sections.events,
-                             "network": sections.network},
-            }
-            if sections.orgs:
-                result["orgs"] = [
-                    {"id": oid, "name": graph.store.node(oid, Organization).name,
-                     "is_admin": graph.membership.is_admin(subject.id, oid)}
-                    for oid in sorted(graph.visibility.org_ids_of(subject.id),
-                                      key=lambda i: graph.store.node(i, Organization).name)
-                ]
-            if sections.events:
-                result["events"] = _profile_events(graph, viewer, subject.id, now)
-            if subject.id == viewer:
-                result["email"] = subject.email
-                result["palette"] = {"outline": OUTLINE_PRESETS, "background": BACKGROUND_PRESETS}
-                result["limits"] = {"bio": BIO_MAX_CHARS, "top3_title": TOP3_TITLE_MAX_CHARS,
-                                    "top3_item": TOP3_ITEM_MAX_CHARS, "name": MAX_NAME}
-                result["upcoming"] = _my_events(graph, viewer, now)["upcoming"][:UPCOMING_PREVIEW]
-            return result
-
-    def update_profile(self, viewer: str, body: dict[str, Any]) -> dict[str, Any]:
-        """Edit your own profile: `bio`, `top3` ({title, items[3]} or null),
-        `theme` ({outline, background} preset names), `name`."""
-        allowed = {"bio", "top3", "theme", "name"}
-        unknown = set(body) - allowed - {"viewer"}
-        if unknown:
-            raise ApiError(HTTPStatus.BAD_REQUEST, f"can't edit: {', '.join(sorted(unknown))}")
-        with self._graphs() as graph:
-            person = _person(graph, viewer)
-            changes: dict[str, Any] = {}
-            if "name" in body:
-                name = body["name"]
-                if not isinstance(name, str) or not 0 < len(" ".join(name.split())) <= MAX_NAME:
-                    raise ApiError(HTTPStatus.BAD_REQUEST, f"your name needs 1-{MAX_NAME} characters")
-                changes["display_name"] = " ".join(name.split())
-            if "bio" in body:
-                if not isinstance(body["bio"], str):
-                    raise ApiError(HTTPStatus.BAD_REQUEST, "your bio must be text")
-                changes["bio"] = " ".join(body["bio"].split())
-            if "top3" in body:
-                changes["top3"] = _top3(body["top3"])
-            if "theme" in body:
-                theme = body["theme"]
-                if not isinstance(theme, dict) or not all(
-                    isinstance(theme.get(k), str) for k in ("outline", "background")
-                ):
-                    raise ApiError(HTTPStatus.BAD_REQUEST, "pick an outline and a background colour")
-                changes["theme"] = ProfileTheme(outline=theme["outline"], background=theme["background"])
-            updated = replace(person, **changes)  # validates (DomainRuleError -> 400)
-            graph.store.save_node(
-                replace(updated, provenance=updated.provenance.confirmed(self._clock()))
-            )
-        return self.profile(viewer, {})
-
-    def upload_photo(self, viewer: str, body: dict[str, Any]) -> dict[str, Any]:
-        """Set (`content_type`, `data_b64`) or `remove` your photo (slot 0)
-        or one of your three pictures (slots 1-3)."""
-        slot = body.get("slot")
-        if isinstance(slot, bool) or slot not in (PHOTO_SLOT, *PICTURE_SLOTS):
-            raise ApiError(HTTPStatus.BAD_REQUEST, "unknown picture slot")
-        with self._graphs() as graph:
-            _person(graph, viewer)
-            key = image_id(viewer, slot)
-            if body.get("remove") is True:
-                if graph.store.has_node(key):
-                    graph.store.delete_node(key)
-            else:
-                content_type, data = body.get("content_type"), body.get("data_b64")
-                if not isinstance(content_type, str) or not isinstance(data, str):
-                    raise ApiError(HTTPStatus.BAD_REQUEST, "send an image")
-                graph.store.save_node(ProfileImage(
-                    id=key, owner_id=viewer, slot=slot, content_type=content_type, data_b64=data,
-                    provenance=Provenance(created_by=viewer, method=ProvenanceMethod.SELF_CLAIM,
-                                          created_at=self._clock()),
-                ))
-        return self.profile(viewer, {})
-
-    def photo(self, viewer: str, params: dict[str, str]) -> tuple[str, bytes]:
-        """A profile image, if the viewer may see it: the photo is part of
-        every card; the other pictures only of the full card."""
-        owner = _id(params.get("id"), "person")
-        slot_text = params.get("slot", "0")
-        if slot_text not in {str(s) for s in (PHOTO_SLOT, *PICTURE_SLOTS)}:
-            raise ApiError(HTTPStatus.BAD_REQUEST, "unknown picture slot")
-        slot = int(slot_text)
-        with self._graphs() as graph:
-            _person(graph, owner)
-            if slot != PHOTO_SLOT and not graph.visibility.visible_profile_sections(
-                viewer, owner
-            ).pictures:
-                raise ApiError(HTTPStatus.NOT_FOUND, "no picture here")
-            key = image_id(owner, slot)
-            if not graph.store.has_node(key):
-                raise ApiError(HTTPStatus.NOT_FOUND, "no picture here")
-            image = graph.store.node(key, ProfileImage)
-            return image.content_type, image.data
-
     def _card(
         self, graph: CollectivizeGraph, viewer: str | None, subject_id: str, *, preview: bool = False
     ) -> dict[str, Any]:
-        """The profile card (the top of a profile, and the preview on a
-        request or invite), cut down to what the viewer may see."""
+        """The preview card shown with a connection request or on an invite
+        link (spec 4.11): name, bio, Top 3 and colours. `viewer` None is the
+        signed-out invite page."""
         person = _person(graph, subject_id)
-        if viewer is None:  # invite landing page: the inviter's preview card
-            sections = graph.visibility.visible_profile_sections(subject_id, subject_id, preview=True)
-            connection = "none"
-        else:
-            sections = graph.visibility.visible_profile_sections(viewer, subject_id, preview=preview)
-            connection = graph.visibility.connection_state(viewer, subject_id).value
-        theme = person.theme
+        connection = (
+            "none" if viewer is None
+            else graph.visibility.connection_state(viewer, subject_id).value
+        )
         return {
             "id": person.id,
             "name": person.display_name,
             "bio": person.bio,
-            "top3": None if person.top3 is None else {
-                "title": person.top3.title, "items": list(person.top3.items),
-            },
-            "theme": {
-                "outline": theme.outline,
-                "background": theme.background,
-                "outline_hex": OUTLINE_PRESETS[theme.outline],
-                "background_hex": BACKGROUND_PRESETS[theme.background],
-            },
-            "has_photo": _has_photo(graph, person.id),
-            "pictures": [
-                slot for slot in PICTURE_SLOTS
-                if graph.store.has_node(image_id(person.id, slot))
-            ] if sections.pictures else [],
-            "card": sections.card.value,
+            "top3": {"title": person.top3_title, "items": list(person.top3_items)}
+            if person.top3_title else None,
+            "colors": {"background": person.color_background, "outline": person.color_outline},
             "connection": connection,
         }
 
@@ -643,8 +474,7 @@ def _result_json(
     elif result.kind == "person":
         person = graph.store.node(result.id, Person)
         data = {"type": "person", "id": person.id, "name": person.display_name,
-                "bio": person.bio, "top3_title": person.top3.title if person.top3 else None,
-                "has_photo": _has_photo(graph, person.id),
+                "bio": person.bio, "top3_title": person.top3_title or None,
                 "connection": graph.visibility.connection_state(viewer, person.id).value}
     else:
         org = graph.store.node(result.id, Organization)
@@ -655,21 +485,6 @@ def _result_json(
     if debug:
         data["score"] = round(result.score, 3)
     return data
-
-
-def _top3(value: Any) -> Top3 | None:
-    if value is None:
-        return None
-    if not isinstance(value, dict) or not isinstance(value.get("title"), str):
-        raise ApiError(HTTPStatus.BAD_REQUEST, "Top 3 needs a title and three items")
-    items = value.get("items")
-    if not isinstance(items, list) or len(items) != 3 or not all(isinstance(i, str) for i in items):
-        raise ApiError(HTTPStatus.BAD_REQUEST, "Top 3 needs exactly three items")
-    try:
-        return Top3(title=" ".join(value["title"].split()),
-                    items=tuple(" ".join(i.split()) for i in items))
-    except DomainRuleError as error:
-        raise ApiError(HTTPStatus.BAD_REQUEST, str(error)) from None
 
 
 def _event_json(graph: CollectivizeGraph, event: Event, **extra: Any) -> dict[str, Any]:
@@ -703,31 +518,6 @@ def _listed(graph: CollectivizeGraph, viewer: str, event_id: str) -> Event | Non
     return event
 
 
-def _profile_events(
-    graph: CollectivizeGraph, viewer: str, subject: str, now: datetime
-) -> dict[str, list[dict[str, Any]]]:
-    """Going to (upcoming), attended (past events they said they'd go to)
-    and hosted, as far as the viewer may see each event."""
-    going, attended, hosted = [], [], []
-    for rsvp in graph.store.edges(Rsvp, source_id=subject):
-        event = _listed(graph, viewer, rsvp.target_id)
-        if event is None or rsvp.status is not RsvpStatus.GOING:
-            continue
-        (attended if event.ends_at < now else going).append(event)
-    for edge in graph.store.edges(Hosts, source_id=subject):
-        event = _listed(graph, viewer, edge.target_id)
-        if event is not None and edge.accepted:
-            hosted.append(event)
-    going.sort(key=lambda e: e.starts_at)
-    attended.sort(key=lambda e: e.starts_at, reverse=True)
-    hosted.sort(key=lambda e: e.starts_at, reverse=True)
-    return {
-        "going": [_event_json(graph, e) for e in going[:PROFILE_EVENTS]],
-        "attended": [_event_json(graph, e) for e in attended[:PROFILE_EVENTS]],
-        "hosted": [_event_json(graph, e, is_past=e.ends_at < now) for e in hosted[:PROFILE_EVENTS]],
-    }
-
-
 def _my_events(
     graph: CollectivizeGraph, viewer: str, now: datetime
 ) -> dict[str, list[dict[str, Any]]]:
@@ -755,27 +545,6 @@ def _my_events(
     return {"upcoming": [e for _, e in upcoming], "past": [e for _, e in past]}
 
 
-def _bounded(value: str | None, default: int, high: int) -> int:
-    if value is None or value == "":
-        return default
-    if not value.isdigit():
-        raise ApiError(HTTPStatus.BAD_REQUEST, "node counts must be whole numbers")
-    return max(1, min(int(value), high))
-
-
-def _node_json(graph: CollectivizeGraph, node: NetworkNode) -> dict[str, Any]:
-    return {
-        "id": node.id,
-        "kind": node.kind,
-        "label": node.label,
-        "is_center": node.is_center,
-        "is_viewer": node.is_viewer,
-        "viewer_connected": node.viewer_connected,
-        "connection": node.connection.value,
-        "has_photo": node.kind == "person" and _has_photo(graph, node.id),
-    }
-
-
 def _person_by_email(graph: CollectivizeGraph, email: str) -> Person:
     address = email.strip().lower()[:MAX_EMAIL_LENGTH]
     for person in graph.store.nodes(Person):
@@ -800,14 +569,9 @@ def _person_ref(
     return {
         "id": person.id,
         "name": person.display_name,
-        "has_photo": _has_photo(graph, person.id),
         "connection": graph.visibility.connection_state(viewer, person.id).value,
         **extra,
     }
-
-
-def _has_photo(graph: CollectivizeGraph, person_id: str) -> bool:
-    return graph.store.has_node(image_id(person_id, PHOTO_SLOT))
 
 
 def _org_tags(graph: CollectivizeGraph, org_id: str) -> list[str]:

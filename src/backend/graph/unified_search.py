@@ -147,7 +147,7 @@ class UnifiedSearchService:
                 continue
             fit = 1.0
             if keywords:
-                top3 = " ".join((person.top3.title, *person.top3.items)) if person.top3 else ""
+                top3 = " ".join((person.top3_title, *person.top3_items))
                 fit = keyword_fit(keywords, [(person.display_name, NAME_WEIGHT),
                                              (person.bio, TEXT_WEIGHT), (top3, TEXT_WEIGHT)])
                 if fit == 0:

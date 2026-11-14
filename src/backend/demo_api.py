@@ -1,7 +1,8 @@
 """The demo API's behaviour, independent of HTTP (server.py wraps it).
 
-`DiscoverApi` answers the Discover page and the calendar: personas, topics,
-the ranked Discover list, AI search, RSVPs, stars and the personal calendar.
+`DiscoverApi` answers the Discover, Calendar and Network pages: personas,
+topics, the ranked Discover list, AI search, RSVPs, stars, the personal
+calendar and the network map.
 Every input is validated here; problems raise `ApiError` with a status code
 and a message that is safe to show.
 
@@ -31,6 +32,7 @@ from backend.graph.discovery import DiscoveryItem
 from backend.graph.my_calendar import CalendarEntry
 from backend.graph.search_agent import AgentStep
 from backend.graph.sqlite_store import SqliteGraphStore
+from backend.network_api import clean_name, network_json, profile_changes
 from backend.objects import (
     EventStatus,
     MemberOf,
@@ -249,6 +251,36 @@ class DiscoverApi:
                 "community": [_entry_json(e) for e in cal.community],
                 "community_truncated": cal.community_truncated,
             }
+
+    def network(self, params: dict[str, str]) -> dict[str, Any]:
+        """The network map and the profile of whoever is in the middle:
+        `viewer` (required) and `center` (the viewer, one of their
+        connections, or an org they belong to; default the viewer)."""
+        center = params.get("center") or None
+        if center is not None and len(center) > MAX_ID_LENGTH:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "unknown person or org")
+        with self._graphs() as graph:
+            viewer = self._required_viewer(graph, params.get("viewer"))
+            return network_json(graph, viewer, center, self._clock())
+
+    def profile(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Save your own profile and settings: `viewer` plus any of
+        `display_name`, `bio`, `about`, `top3`, `website`, `colors`,
+        `sections`, `profile_visibility`, `rsvp_visibility`,
+        `hide_connections`. Returns your page again (as GET /api/network)."""
+        try:
+            changes = profile_changes(body)
+        except ValueError as error:
+            raise ApiError(HTTPStatus.BAD_REQUEST, str(error)) from None
+        with self._graphs() as graph:
+            viewer = self._required_viewer(graph, body.get("viewer"))
+            # The page shows demo names without their "(demo role)" tag, so a
+            # name sent back unchanged must not overwrite the stored one.
+            stored = graph.store.node(viewer, Person).display_name
+            if changes.get("display_name") == clean_name(stored):
+                del changes["display_name"]
+            graph.profiles.update(viewer, viewer, **changes)
+            return network_json(graph, viewer, None, self._clock())
 
     # --- helpers -------------------------------------------------------------------
 

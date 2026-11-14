@@ -17,30 +17,25 @@ from dataclasses import replace
 from datetime import datetime
 
 from backend.graph import CollectivizeGraph
-from backend.objects import Person, ProfileTheme, Top3
+from backend.objects import Person
 
 EMAIL_DOMAIN = "northeastern.edu"
 HUB_CONNECTIONS = 110
 PLATFORM_ADMIN = "pat"
 
+# key: (bio, Top 3 title, Top 3 items, background, outline)
 PROFILES = {
-    "alice": ("Pottery on weekends, cold brew on weekdays.",
-              Top3(title="study spots", items=("Library 4th floor", "Corner café", "The quad")),
-              ProfileTheme(outline="teal", background="mint")),
-    "bob": ("Surfer, sometimes before sunrise.",
-            Top3(title="breakfast spots", items=("Diner on 5th", "Bagel cart", "Dining hall")),
-            ProfileTheme(outline="cobalt", background="sky")),
-    "carol": ("Building small robots and bigger playlists.",
-              Top3(title="hobbies", items=("Robotics", "Bouldering", "Making playlists")),
-              ProfileTheme(outline="plum", background="blush")),
-    "drew": ("Chapter officer. Always down for a study jam.",
-             Top3(title="study spots", items=("Library, Room 3", "Student Center", "Anywhere quiet")),
-             ProfileTheme(outline="coral", background="white")),
-    "avery": ("Running the chapter calendar this year.",
-              None, ProfileTheme()),
-    "rowan": ("Says hi to everyone. Knows everyone.",
-              Top3(title="campus events", items=("Demo day", "Food crawl", "Fall mixer")),
-              ProfileTheme(outline="ink", background="paper")),
+    "alice": ("Pottery on weekends, cold brew on weekdays.", "Top 3 study spots",
+              ("Library 4th floor", "Corner café", "The quad"), "#E4F3EE", "#0F7A64"),
+    "bob": ("Surfer, sometimes before sunrise.", "Top 3 breakfast spots",
+            ("Diner on 5th", "Bagel cart", "Dining hall"), "#E6ECFA", "#1E3A9E"),
+    "carol": ("Building small robots and bigger playlists.", "Top 3 hobbies",
+              ("Robotics", "Bouldering", "Making playlists"), "#FBE9E5", "#6B2D6B"),
+    "drew": ("Chapter officer. Always down for a study jam.", "Top 3 study spots",
+             ("Library, Room 3", "Student Center", "Anywhere quiet"), "#FDFDFB", "#C2361F"),
+    "avery": ("Running the chapter calendar this year.", "", (), "#F5F4F0", "#202B29"),
+    "rowan": ("Says hi to everyone. Knows everyone.", "Top 3 campus events",
+              ("Demo day", "Food crawl", "Fall mixer"), "#F5F4F0", "#202B29"),
 }
 
 
@@ -90,10 +85,12 @@ def seed_profiles(
 
     for key, pid in (everyone | guests).items():
         person = graph.store.node(pid, Person)
-        bio, top3, theme = PROFILES.get(key, ("", None, ProfileTheme()))
+        profile = PROFILES.get(key)
+        extra = {} if profile is None else dict(zip(
+            ("bio", "top3_title", "top3_items", "color_background", "color_outline"), profile
+        ))
         graph.store.save_node(replace(
-            person, email=email_for(key), bio=bio, top3=top3, theme=theme,
-            is_platform_admin=key == PLATFORM_ADMIN,
+            person, email=email_for(key), is_platform_admin=key == PLATFORM_ADMIN, **extra
         ))
     return added | guests
 

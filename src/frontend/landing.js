@@ -8,12 +8,6 @@
     const { Api, Session } = window.Collectivize;
     const $ = (id) => document.getElementById(id);
 
-    // The animated logo (spec 4.12); the static logo stays with reduced motion.
-    window.LogoParticles?.mount($("hero"), {
-        mark: "../../public/brand/logo-on-paper.svg",
-        word: "../../public/brand/wordmark-on-paper.svg",
-    }).then((animated) => document.body.classList.toggle("has-animated-logo", animated));
-
     const next = Session.nextPage(new URLSearchParams(location.search).get("next"));
 
     // Already signed in: carry on.

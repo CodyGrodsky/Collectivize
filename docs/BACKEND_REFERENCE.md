@@ -173,20 +173,36 @@ Joining Collectivize by invite.
 
 The network view: people and orgs as nodes, linked by accepted connections (person <-> person) and confirmed memberships (person -> org).
 
-- **`NodeKind`** (enum): Whether a network node is a person or an org. [L48](../src/backend/graph/network.py#L48)
-- **`LinkKind`** (enum): Whether a network link is a connection or a membership. [L53](../src/backend/graph/network.py#L53)
-- **`NetworkNode`**: A dot in the network view: id, kind, label. [L59](../src/backend/graph/network.py#L59)
-- **`NetworkLink`**: A line in the network view: two node ids and the kind of link. [L66](../src/backend/graph/network.py#L66)
-- **`NetworkPath`**: A route through the network, as nodes and links. [L73](../src/backend/graph/network.py#L73)
-  - `hops` (property): Number of links in the path. [L78](../src/backend/graph/network.py#L78)
-- **`NetworkView`**: What the network screen draws: nodes, links, whether it was cut short, and (in focus view) the path. [L83](../src/backend/graph/network.py#L83)
-- **`InCommon`**: Mutual friends and shared orgs between two people, with a ready-made summary. [L92](../src/backend/graph/network.py#L92)
-  - `summary` (property): E.g. "2 mutual friends · Surf Club". [L97](../src/backend/graph/network.py#L97)
-- **`NetworkService`**: The network graph for one viewer: neighborhoods, paths, focus, in common. `graph.network`. [L107](../src/backend/graph/network.py#L107)
-  - `neighborhood(viewer_id: str | None, center_id: str | None = None, *, depth: int = 1, max_nodes: int = DEFAULT_MAX_NODES) -> NetworkView`: The center (default: you) plus everything within `depth` links. [L117](../src/backend/graph/network.py#L117)
-  - `find_path(viewer_id: str | None, target_id: str, *, max_hops: int = MAX_PATH_HOPS) -> NetworkPath | None`: Shortest route from you to someone or some org, or None when there's no close connection (more than `max_hops` links away). [L153](../src/backend/graph/network.py#L153)
-  - `focus(viewer_id: str | None, focus_id: str) -> NetworkView`: What the graph shows when you click a node: the node, its direct links, and the path from you to it (if there's a close one). [L163](../src/backend/graph/network.py#L163)
-  - `in_common(viewer_id: str | None, other_id: str) -> InCommon`: Mutual friends and shared orgs, as the viewer is allowed to see them. [L180](../src/backend/graph/network.py#L180)
+- **`NodeKind`** (enum): Whether a network node is a person or an org. [L59](../src/backend/graph/network.py#L59)
+- **`LinkKind`** (enum): Whether a network link is a connection or a membership. [L64](../src/backend/graph/network.py#L64)
+- **`NetworkNode`**: A dot in the network view: id, kind, label. [L70](../src/backend/graph/network.py#L70)
+- **`NetworkLink`**: A line in the network view: two node ids and the kind of link. [L77](../src/backend/graph/network.py#L77)
+- **`NetworkPath`**: A route through the network, as nodes and links. [L84](../src/backend/graph/network.py#L84)
+  - `hops` (property): Number of links in the path. [L89](../src/backend/graph/network.py#L89)
+- **`NetworkView`**: What the network screen draws: nodes, links, whether it was cut short, and (in focus view) the path. [L94](../src/backend/graph/network.py#L94)
+- **`InCommon`**: Mutual friends and shared orgs between two people, with a ready-made summary. [L103](../src/backend/graph/network.py#L103)
+  - `summary` (property): E.g. "2 mutual friends · Surf Club". [L108](../src/backend/graph/network.py#L108)
+- **`MapOrg`**: An org on a map: one the viewer belongs to. `closeness`: how many of the center's other links it also has (drawn nearer the more it has). [L119](../src/backend/graph/network.py#L119)
+- **`MapPerson`**: A person on a map: the viewer or one of the viewer's connections. `closeness`: how many of the center's other links they also have. [L129](../src/backend/graph/network.py#L129)
+- **`NetworkMap`**: One node's map for one viewer: the center and what is directly linked to it that the viewer can open. Pairs of person ids say how the people shown relate to each other: `links` are accepted connections, `near` are people who aren't connected but are close in the graph (they share a connection or an org, not counting the center). A pair in neither has no real tie. `orgs` is empty when the center is an org. [L140](../src/backend/graph/network.py#L140)
+- **`NetworkService`**: The network graph for one viewer: neighborhoods, paths, focus, in common. `graph.network`. [L157](../src/backend/graph/network.py#L157)
+  - `neighborhood(viewer_id: str | None, center_id: str | None = None, *, depth: int = 1, max_nodes: int = DEFAULT_MAX_NODES) -> NetworkView`: The center (default: you) plus everything within `depth` links. [L167](../src/backend/graph/network.py#L167)
+  - `node_map(viewer_id: str | None, center_id: str | None = None) -> NetworkMap`: The map centered on you (the default), one of your connections, or an org you belong to. [L203](../src/backend/graph/network.py#L203)
+  - `person_map(viewer_id: str | None, person_id: str | None = None) -> NetworkMap`: You or one of your connections at the center, with the orgs and connections of theirs that are also yours. Anyone you aren't connected to, and any org you aren't in, is left out entirely. [L212](../src/backend/graph/network.py#L212)
+  - `org_map(viewer_id: str | None, org_id: str) -> NetworkMap`: An org you belong to at the center, with the members who are your connections (and you). Other members are left out entirely. [L226](../src/backend/graph/network.py#L226)
+  - `find_path(viewer_id: str | None, target_id: str, *, max_hops: int = MAX_PATH_HOPS) -> NetworkPath | None`: Shortest route from you to someone or some org, or None when there's no close connection (more than `max_hops` links away). [L286](../src/backend/graph/network.py#L286)
+  - `focus(viewer_id: str | None, focus_id: str) -> NetworkView`: What the graph shows when you click a node: the node, its direct links, and the path from you to it (if there's a close one). [L296](../src/backend/graph/network.py#L296)
+  - `in_common(viewer_id: str | None, other_id: str) -> InCommon`: Mutual friends and shared orgs, as the viewer is allowed to see them. [L313](../src/backend/graph/network.py#L313)
+
+### `src/backend/graph/profiles.py`
+
+A person's profile page: what a viewer may read, and the owner's edits.
+
+- **`ProfileAccess`** (enum): [L64](../src/backend/graph/profiles.py#L64)
+- **`ProfileView`**: [L70](../src/backend/graph/profiles.py#L70)
+- **`ProfileService`**: [L80](../src/backend/graph/profiles.py#L80)
+  - `view(person_id: str, viewer_id: str | None, now: datetime) -> ProfileView`: A person's profile as this viewer may read it: full or locked, with only the orgs and upcoming events the viewer is allowed to see. [L99](../src/backend/graph/profiles.py#L99)
+  - `update(person_id: str, by_person_id: str, **changes) -> Person`: Change your own profile and its settings. Returns the saved person. [L170](../src/backend/graph/profiles.py#L170)
 
 ## Events
 
@@ -543,10 +559,10 @@ Cross-cutting rules every node and edge follows (see user_Orgs.md).
 
 Person node: one real human with an account.
 
-- **`VerificationLevel`** (enum): Which level of identity verification was achieved (not how). [L16](../src/backend/objects/person.py#L16)
-- **`Person`** (GraphRecord): A person with an account: display name, private email, settings, and a private travel average. [L26](../src/backend/objects/person.py#L26)
-  - Fields: `display_name`, `email`, `profile`, `verification_level`, `embedding`, `visibility`, `hide_connections`, `rsvp_visibility`, `travel_log_km`, `travel_samples`, `ai_uses_history`, `analytics_consent`
-  - `with_hide_connections(hidden: bool) -> Person`: A copy with "hide my connections" turned on or off. [L66](../src/backend/objects/person.py#L66)
+- **`VerificationLevel`** (enum): Which level of identity verification was achieved (not how). [L34](../src/backend/objects/person.py#L34)
+- **`Person`** (GraphRecord): A person with an account: display name, private email, settings, and a private travel average. [L44](../src/backend/objects/person.py#L44)
+  - Fields: `display_name`, `email`, `profile`, `verification_level`, `embedding`, `visibility`, `hide_connections`, `rsvp_visibility`, `travel_log_km`, `travel_samples`, `ai_uses_history`, `analytics_consent`, `bio`, `top3_title`, `top3_items`, `website`, `color_background`, `color_outline`, `profile_visibility`, `profile_sections`
+  - `with_hide_connections(hidden: bool) -> Person`: A copy with "hide my connections" turned on or off. [L121](../src/backend/objects/person.py#L121)
 
 ### `src/backend/objects/organization.py`
 
@@ -702,28 +718,39 @@ Where secrets come from. Never from source code or files in the repo.
 
 The demo API's behaviour, independent of HTTP (server.py wraps it).
 
-- **`ApiError`** (Exception): [L57](../src/backend/demo_api.py#L57)
-- `demo_graph_factory(config: DatabaseConfig, *, use_ai: bool) -> GraphFactory`: Each request opens its own connection (SQLite connections can't be shared across the server's threads). [L83](../src/backend/demo_api.py#L83)
-- **`DiscoverApi`**: The API's behaviour, independent of HTTP (so it can be tested directly). [L107](../src/backend/demo_api.py#L107)
-  - `personas() -> dict[str, Any]`: Every demo person you can view Discover as, suggested ones first. [L120](../src/backend/demo_api.py#L120)
-  - `tags() -> dict[str, Any]`: All topic tags, by label (for the topic filter). [L142](../src/backend/demo_api.py#L142)
-  - `discover(params: dict[str, str]) -> dict[str, Any]`: One page of Discover for a viewer: `viewer`, `page`, `near=1`, `tag`. [L148](../src/backend/demo_api.py#L148)
-  - `search(body: dict[str, Any]) -> dict[str, Any]`: AI search via the search agent: `query`, `viewer`, `near`. Repeat searches come from the cache; one runs at a time. [L165](../src/backend/demo_api.py#L165)
-  - `rsvp(body: dict[str, Any]) -> dict[str, Any]`: Set or clear an RSVP: `viewer`, `event_id`, `status` ("going", "maybe", or null to clear), `near` (records the trip distance). [L203](../src/backend/demo_api.py#L203)
-  - `star(body: dict[str, Any]) -> dict[str, Any]`: Star or unstar an event: `viewer`, `event_id`, `starred` (true/false). [L218](../src/backend/demo_api.py#L218)
-  - `calendar(params: dict[str, str]) -> dict[str, Any]`: A person's calendar for a window: `viewer`, `start`, `end` (ISO 8601 with a time zone, at most 62 days apart). [L232](../src/backend/demo_api.py#L232)
+- **`ApiError`** (Exception): [L59](../src/backend/demo_api.py#L59)
+- `demo_graph_factory(config: DatabaseConfig, *, use_ai: bool) -> GraphFactory`: Each request opens its own connection (SQLite connections can't be shared across the server's threads). [L85](../src/backend/demo_api.py#L85)
+- **`DiscoverApi`**: The API's behaviour, independent of HTTP (so it can be tested directly). [L109](../src/backend/demo_api.py#L109)
+  - `personas() -> dict[str, Any]`: Every demo person you can view Discover as, suggested ones first. [L122](../src/backend/demo_api.py#L122)
+  - `tags() -> dict[str, Any]`: All topic tags, by label (for the topic filter). [L144](../src/backend/demo_api.py#L144)
+  - `discover(params: dict[str, str]) -> dict[str, Any]`: One page of Discover for a viewer: `viewer`, `page`, `near=1`, `tag`. [L150](../src/backend/demo_api.py#L150)
+  - `search(body: dict[str, Any]) -> dict[str, Any]`: AI search via the search agent: `query`, `viewer`, `near`. Repeat searches come from the cache; one runs at a time. [L167](../src/backend/demo_api.py#L167)
+  - `rsvp(body: dict[str, Any]) -> dict[str, Any]`: Set or clear an RSVP: `viewer`, `event_id`, `status` ("going", "maybe", or null to clear), `near` (records the trip distance). [L205](../src/backend/demo_api.py#L205)
+  - `star(body: dict[str, Any]) -> dict[str, Any]`: Star or unstar an event: `viewer`, `event_id`, `starred` (true/false). [L220](../src/backend/demo_api.py#L220)
+  - `calendar(params: dict[str, str]) -> dict[str, Any]`: A person's calendar for a window: `viewer`, `start`, `end` (ISO 8601 with a time zone, at most 62 days apart). [L234](../src/backend/demo_api.py#L234)
+  - `network(params: dict[str, str]) -> dict[str, Any]`: The network map and the profile of whoever is in the middle: `viewer` (required) and `center` (the viewer, one of their connections, or an org they belong to; default the viewer). [L250](../src/backend/demo_api.py#L250)
+  - `profile(body: dict[str, Any]) -> dict[str, Any]`: Save your own profile and settings: `viewer` plus any of `display_name`, `bio`, `about`, `top3`, `website`, `colors`, `sections`, `profile_visibility`, `rsvp_visibility`, `hide_connections`. Returns your page again (as GET /api/network). [L261](../src/backend/demo_api.py#L261)
+
+### `src/backend/network_api.py`
+
+JSON for the Network and Profile pages: the map around one node, the profile of whoever is in the middle, and saving your own profile.
+
+- `network_json(graph: CollectivizeGraph, viewer: str, center: str | None, now: datetime) -> dict[str, Any]`: The answer to GET /api/network: the map and the center's profile. [L29](../src/backend/network_api.py#L29)
+- `clean_name(name: str) -> str`: A demo name without its "[Demo]" prefix or "(demo role)" suffix. [L37](../src/backend/network_api.py#L37)
+- `person_profile_json(graph: CollectivizeGraph, viewer: str, person_id: str, now: datetime) -> dict[str, Any]`: A person's profile page as the viewer may read it (the shape docs/profile-backend-proposal.md describes, without usernames). Never the email. `settings` is only included on your own profile. [L71](../src/backend/network_api.py#L71)
+- `profile_changes(body: dict[str, Any]) -> dict[str, Any]`: Turn a POST /api/profile body into `ProfileService.update` changes. Only keys that are present are changed. Raises ValueError (with a message safe to show) for anything malformed; the limits themselves are checked by the Person record. [L152](../src/backend/network_api.py#L152)
 
 ### `src/backend/server.py`
 
 A small local web server for the demo: the frontend pages plus a JSON API.
 
-- **`DemoServer`** (ThreadingHTTPServer): [L60](../src/backend/server.py#L60)
-- **`RequestHandler`** (BaseHTTPRequestHandler): [L68](../src/backend/server.py#L68)
-  - `do_GET() -> None`: API routes, the home redirect, or a static file. [L73](../src/backend/server.py#L73)
-  - `do_POST() -> None`: POST /api/search, /api/rsvp and /api/star. [L90](../src/backend/server.py#L90)
-  - `log_message(format: str, *args) -> None`: One short log line per request (method and path, no query). [L100](../src/backend/server.py#L100)
-- `resolve_static(url_path: str, root: Path = ROOT) -> Path | None`: The file a URL path refers to, or None unless it is a real file inside one of STATIC_DIRS. Blocks '..', encoded traversal, dotfiles and symlinks that lead outside. [L183](../src/backend/server.py#L183)
-- `serve(api: DiscoverApi, port: int = 8000) -> DemoServer`: Create the server on 127.0.0.1 (call .serve_forever() to run it). [L199](../src/backend/server.py#L199)
+- **`DemoServer`** (ThreadingHTTPServer): [L64](../src/backend/server.py#L64)
+- **`RequestHandler`** (BaseHTTPRequestHandler): [L72](../src/backend/server.py#L72)
+  - `do_GET() -> None`: API routes, the home redirect, or a static file. [L77](../src/backend/server.py#L77)
+  - `do_POST() -> None`: POST /api/search, /api/rsvp, /api/star and /api/profile. [L95](../src/backend/server.py#L95)
+  - `log_message(format: str, *args) -> None`: One short log line per request (method and path, no query). [L108](../src/backend/server.py#L108)
+- `resolve_static(url_path: str, root: Path = ROOT) -> Path | None`: The file a URL path refers to, or None unless it is a real file inside one of STATIC_DIRS. Blocks '..', encoded traversal, dotfiles and symlinks that lead outside. [L191](../src/backend/server.py#L191)
+- `serve(api: DiscoverApi, port: int = 8000) -> DemoServer`: Create the server on 127.0.0.1 (call .serve_forever() to run it). [L207](../src/backend/server.py#L207)
 
 ### `src/backend/seed.py`
 

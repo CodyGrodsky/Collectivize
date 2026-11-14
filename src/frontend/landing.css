@@ -1,4 +1,4 @@
-/* Home page: the logo with the wordmark below it, centered on the screen.
+/* Home page: the logo (spun by logo-spin.css) with the wordmark below it, centered on the screen.
    Sizes are relative to the space beside the nav (cqw) and the screen
    height (vh), so both always fit without scrolling. The phone top bar's
    height (--nav-offset-top, from nav.css) is subtracted for the same reason. */
@@ -102,15 +102,6 @@ body {
 
 .signin-note code { font-size: 12px; }
 
-/* The animated logo replaces the static one (logo-particles.js). */
-.logo-particles {
-    display: block;
-    width: min(92cqw, 640px);
-    aspect-ratio: 16 / 11;
-    max-height: 52vh;
-    max-height: 52dvh;
-    touch-action: pan-y;
-}
 
 /* Invite landing page (invite.html). */
 .invite { gap: 18px; }

@@ -40,12 +40,12 @@ from .event import Event, EventChange, EventSeries, EventStatus
 from .geo import GeoPoint, haversine_km
 from .invite import Invite
 from .organization import ClaimState, Freshness, Organization, OrgKind
-from .person import Person, ProfileTheme, Top3, VerificationLevel
-from .profile_image import ProfileImage
+from .person import PROFILE_SECTIONS, Person, VerificationLevel
 from .taxonomy import Tag, Venue
 
 __all__ = [
     "ERASED_CONFIRMER",
+    "PROFILE_SECTIONS",
     "AttendanceMethod",
     "Attended",
     "ClaimState",
@@ -77,8 +77,6 @@ __all__ = [
     "PartnersWith",
     "Person",
     "PersonOwnedEdge",
-    "ProfileImage",
-    "ProfileTheme",
     "Provenance",
     "ProvenanceMethod",
     "RecommendationUse",
@@ -88,7 +86,6 @@ __all__ = [
     "Starred",
     "Tag",
     "Tagged",
-    "Top3",
     "Venue",
     "VerificationLevel",
     "VerificationStatus",

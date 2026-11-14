@@ -13,6 +13,16 @@ there.
   and past memberships are never links.
 - Orgs and people the viewer can't see never appear.
 
+The map (`node_map`) is what you get when you tap a node: that node at
+the center and what is directly linked to it, limited to nodes you could
+open yourself (you, your connections, your orgs). Everything else is left
+out, not greyed out. It also says which of the people shown are connected
+to each other, which are merely close (they share a connection or an org
+besides the center), and how close each node is to the center (how many of the
+center's links it shares), so the page can draw close ones together. You
+can open it only for yourself, your own connections and orgs you belong
+to, so nobody can click their way across the whole network.
+
 Paths are shortest first (at most MAX_PATH_HOPS links). When two paths
 are equally short, the one through fewer orgs wins, so paths go through
 people where they can.
@@ -24,7 +34,7 @@ import heapq
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
-from itertools import pairwise
+from itertools import combinations, pairwise
 
 from backend.objects import (
     Connected,
@@ -42,6 +52,7 @@ from .store import GraphStore
 
 MAX_PATH_HOPS = 4
 DEFAULT_MAX_NODES = 150
+MAX_MAP_PEOPLE = 60
 MAX_DEPTH = 3
 
 
@@ -104,6 +115,45 @@ class InCommon:
         return " · ".join(parts)
 
 
+@dataclass(frozen=True)
+class MapOrg:
+    """An org on a map: one the viewer belongs to. `closeness`: how many of
+    the center's other links it also has (drawn nearer the more it has)."""
+
+    id: str
+    name: str
+    closeness: int
+
+
+@dataclass(frozen=True)
+class MapPerson:
+    """A person on a map: the viewer or one of the viewer's connections.
+    `closeness`: how many of the center's other links they also have."""
+
+    id: str
+    name: str
+    is_viewer: bool
+    closeness: int
+
+
+@dataclass(frozen=True)
+class NetworkMap:
+    """One node's map for one viewer: the center and what is directly
+    linked to it that the viewer can open. Pairs of person ids say how the
+    people shown relate to each other: `links` are accepted connections,
+    `near` are people who aren't connected but are close in the graph (they
+    share a connection or an org, not counting the center). A pair in
+    neither has no real tie. `orgs` is empty when the center is an org."""
+
+    center: NetworkNode
+    is_self: bool  # the viewer's own map
+    orgs: tuple[MapOrg, ...]
+    people: tuple[MapPerson, ...]
+    links: tuple[tuple[str, str], ...]
+    near: tuple[tuple[str, str], ...]
+    truncated: bool  # True when there were more than MAX_MAP_PEOPLE people
+
+
 class NetworkService:
     def __init__(
         self, store: GraphStore, privacy: PrivacyService, roster: RosterService
@@ -148,6 +198,89 @@ class NetworkService:
             nodes=tuple(walk.node(n) for n in order),
             links=walk.links_among(order),
             truncated=truncated,
+        )
+
+    def node_map(self, viewer_id: str | None, center_id: str | None = None) -> NetworkMap:
+        """The map centered on you (the default), one of your connections,
+        or an org you belong to."""
+        viewer = self._require_viewer(viewer_id)
+        center = center_id or viewer
+        if isinstance(self._visible_node(viewer, center), Organization):
+            return self.org_map(viewer, center)
+        return self.person_map(viewer, center)
+
+    def person_map(self, viewer_id: str | None, person_id: str | None = None) -> NetworkMap:
+        """You or one of your connections at the center, with the orgs and
+        connections of theirs that are also yours. Anyone you aren't
+        connected to, and any org you aren't in, is left out entirely."""
+        viewer = self._require_viewer(viewer_id)
+        center = person_id or viewer
+        if not isinstance(self._visible_node(viewer, center), Person):
+            raise NotFoundError(f"{center!r} not found")
+        walk = _Walk(self, viewer)
+        mine = dict(walk.neighbors(viewer))
+        if center != viewer and mine.get(center) is not LinkKind.CONNECTION:
+            raise PermissionDeniedError("you can only open the network of your own connections")
+        return self._build_map(walk, viewer, mine, center)
+
+    def org_map(self, viewer_id: str | None, org_id: str) -> NetworkMap:
+        """An org you belong to at the center, with the members who are your
+        connections (and you). Other members are left out entirely."""
+        viewer = self._require_viewer(viewer_id)
+        if not isinstance(self._visible_node(viewer, org_id), Organization):
+            raise NotFoundError(f"{org_id!r} not found")
+        walk = _Walk(self, viewer)
+        mine = dict(walk.neighbors(viewer))
+        if mine.get(org_id) is not LinkKind.MEMBERSHIP:
+            raise PermissionDeniedError("you can only open organizations you belong to")
+        return self._build_map(walk, viewer, mine, org_id)
+
+    @staticmethod
+    def _build_map(
+        walk: _Walk, viewer: str, mine: dict[str, LinkKind], center: str
+    ) -> NetworkMap:
+        """Keep only the center's links that the viewer could open next:
+        the viewer, the viewer's connections, and the viewer's orgs."""
+        around = dict(walk.neighbors(center))
+
+        def closeness(node_id: str) -> int:
+            return len(around.keys() & dict(walk.neighbors(node_id)).keys())
+
+        orgs = [
+            MapOrg(id=i, name=walk.node(i).label, closeness=closeness(i))
+            for i, kind in around.items()
+            if kind is LinkKind.MEMBERSHIP and mine.get(i) is LinkKind.MEMBERSHIP
+            and walk.is_org(i)
+        ]
+        people = [
+            MapPerson(id=i, name=walk.node(i).label, is_viewer=i == viewer, closeness=closeness(i))
+            for i in around
+            if not walk.is_org(i) and (i == viewer or mine.get(i) is LinkKind.CONNECTION)
+        ]
+        people.sort(key=lambda p: (not p.is_viewer, -p.closeness, p.name, p.id))
+        shown = people[:MAX_MAP_PEOPLE]
+        ids = {p.id for p in shown}
+        links = {
+            tuple(sorted((p.id, other)))
+            for p in shown
+            for other, kind in walk.neighbors(p.id)
+            if kind is LinkKind.CONNECTION and other in ids
+        }
+        # Close but not connected: two people who share some other link.
+        reach = {p.id: dict(walk.neighbors(p.id)).keys() - {center} for p in shown}
+        near = {
+            (a, b)
+            for a, b in combinations(sorted(ids), 2)
+            if (a, b) not in links and reach[a] & reach[b]
+        }
+        return NetworkMap(
+            center=walk.node(center),
+            is_self=center == viewer,
+            orgs=tuple(sorted(orgs, key=lambda o: (-o.closeness, o.name, o.id))),
+            people=tuple(shown),
+            links=tuple(sorted(links)),
+            near=tuple(sorted(near)),
+            truncated=len(people) > MAX_MAP_PEOPLE,
         )
 
     def find_path(
@@ -306,11 +439,11 @@ class _Walk:
             for neighbor, _kind in self.neighbors(current):
                 if neighbor in route:
                     continue
-                passes_org = neighbor != target and self._is_org(neighbor)
+                passes_org = neighbor != target and self.is_org(neighbor)
                 heapq.heappush(queue, (hops + 1, orgs + passes_org, route + (neighbor,)))
         return None
 
-    def _is_org(self, node_id: str) -> bool:
+    def is_org(self, node_id: str) -> bool:
         return isinstance(self._store.any_node(node_id), Organization)
 
     def _as_path(self, route: tuple[str, ...]) -> NetworkPath:

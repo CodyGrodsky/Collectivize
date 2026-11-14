@@ -1,5 +1,5 @@
-"""The v1.1 app API (backend/app_api.py) without HTTP: connections and the
-network graph (4.2), profiles (4.3), My Events (4.6) and invites (4.11).
+"""The v1.1 app API (backend/app_api.py) without HTTP: connections (4.2),
+My Events (4.6), the personal calendar (4.7) and invites (4.11).
 The viewer is passed in, as the server does from the sign-in session."""
 
 from contextlib import contextmanager
@@ -39,52 +39,20 @@ def shared():
     return make_app()
 
 
-def ids(nodes):
-    return {n["id"] for n in nodes}
-
-
-# --- 4.2 connections and the network graph ---------------------------------------
-
-
-def test_alice_network_shows_bob_not_carol(shared):
-    app, _, r = shared
-    p = r.people
-    mine = app.network(p["alice"], {})
-    assert mine["visible"] and mine["is_own"]
-    assert mine["center"]["id"] == p["alice"] and mine["center"]["is_center"]
-    assert p["bob"] in ids(mine["people"]) and p["carol"] not in ids(mine["people"])
-    assert r.orgs["cooking"] in ids(mine["orgs"])
-    assert all(link[0] == p["alice"] for link in mine["links"])
-
-
-def test_alice_sees_bobs_network_with_carol_and_his_orgs(shared):
-    app, _, r = shared
-    p = r.people
-    bobs = app.network(p["alice"], {"id": p["bob"]})
-    assert bobs["visible"] and not bobs["is_own"]
-    people = {n["id"]: n for n in bobs["people"]}
-    assert people[p["carol"]]["connection"] == "none" and not people[p["carol"]]["viewer_connected"]
-    assert people[p["alice"]]["is_viewer"]
-    assert r.orgs["surf"] in ids(bobs["orgs"])
-
-
-def test_carols_network_is_hidden_from_alice(shared):
-    app, _, r = shared
-    p = r.people
-    assert app.network(p["alice"], {"id": p["carol"]}) == {"visible": False, "id": p["carol"]}
+# --- 4.2 connections -----------------------------------------------------------
 
 
 def test_request_accept_makes_carol_first_degree(fresh):
-    app, _, r = fresh
+    app, graph, r = fresh
     alice, carol = r.people["alice"], r.people["carol"]
     assert app.connect(alice, {"person_id": carol})["connection"] == "pending_out"
     waiting = app.requests(carol)["incoming"]
     assert [c["id"] for c in waiting] == [alice]
-    assert waiting[0]["card"] == "full" and waiting[0]["top3"]["title"] == "study spots"
+    assert waiting[0]["top3"]["title"] == "Top 3 study spots" and waiting[0]["bio"]
     answer = app.connection(carol, {"person_id": alice, "action": "accept"})
     assert answer["connection"] == "connected"
     assert "will be able to see that you're connected to Alice" in answer["notice"]
-    assert carol in ids(app.network(alice, {})["people"])
+    assert carol in {p.id for p in graph.network.node_map(alice).people}
 
 
 def test_decline_cancel_and_remove_leave_no_connection(fresh):
@@ -109,107 +77,6 @@ def test_asking_back_accepts_and_bad_actions_are_refused(fresh):
     assert app.connect(carol, {"person_id": alice})["connection"] == "connected"
     with pytest.raises(ApiError):
         app.connection(alice, {"person_id": carol, "action": "explode"})
-
-
-def test_hub_network_is_capped_with_show_more(shared):
-    app, _, r = shared
-    rowan = r.people["rowan"]
-    first = app.network(rowan, {})
-    assert first["people_total"] > 100 and len(first["people"]) == 25
-    more = app.network(rowan, {"people": "50"})
-    assert len(more["people"]) == 50
-    with pytest.raises(ApiError):
-        app.network(rowan, {"people": "lots"})
-
-
-# --- 4.3 profile -----------------------------------------------------------------
-
-JPEG = "/9j/" + "A" * 40  # base64 of bytes starting with the JPEG signature
-
-
-def test_own_and_connection_profiles_show_every_section(shared):
-    app, _, r = shared
-    p = r.people
-    mine = app.profile(p["alice"], {})
-    assert mine["is_self"] and mine["card"]["card"] == "full"
-    assert mine["sections"] == {"orgs": True, "events": True, "network": True}
-    assert "palette" in mine and "upcoming" in mine
-    bobs = app.profile(p["alice"], {"id": p["bob"]})
-    assert not bobs["is_self"] and bobs["sections"]["network"]
-    assert [o["id"] for o in bobs["orgs"]] == [r.orgs["surf"]]
-    assert set(bobs["events"]) == {"going", "attended", "hosted"}
-    assert "email" not in bobs and "upcoming" not in bobs
-
-
-def test_non_connection_sees_only_the_partial_card(shared):
-    app, _, r = shared
-    p = r.people
-    carol = app.profile(p["alice"], {"id": p["carol"]})
-    assert carol["card"]["card"] == "partial" and carol["card"]["connection"] == "none"
-    assert carol["card"]["top3"]["title"] == "hobbies" and carol["card"]["bio"]
-    assert carol["sections"] == {"orgs": False, "events": False, "network": False}
-    assert "orgs" not in carol and "events" not in carol
-
-
-def test_events_only_appear_below_the_card_for_self_and_connections(shared):
-    app, _, r = shared
-    p = r.people
-    drew_as_friend = app.profile(p["alice"], {"id": p["drew"]})  # Alice and Drew are connected
-    assert drew_as_friend["events"]["hosted"], "Drew hosts the study jam"
-    assert "events" not in drew_as_friend["card"]
-    stranger = app.profile(p["carol"], {"id": p["drew"]})
-    assert "events" not in stranger
-
-
-def test_editing_your_profile(fresh):
-    app, _, r = fresh
-    alice = r.people["alice"]
-    updated = app.update_profile(alice, {
-        "bio": "  New   bio ", "top3": {"title": "hobbies", "items": ["a", "b", "c"]},
-        "theme": {"outline": "coral", "background": "sky"}, "name": "Alice A.",
-    })
-    card = updated["card"]
-    assert card["bio"] == "New bio" and card["name"] == "Alice A."
-    assert card["top3"] == {"title": "hobbies", "items": ["a", "b", "c"]}
-    assert card["theme"]["outline"] == "coral" and card["theme"]["background_hex"].startswith("#")
-    assert app.update_profile(alice, {"top3": None})["card"]["top3"] is None
-
-
-@pytest.mark.parametrize("body", [
-    {"top3": {"title": "x", "items": ["a", "b"]}},
-    {"top3": {"title": "x" * 31, "items": ["a", "b", "c"]}},
-    {"theme": {"outline": "#ff0000", "background": "paper"}},
-    {"bio": "x" * 161},
-    {"name": "   "},
-    {"email": "steal@northeastern.edu"},
-])
-def test_bad_profile_edits_are_refused(fresh, body):
-    app, _, r = fresh
-    with pytest.raises((ApiError, DomainRuleError)):  # both become a 400
-        app.update_profile(r.people["alice"], body)
-
-
-def test_photos_upload_and_follow_card_visibility(fresh):
-    app, _, r = fresh
-    p = r.people
-    app.upload_photo(p["alice"], {"slot": 0, "content_type": "image/jpeg", "data_b64": JPEG})
-    app.upload_photo(p["alice"], {"slot": 1, "content_type": "image/jpeg", "data_b64": JPEG})
-    card = app.profile(p["alice"], {})["card"]
-    assert card["has_photo"] and card["pictures"] == [1]
-    assert app.photo(p["carol"], {"id": p["alice"], "slot": "0"})[0] == "image/jpeg"  # on every card
-    with pytest.raises(ApiError):
-        app.photo(p["carol"], {"id": p["alice"], "slot": "1"})  # pictures: full card only
-    assert app.photo(p["bob"], {"id": p["alice"], "slot": "1"})[0] == "image/jpeg"
-    app.upload_photo(p["alice"], {"slot": 0, "remove": True})
-    assert not app.profile(p["alice"], {})["card"]["has_photo"]
-
-
-def test_fake_images_are_refused(fresh):
-    app, _, r = fresh
-    with pytest.raises(DomainRuleError):
-        app.upload_photo(r.people["alice"], {"slot": 0, "content_type": "image/png", "data_b64": JPEG})
-    with pytest.raises(ApiError):
-        app.upload_photo(r.people["alice"], {"slot": 9, "content_type": "image/jpeg", "data_b64": JPEG})
 
 
 # --- 4.6 RSVP, Saved and My Events -------------------------------------------------
@@ -310,8 +177,8 @@ def test_invite_link_shows_the_inviters_card_to_anyone(fresh):
     link = app.create_invite(r.people["alice"])
     assert link["path"] == f"/invite/{link['code']}"
     preview = app.invite_preview({"code": link["code"]})["inviter"]
-    assert preview["id"] == r.people["alice"] and preview["card"] == "full"
-    assert preview["top3"]["title"] == "study spots"
+    assert preview["id"] == r.people["alice"] and preview["colors"]["outline"].startswith("#")
+    assert preview["top3"]["title"] == "Top 3 study spots"
     assert "orgs" not in preview and "events" not in preview
     with pytest.raises(ApiError):
         app.invite_preview({"code": "not-a-real-invite-code"})

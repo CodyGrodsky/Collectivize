@@ -338,3 +338,12 @@ def test_frontend_never_renders_server_text_as_html(name):
     script = (Path(__file__).resolve().parents[2] / "src/frontend" / name).read_text()
     for risky in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
         assert risky not in script
+
+
+def test_network_map_over_http(server, seeded):
+    status, _, body = fetch(f"{server}/api/network")  # signed in as Drew
+    assert status == 200 and json.loads(body)["is_self"] is True
+    assert fetch(f"{server}/api/network", token="")[0] == 401  # signed out
+    assert fetch(f"{server}/api/network?center=nobody")[0] == 404
+    status, _, body = fetch(f"{server}/src/frontend/network.html")
+    assert status == 200 and b'id="nw-root"' in body
