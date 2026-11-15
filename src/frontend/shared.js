@@ -271,6 +271,14 @@
                                    attrs: { "aria-hidden": "true" } });
         },
 
+        /** Someone's mock profile picture (demo): the same animal emoji their
+            profile and the network map show, picked from their name.
+            Keep in step with `avatar()` in profile-render.js and network-view.js. */
+        photo(name) {
+            const animals = ["🦊", "🐼", "🐸", "🦁", "🐯", "🐨", "🐵", "🦉", "🐙", "🦄", "🐝", "🐢", "🐬", "🦋", "🐧", "🐻"];
+            return animals[[...(name || "?")].reduce((sum, ch) => (sum * 31 + ch.codePointAt(0)) >>> 0, 7) % animals.length];
+        },
+
         /** Someone's profile page (as far as they let you see it). */
         profileHref(id) {
             return `profile?${new URLSearchParams({ id })}`;

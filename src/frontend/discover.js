@@ -23,6 +23,7 @@
     const TYPE_LABEL = { people: "People", orgs: "Organizations", events: "Events" };
     const KIND = { chapter: "Chapter", national: "National organization", council: "Council", club: "Club", institution: "Institution" };
     const SCORES_KEY = "collectivize.admin.scores";
+    const FRIEND_PHOTOS = 3; // friends' pictures on a card before "+N"
 
     const $ = (id) => document.getElementById(id);
     const { Api, EventActions, Ui } = window.Collectivize;
@@ -518,11 +519,19 @@
             return `“${item.title}”: ${what}. Your calendar is updated.`;
         }
 
-        /** Friends going are shown without names or initials (Cody's change). */
+        /** Friends going: their profile pictures, never their names or
+            initials (Cody's change). Up to three, then "+N". */
         friends(container, names) {
             if (!names.length) return;
             container.hidden = false;
-            container.querySelector(".dc-friends-text").textContent = "Friends are attending";
+            const shown = names.slice(0, FRIEND_PHOTOS);
+            const photos = shown.map((name) => el("span", { className: "dc-avatar dc-photo", text: Ui.photo(name) }));
+            if (names.length > shown.length) {
+                photos.push(el("span", { className: "dc-avatar dc-avatar-more", text: `+${names.length - shown.length}` }));
+            }
+            container.querySelector(".dc-avatars").replaceChildren(...photos);
+            container.querySelector(".dc-friends-text").textContent = names.length === 1
+                ? "A friend is attending" : `${names.length} friends are attending`;
         }
 
         renderPages(data) {

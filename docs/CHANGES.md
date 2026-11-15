@@ -4,6 +4,13 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Discover: friends going show their profile pictures
+
+- An event card's "Friends are attending" row used three blank person icons whatever happened. It now shows the profile picture of each friend actually going (the demo's animal emoji, the same one as on their profile and the network map), up to three, then "+N". Still no names or initials (Cody's rule). The text says how many: "A friend is attending" / "4 friends are attending" (`discover.js`, `discover.css`).
+- The emoji picker is now also `Ui.photo(name)` in `shared.js`, for pages that don't load the profile or network scripts. It must stay in step with `avatar()` in `profile-render.js` and `network-view.js`.
+
+---
+
 ## 2026-11-15 — Org page: short members list with search; events as list or calendar
 
 - **Members (`org.js`, `app.css`).** The members panel shows the top 3, "Show 7 more" opens it to 10, and a search box (shown once there are more than 3) finds anyone you can see in the org, 10 matches at a time. A 200-person chapter no longer runs down the whole page. Admins still get Remove on each row and the add-by-email form.
