@@ -2,6 +2,8 @@
 
 ## STOP: don't build on `main` right now
 
+(What happened and why: `HANDOFF.md`.)
+
 **All work is happening on the `vercel-demo` branch of the fork
 https://github.com/CodyGrodsky/Collectivize** while we run a public demo on Vercel
 (https://collectivize-tau.vercel.app). Pushes to it there deploy themselves. Switch before doing anything:
