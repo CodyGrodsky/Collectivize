@@ -62,6 +62,23 @@ body {
     width: min(36dvh, 60cqw);
 }
 
+/* The 3D dot logo: wide, because it turns into the wordmark and a network too.
+   The plain logo sits in the middle until the dots are drawn. */
+.cover-logo3d {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: min(92cqw, 900px);
+    height: min(40vh, 420px);
+    height: min(40dvh, 420px);
+}
+
+.cover-logo3d > canvas { position: absolute; inset: 0; }
+
+.cover-logo3d.is-3d .cover-logo { display: none; }
+
+.cover .cover-logo3d .cover-logo { width: auto; height: 82%; }
+
 .cover-line {
     margin: 0;
     color: #3d4744;
