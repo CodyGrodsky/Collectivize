@@ -122,7 +122,9 @@
             ...placed.map((node) => ({
                 from: center, to: node, kind: node.isOrg || map.center.isOrg ? "org" : "direct",
             })),
-            ...ties.map((tie) => ({ from: at.get(tie.a.node.id), to: at.get(tie.b.node.id), kind: tie.kind })),
+            // "Near" ties still shape the layout but aren't drawn as lines.
+            ...ties.filter((tie) => tie.kind !== "near")
+                .map((tie) => ({ from: at.get(tie.a.node.id), to: at.get(tie.b.node.id), kind: tie.kind })),
         ];
         return {
             center: { ...map.center, ...center },
