@@ -334,6 +334,7 @@ class AppApi:
             "top3": {"title": person.top3_title, "items": list(person.top3_items)}
             if person.top3_title else None,
             "colors": {"background": person.color_background, "outline": person.color_outline},
+            "background_picture": person.background_picture or None,
             "connection": connection,
         }
 

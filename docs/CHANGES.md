@@ -4,6 +4,17 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Profiles: background pictures
+
+- **What.** A profile can pick a background picture, shown as a banner across the top of the page (Profile tab, the Network tab's side panel, and the editor's live preview). The editor (both tabs) has a "Background picture" group: None, Sunset, Ocean, Forest, Lavender, Sand, Night sky.
+- **Presets, not uploads.** The pictures are drawn in CSS (`.p-cover-<key>` in `profile.css`), so there's nothing to upload, store, moderate or host, and they survive the Vercel demo's data resets like any other setting. Uploaded photos would need file storage the demo doesn't have.
+- **Backend.** `Person.background_picture` (`objects/person.py`): "" (none) or one of `BACKGROUND_PICTURES`; anything else is refused. Editable through `ProfileService.update` (`graph/profiles.py`), saved with `background_picture` in `POST /api/profile` (`null` clears it), and returned as `background_picture` on profile pages (`network_api.py`) and the connection preview card (`app_api.py`). People saved before this load with no picture (the field has a default), so the demo database needs no reseed.
+- **Keep in step.** The keys live in three places: `BACKGROUND_PICTURES` in `objects/person.py`, `BACKGROUND_PICTURES` in `profile-render.js`, and the `.p-cover-*` rules in `profile.css`.
+- **Heads-up for local databases.** A local DB saved by this version stores the new field; an older checkout reading it refuses the unknown field. Pull before running against a shared DB.
+- **Tests.** `tests/backend/test_profiles.py`: saved, shown, kept and cleared; non-presets refused; old records still load. Not run in this session (dependencies weren't installed); the model's rule was checked by hand.
+
+---
+
 ## 2026-11-15 — Network map: names never overlap again; edit your page from the Network tab
 
 - **Overlapping names (`network-layout.js`).** The last layout step, which pushes every node and the name under it clear of the others (`clearLabels`, from "names are never covered by another node or name"), was dropped when `main` was merged in `0dcc30f`: the function was still there but never called. The call is back. Checked with a script: a 30-person map went from up to 42 overlapping name boxes to 0.

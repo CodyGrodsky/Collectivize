@@ -179,6 +179,7 @@ def person_profile_json(
         "role": _role(name),
         "verified": person.verification_level is not VerificationLevel.NONE,
         "colors": {"background": person.color_background, "outline": person.color_outline},
+        "background_picture": person.background_picture or None,  # shown even when locked, like the colours
         "access": view.access.value,
         "connection": view.connection,
         "is_self": view.is_self,
@@ -272,6 +273,9 @@ def profile_changes(body: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("colors must be {background, outline}")
         changes["color_background"] = _string(colors.get("background"), "background color").upper()
         changes["color_outline"] = _string(colors.get("outline"), "outline color").upper()
+    if "background_picture" in body:
+        picture = body["background_picture"]
+        changes["background_picture"] = "" if picture is None else _string(picture, "background picture")
     if "sections" in body:
         if not isinstance(body["sections"], list):
             raise ValueError("sections must be a list")

@@ -24,6 +24,10 @@ TOP3_ITEMS = 3
 HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 DEFAULT_BACKGROUND = "#F5F4F0"
 DEFAULT_OUTLINE = "#202B29"
+# Background pictures a profile can pick (drawn by the frontend, profile.css
+# `.p-cover-<name>`). Presets, not uploads: nothing to store, moderate or host.
+# "" = none.
+BACKGROUND_PICTURES = ("sunset", "ocean", "forest", "lavender", "sand", "night")
 # The blocks of a profile page, in their default order. A person's
 # `profile_sections` is the order they chose; a block left out is hidden.
 PROFILE_SECTIONS = ("about", "top3", "network", "orgs", "events")
@@ -82,6 +86,7 @@ class Person(GraphRecord):
     website: str | None = None  # https only
     color_background: str = DEFAULT_BACKGROUND
     color_outline: str = DEFAULT_OUTLINE
+    background_picture: str = ""  # one of BACKGROUND_PICTURES, or "" for none
     # Who may read the full profile. Separate from `visibility`, which
     # decides whether the person exists for a viewer at all.
     profile_visibility: Visibility = Visibility.NETWORK
@@ -125,6 +130,8 @@ class Person(GraphRecord):
         for color in (self.color_background, self.color_outline):
             if not HEX_COLOR.match(color):
                 raise DomainRuleError("colors must look like #RRGGBB")
+        if self.background_picture and self.background_picture not in BACKGROUND_PICTURES:
+            raise DomainRuleError(f"background picture must be one of {list(BACKGROUND_PICTURES)}")
         if self.profile_visibility not in PROFILE_AUDIENCES:
             raise DomainRuleError("a profile is for everyone, connections only, or only you")
         sections = self.profile_sections

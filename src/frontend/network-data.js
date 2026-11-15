@@ -75,6 +75,9 @@
                 background: HEX.test(colors.background) ? colors.background : DEFAULT_COLORS.background,
                 outline: HEX.test(colors.outline) ? colors.outline : DEFAULT_COLORS.outline,
             },
+            // A preset key (profile-render.js BACKGROUND_PICTURES); unknown ones are ignored there.
+            background_picture: typeof raw.background_picture === "string" && /^[a-z]{1,20}$/.test(raw.background_picture)
+                ? raw.background_picture : null,
             access: raw.access === "locked" ? "locked" : "full",
             connection: CONNECTIONS.includes(raw.connection) ? raw.connection : "none",
             is_self: raw.is_self === true,
