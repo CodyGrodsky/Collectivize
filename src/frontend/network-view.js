@@ -1,24 +1,24 @@
 "use strict";
 
-// The network map: a small fixed-size circle ("bubble") you look through.
+// The network map: a window onto the network that fills its box.
 //   const bubble = new Collectivize.NetworkBubble({ onOpen })
-//   bubble.element          put this on the page (e.g. in a profile section)
+//   bubble.element          put this on the page (the Network tab)
 //   bubble.draw(map)        lay out and draw the server's map (network-layout.js)
 //
-// NetworkBubble is the circle plus its hint and key; NetworkView is the
-// circle alone.
+// NetworkBubble is the map plus its "Back to the middle" button and key;
+// NetworkView is the map alone.
 //
-// Whatever fits inside the circle is shown; the rest is cut off at its
-// edge. When the network is bigger than the circle you can move around it
-// by dragging (mouse or touch) or with the arrow keys, and tabbing to a
-// node that is out of sight brings it into view. A network that fits
-// doesn't move.
+// Whatever fits inside the box is shown; the rest is cut off at its edge.
+// When the network is bigger than the box you can move around it by
+// dragging (mouse or touch) or with the arrow keys, and tabbing to a node
+// that is out of sight brings it into view. A network that fits doesn't
+// move.
 //
 // Server text is only ever inserted as text.
 
 (() => {
     const SVG = "http://www.w3.org/2000/svg";
-    const RADIUS = 210; // the circle, in map units (the SVG scales to its box)
+    const RADIUS = 210; // half the box's shorter side, in map units (the SVG scales to its box)
     const LABEL_ROOM = 52; // a node this close to the edge would lose its label
     const KEY_STEP = 70; // one arrow-key press
     const DRAG_START = 6; // pointer travel (px) before a press counts as a drag
@@ -57,7 +57,11 @@
             this.drag = null;
             this.justDragged = false;
 
-            this.svg.setAttribute("viewBox", `${-RADIUS} ${-RADIUS} ${RADIUS * 2} ${RADIUS * 2}`);
+            // The map fills its box, whatever its shape: the shorter side is
+            // 2 * RADIUS map units, the longer one grows with the box.
+            this.half = { x: RADIUS, y: RADIUS };
+            this.fit();
+            new ResizeObserver(() => this.fit()).observe(this.svg);
             this.svg.addEventListener("keydown", (event) => this.onKey(event));
             this.svg.addEventListener("pointerdown", (event) => this.onPointerDown(event));
             this.svg.addEventListener("pointermove", (event) => this.onPointerMove(event));
@@ -65,6 +69,19 @@
                 this.svg.addEventListener(type, (event) => this.onPointerUp(event));
             }
             this.svg.addEventListener("focusin", (event) => this.reveal(event.target));
+        }
+
+        /** Match the map's coordinates to the box's shape (no stretching). */
+        fit() {
+            const box = this.svg.getBoundingClientRect();
+            const ratio = box.width && box.height ? box.width / box.height : 1;
+            this.half = ratio >= 1 ? { x: RADIUS * ratio, y: RADIUS } : { x: RADIUS, y: RADIUS / ratio };
+            const { x, y } = this.half;
+            this.svg.setAttribute("viewBox", `${-x} ${-y} ${x * 2} ${y * 2}`);
+            this.clipRect?.setAttribute("x", -x);
+            this.clipRect?.setAttribute("y", -y);
+            this.clipRect?.setAttribute("width", x * 2);
+            this.clipRect?.setAttribute("height", y * 2);
         }
 
         get canMove() {
@@ -81,13 +98,12 @@
             this.limit = layout.reach + LABEL_ROOM > RADIUS ? layout.reach + LABEL_ROOM - RADIUS * 0.6 : 0;
             this.offset = { x: 0, y: 0 };
 
+            // No circle: the map is clipped to its whole box.
             const clip = svg("clipPath", { id: "nw-clip" });
-            clip.append(svg("circle", { r: RADIUS - 1 }));
-            const fade = svg("radialGradient", { id: "nw-fade" });
-            fade.append(svg("stop", { offset: "80%", "stop-opacity": 0 }, "nw-fade-stop"),
-                svg("stop", { offset: "100%", "stop-opacity": 0.95 }, "nw-fade-stop"));
+            this.clipRect = svg("rect", {});
+            clip.append(this.clipRect);
             const defs = svg("defs");
-            defs.append(clip, fade);
+            defs.append(clip);
 
             const links = svg("g", {}, "nw-links");
             for (const link of layout.links) {
@@ -102,10 +118,9 @@
             this.world = svg("g", {}, "nw-world");
             this.world.append(links, nodes);
             const window_ = svg("g", { "clip-path": "url(#nw-clip)" });
-            window_.append(svg("circle", { r: RADIUS - 1 }, "nw-backdrop"), this.world);
-            // When there is more beyond the edge, fade the rim so it reads as "keeps going".
-            if (this.canMove) window_.append(svg("circle", { r: RADIUS - 1, fill: "url(#nw-fade)" }, "nw-rim-fade"));
-            this.svg.replaceChildren(defs, window_, svg("circle", { r: RADIUS - 1 }, "nw-rim"));
+            window_.append(this.world);
+            this.svg.replaceChildren(defs, window_);
+            this.fit();
             this.svg.classList.toggle("can-move", this.canMove);
             this.place(false);
         }
@@ -139,7 +154,7 @@
 
         /** Map units per screen pixel (the SVG is scaled to fit its box). */
         get unitsPerPixel() {
-            return (RADIUS * 2) / (this.svg.getBoundingClientRect().width || RADIUS * 2);
+            return (this.half.x * 2) / (this.svg.getBoundingClientRect().width || this.half.x * 2);
         }
 
         onPointerDown(event) {
@@ -278,7 +293,7 @@
         ["nw-key is-line is-org", "In the community"],
     ];
 
-    /** The bubble as one element: circle, "there's more" hint, and key. */
+    /** The network as one element: the map, a "Back to the middle" button, and key. */
     class NetworkBubble {
         constructor({ onOpen }) {
             const map = document.createElementNS(SVG, "svg");
@@ -287,11 +302,10 @@
             map.setAttribute("tabindex", "0");
             this.map = map;
 
-            const hint = el("span", "", "There's more than fits. Drag, or use the arrow keys, to look around.");
             this.recenter = el("button", "nw-link-button", "Back to the middle");
             this.recenter.type = "button";
             this.move = el("p", "nw-move");
-            this.move.append(hint, this.recenter);
+            this.move.append(this.recenter);
             this.move.hidden = true;
             this.empty = el("p", "nw-bubble-empty");
             this.empty.hidden = true;
