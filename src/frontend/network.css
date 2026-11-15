@@ -472,6 +472,7 @@ html.nw-expanded, html.nw-expanded body { overflow: hidden; }
 .nw-side .profile-grid { grid-template-columns: minmax(0, 1fr); }
 .nw-side .p-name { font-size: 24px; }
 .nw-side-open { justify-self: start; }
+.nw-side-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-self: start; }
 
 .nw-org {
     display: grid;

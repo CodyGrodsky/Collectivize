@@ -18,7 +18,7 @@
 // back to your own with a note, and server text is only inserted as text.
 
 (() => {
-    const { Session, NetworkData, NetworkBubble, Profile, Ui } = window.Collectivize;
+    const { Session, NetworkData, NetworkBubble, Profile, ProfileEditor, Ui } = window.Collectivize;
     const { el } = Profile;
     const DEFAULT_BACKGROUND = "#F5F4F0"; // a profile nobody has recoloured (network-data.js)
     const OUTLINE_CONTRAST = 2; // how clearly a node's coloured outline must stand out on the map
@@ -270,10 +270,40 @@
             const body = center.isOrg
                 ? this.orgPanel(profile, center)
                 : this.renderer.render(profile, isSelf ? "self" : "visitor", { onConnection: () => this.load() });
-            return el("aside", { className: "nw-side", attrs: { "aria-label": `About ${center.name}` } }, [
-                body,
-                el("a", { className: "page-button nw-side-open", text: label, attrs: { href } }),
-            ]);
+            const open = el("a", { className: "page-button nw-side-open", text: label, attrs: { href } });
+            let actions = open;
+            if (isSelf) {
+                // Your own page: edit it right here, same editor as the Profile tab.
+                const edit = el("button", { className: "page-button page-button-solid nw-side-open", text: "Edit page",
+                                            attrs: { type: "button" } });
+                edit.addEventListener("click", () => this.edit());
+                actions = el("div", { className: "nw-side-actions" }, [edit, open]);
+            }
+            return el("aside", { className: "nw-side", attrs: { "aria-label": `About ${center.name}` } }, [body, actions]);
+        }
+
+        /** The profile editor (profile-editor.js) in the map's place; saving
+            brings the map back with your new colours. */
+        edit() {
+            const viewer = this.viewer;
+            this.bubble.setExpanded(false);
+            this.request += 1; // an answer still on its way mustn't replace the editor
+            document.title = "Edit profile · Collectivize";
+            $("nw-lists").hidden = true;
+            $("nw-home").hidden = true;
+            new ProfileEditor({
+                view: this.data.profile,
+                renderer: this.renderer,
+                save: (changes) => NetworkData.save(viewer, changes),
+                onSaved: (data) => {
+                    if (viewer !== this.viewer) return;
+                    this.colors.delete(viewer); // repaint your node in its new colour
+                    this.data = data;
+                    this.render();
+                },
+                onCancel: () => this.render(),
+            }).mount($("nw-root"));
+            window.scrollTo({ top: 0 });
         }
 
         orgPanel(org, center) {

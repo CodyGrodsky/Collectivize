@@ -4,6 +4,14 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Network map: names never overlap again; edit your page from the Network tab
+
+- **Overlapping names (`network-layout.js`).** The last layout step, which pushes every node and the name under it clear of the others (`clearLabels`, from "names are never covered by another node or name"), was dropped when `main` was merged in `0dcc30f`: the function was still there but never called. The call is back. Checked with a script: a 30-person map went from up to 42 overlapping name boxes to 0.
+- **Edit page on the Network tab (`network.js`, `network.html`, `network.css`).** On your own network, the side panel has "Edit page" next to "Open my profile". It opens the same editor as the Profile tab (`profile-editor.js`: name, text, Top 3, website, colours, layout, privacy) in the map's place; saving brings the map back with your node in its new colour, Cancel goes straight back.
+- Profiles have no background pictures yet (nothing stores an image), so the editor has none either; that needs a backend change.
+
+---
+
 ## 2026-11-15 — Discover: friends going as 1, 2 or 3+ icons; "Friends are attending"
 
 - The friends row shows 1, 2 or 3 blank icons, and a "+" after three when more are going (no exact count). The text beside it is always "Friends are attending" (`discover.js`, `discover.css`).

@@ -165,6 +165,13 @@
             });
         }
 
+        // Last, keep every node and the name under it clear of every other one
+        // (and of the middle). Lost in merge 0dcc30f; restored.
+        if (footprint) {
+            for (const spot of spots) Object.assign(spot, footprint(spot.node, false));
+            clearLabels(spots, footprint(map.center, true));
+        }
+
         const placed = spots.map((spot) => ({ ...spot.node, x: spot.x, y: spot.y }));
         // The middle's own ties: one line to each person and community shown.
         // Connections between the people shown, and each person's line to the
