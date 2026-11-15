@@ -4,6 +4,24 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Live public demo on Vercel (branch `vercel-demo`)
+
+**Request:** get a public URL up tonight on Vercel, with fake data only, so the team can ship UI and feature changes fast; Railway later.
+
+### What changed
+- **The whole app runs as one Vercel Python function** (`api/index.py`), using the existing `RequestHandler` from `src/backend/server.py`. No backend code was changed.
+- **`vercel.json`** sends every address to the function and bundles `src/`, `public/`, `app/` and `demo/` with it. **`.vercelignore`** keeps `.venv`, `data/`, tests and local secrets out of the upload.
+- **`demo/collectivize-demo.db`**: a freshly seeded, fully fictional database (110 orgs, 954 people, 995 events), committed so every deploy has the same data.
+- **`VERCEL.md`, `CLAUDE.md`, `AGENTS.md`**: how the deploy works and where to work, for people and their coding agents.
+
+### Decisions
+- Public demo settings: everyone is signed in automatically as Drew (demo), no email codes, AI search off, no admin logins, no secrets.
+- Each function instance works on its own copy of the demo DB in `/tmp`, so changes are short-lived and reset to the demo data. Fine for a demo.
+- The demo DB was seeded fresh, not copied from anyone's local `data/test.db`, which can hold real sign-ins.
+- Vercel passes `/api/index` as the request path after a rewrite, so the rewrite carries the original address as `__path` and the function puts it back before routing.
+
+---
+
 ## 2026-11-14 — Connection requests are limited; remembered sign-ins renew with use; Secure cookie over https
 
 **Request:** "fix 12 and 13" (from the run-through of how the app differs from a normal application).
