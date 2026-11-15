@@ -4,6 +4,13 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Team on the fork: collaborators and push rules
+
+- `jameszupa` and `caumartin-maker` invited to `CodyGrodsky/Collectivize` with write access.
+- `CLAUDE.md` gained "Pushing": pull with rebase before every push, never force-push `main`, PRs for bigger changes, the live site is shared, and don't hand-edit the demo database.
+
+---
+
 ## 2026-11-15 — Mock profile pictures (emoji)
 
 - Demo stand-in for profile photos: each person gets an animal emoji picked from their name (same on the network map and their profile). Communities keep their initials. `avatar()` in `network-view.js` and `profile-render.js`.

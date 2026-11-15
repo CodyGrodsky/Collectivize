@@ -8,6 +8,17 @@ Read `VERCEL.md` before changing anything about how the app is served. The origi
 the Railway / real-server version); don't build features there until `VERCEL.md` says we've
 switched back.
 
+## Pushing (five people share one `main`)
+
+- Before every push: `git pull --rebase`, then push. If the push is rejected, pull again and retry.
+  Never force-push `main`.
+- Small changes go straight to `main` (live in about 20 seconds). Bigger or risky ones: push a
+  branch and open a PR into `main`; Vercel comments a preview link on the PR.
+- The live site is shared: say which page you're working on so two people don't change the same
+  one at once. The last push wins.
+- Never edit `demo/collectivize-demo.db` by hand (it's binary and can't be merged); reseed it
+  (see `VERCEL.md`) and tell the others.
+
 ## The project
 
 - Python 3.13 backend (standard library HTTP server + SQLite) in `src/backend/`, plain HTML/JS/CSS
