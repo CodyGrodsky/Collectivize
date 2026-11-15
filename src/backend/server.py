@@ -1,6 +1,6 @@
 """A small local web server for the demo: the frontend pages plus a JSON API.
 
-    uv run python scripts/serve.py            # http://127.0.0.1:8000/
+    uv run python scripts/serve.py            # http://127.0.0.1:3000/
     uv run python scripts/serve.py --no-ai    # search uses keywords only, no API calls
 
 API (JSON; the viewer is always the signed-in person):
@@ -30,13 +30,12 @@ asks for sign-in by default is `LOGIN_REQUIRED` in config.py (temporarily
 False); `serve.py --login` / `--no-login` override it for one run. This
 module itself always has the gate on unless `auto_login_email` is passed.
 
-Admin sign-in: /admin (not linked anywhere) asks for an admin username and
-password (admin_auth.py; POST /api/admin/signin). When the server is given
-an AdminAuth, platform-admin accounts can sign in only that way: the email
-form and the development auto-login both refuse them.
-
-What each admin may do is set by the owner (admin_policy.py). An admin
-sign-in lasts eight hours.
+Signing in (server_auth.py): one screen for everyone. An admin's username
+or account email typed there is asked for the admin password (and Duo's
+approval when Duo is set up); /admin shows the same form. Sign-ins are
+remembered across restarts until the person signs out: 30 days, or eight
+hours for an admin. What each admin may do is set by the owner
+(admin_policy.py).
 
 Sent home: when an account is deleted, or signed out everywhere, each of
 its browsers gets 401 (pages: a redirect to the landing page) on its next
@@ -71,11 +70,10 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from http.cookies import CookieError, SimpleCookie
 from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 
 from backend.accounts import AccountsApi
-from backend.admin_auth import MAX_PASSWORD, MAX_USERNAME, AdminAuth, LockedOutError
+from backend.admin_auth import AdminAuth
 from backend.app_api import AppApi
 from backend.demo_api import (  # re-exported: callers import these from here
     PER_PAGE,
@@ -83,9 +81,11 @@ from backend.demo_api import (  # re-exported: callers import these from here
     DiscoverApi,
     demo_graph_factory,
 )
+from backend.duo import DuoGate
 from backend.graph import NotFoundError, PermissionDeniedError
 from backend.objects import DomainRuleError
 from backend.objects.base import utc_now
+from backend.server_auth import COOKIE_FLAGS, MAX_BODY_BYTES, AuthHandlerMixin
 from backend.sessions import COOKIE_NAME, Session, SessionStore
 
 log = logging.getLogger(__name__)
@@ -96,15 +96,14 @@ LANDING_PAGE = "/src/frontend/index.html"
 HOME_PAGE = LANDING_PAGE
 SIGNED_IN_HOME = "/src/frontend/discover.html"
 ADMIN_PAGE = "/src/frontend/admin.html"
-ADMIN_LOGIN_PAGE = "/src/frontend/admin-login.html"
+# The admin entrance: the same sign-in screen, shown even to someone signed in.
+ADMIN_LOGIN_PAGE = "/src/frontend/index.html?admin=1"
 # Pages a signed-out visitor may open (v1.1 spec 4.10). Assets (CSS, JS,
 # images) are always served: they hold no one's data.
 INVITE_PAGE = "/src/frontend/invite.html"
-PUBLIC_PAGES = frozenset({LANDING_PAGE, INVITE_PAGE, ADMIN_LOGIN_PAGE})
-MAX_BODY_BYTES = 4096
+PUBLIC_PAGES = frozenset({LANDING_PAGE, INVITE_PAGE})
 # A full profile edit is bigger: 1000 characters of emoji is about 4 KB alone.
 BODY_LIMITS = {"/api/profile": 8192, "/api/admin/account": 8192}
-ADMIN_SESSION_SECONDS = 8 * 60 * 60  # an admin sign-in ends by itself
 READ_ONLY_ALLOWED = frozenset({"/api/signout", "/api/admin/view-as"})
 
 __all__ = ["PER_PAGE", "ApiError", "DemoServer", "DiscoverApi", "RequestHandler",
@@ -126,8 +125,10 @@ class DemoServer(ThreadingHTTPServer):
         auto_login_email: str | None = None,
         accounts: AccountsApi | None = None,
         admin_auth: AdminAuth | None = None,
+        duo: DuoGate | None = None,
     ) -> None:
         self.api = api
+        self.duo = duo  # set: admin sign-ins also need Duo's approval
         # With an AdminAuth, platform admins sign in only at /admin with
         # their username and password. None (tests, old callers): they
         # sign in by email like anyone else.
@@ -156,7 +157,7 @@ class DemoServer(ThreadingHTTPServer):
             return graph.visibility.is_platform_admin(person_id)
 
 
-class RequestHandler(BaseHTTPRequestHandler):
+class RequestHandler(AuthHandlerMixin, BaseHTTPRequestHandler):
     server: DemoServer
     server_version = "CollectivizeDemo"
     sys_version = ""
@@ -278,140 +279,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             "/api/admin/admins": lambda body: accounts.set_admin(me, body),
         }
 
-    # --- sessions ----------------------------------------------------------------
-
-    def _same_origin(self) -> bool:
-        """False when a browser says this POST comes from another site.
-        (Browsers always send Origin on cross-site POSTs; tools without one
-        still need the session cookie.)"""
-        origin = self.headers.get("Origin")
-        if not origin:
-            return True
-        return urlsplit(origin).netloc == (self.headers.get("Host") or "")
-
-    def _cookie(self) -> str | None:
-        jar = SimpleCookie()
-        try:
-            jar.load(self.headers.get("Cookie") or "")
-        except CookieError:
-            return None
-        morsel = jar.get(COOKIE_NAME)
-        return morsel.value if morsel else None
-
-    def _session(self, *, auto: bool = True) -> Session | None:
-        session = self.server.sessions.get(self._cookie())
-        if session is None:
-            if self._ended_reason():
-                # Deleted or signed out by someone else: back to the home
-                # page, and never straight into another account.
-                self._clear_cookie = True
-                return None
-            return self._auto_login() if auto else None
-        # A deleted account (or a deleted view-as target) ends the session.
-        with self.server.api.graphs() as graph:
-            if not graph.store.has_node(session.person_id):
-                self.server.sessions.end_all(session.person_id, "deleted")
-                self._clear_cookie = True
-                return None
-            if session.view_as and not graph.store.has_node(session.view_as):
-                return self.server.sessions.view_as(self._cookie() or "", None, utc_now())
-        return session
-
-    def _auto_login(self) -> Session | None:
-        """With --no-login: start a real session for the default account,
-        and send its cookie with this response (see end_headers)."""
-        person_id = self.server.auto_login_id
-        if person_id is None:
-            return None
-        token = self.server.sessions.create(person_id)
-        self._pending_cookie = token
-        return self.server.sessions.get(token)
-
-    def _ended_reason(self) -> str | None:
-        return self.server.sessions.ended_reason(self._cookie())
-
-    def _signed_out(self) -> None:
-        self._json(HTTPStatus.UNAUTHORIZED, {
-            "error": "sign in first", "signed_out": True, "reason": self._ended_reason(),
-        })
-
-    def _me(self, session: Session) -> dict[str, Any]:
-        return {**self.server.app.me(session.person_id, session.view_as),
-                **self.server.accounts.rights(session.person_id)}
-
-    def end_headers(self) -> None:
-        token = getattr(self, "_pending_cookie", None)
-        if token:
-            self.send_header("Set-Cookie", f"{COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Lax")
-            self._pending_cookie = None
-        elif getattr(self, "_clear_cookie", False):
-            self.send_header("Set-Cookie", f"{COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0")
-        self._clear_cookie = False
-        super().end_headers()
-
     def _is_platform_admin(self, session: Session | None) -> bool:
         if session is None:
             return False
         with self.server.api.graphs() as graph:
             return graph.visibility.is_platform_admin(session.person_id)
-
-    def _sign_in(self) -> None:
-        try:
-            person_id = self.server.app.sign_in(self._read_json(MAX_BODY_BYTES))
-        except ApiError as error:
-            self._json(error.status, {"error": error.message})
-            return
-        except Exception:
-            log.exception("sign-in failed")
-            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "something went wrong"})
-            return
-        if self.server.admin_auth and self.server.is_platform_admin(person_id):
-            # Admin accounts open only with the admin username and password.
-            self._json(HTTPStatus.FORBIDDEN, {"error": "that account can't sign in here"})
-            return
-        self._start_session(person_id)
-
-    def _start_session(self, person_id: str, ttl: float | None = None) -> None:
-        self.server.sessions.end(self._cookie())
-        token = self.server.sessions.create(person_id, ttl)
-        session = self.server.sessions.get(token)
-        self._json(HTTPStatus.OK, self._me(session), cookie=token)
-
-    def _admin_sign_in(self) -> None:
-        """POST /api/admin/signin {"username", "password"}. Every failure
-        gets the same answer, whatever was wrong."""
-        auth, refused = self.server.admin_auth, {"error": "wrong username or password"}
-        if auth is None:
-            self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
-            return
-        try:
-            body = self._read_json(MAX_BODY_BYTES)
-            username, password = body.get("username"), body.get("password")
-            if not (isinstance(username, str) and isinstance(password, str)
-                    and 0 < len(username) <= MAX_USERNAME and 0 < len(password) <= MAX_PASSWORD):
-                self._json(HTTPStatus.UNAUTHORIZED, refused)
-                return
-            email = auth.verify(username, password)
-            person_id = self.server.app.admin_account_id(email) if email else None
-        except ApiError as error:
-            self._json(error.status, {"error": error.message})
-            return
-        except LockedOutError:
-            log.warning("admin sign-in: locked out after too many wrong passwords")
-            self._json(HTTPStatus.TOO_MANY_REQUESTS,
-                       {"error": "too many wrong passwords: try again in 15 minutes"})
-            return
-        except Exception:
-            log.exception("admin sign-in failed")
-            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "something went wrong"})
-            return
-        now = utc_now()
-        if person_id is None:
-            self.server.accounts.audit.record("", "sign-in failed", "", now)
-            self._json(HTTPStatus.UNAUTHORIZED, refused)
-            return
-        self.server.accounts.audit.record(person_id, "sign-in", person_id, now)
-        self._start_session(person_id, ADMIN_SESSION_SECONDS)
 
     def _view_as(self, session: Session, body: dict[str, Any]) -> dict[str, Any]:
         target = self.server.accounts.check_view_as(session.person_id, body.get("person_id"))
@@ -475,16 +347,16 @@ class RequestHandler(BaseHTTPRequestHandler):
         return body
 
     def _json(
-        self, status: HTTPStatus, payload: dict[str, Any], *, cookie: str | None = None
+        self, status: HTTPStatus, payload: dict[str, Any], *, cookie: str | None = None,
+        max_age: int | None = None,
     ) -> None:
-        """`cookie`: a session token to set, or "" to clear the session."""
+        """`cookie`: a session token to set (kept by the browser for
+        `max_age` seconds), or "" to clear the session."""
         data = json.dumps(payload, ensure_ascii=False).encode()
         self.send_response(status)
         if cookie is not None:
-            age = "" if cookie else "; Max-Age=0"
-            self.send_header(
-                "Set-Cookie", f"{COOKIE_NAME}={cookie}; Path=/; HttpOnly; SameSite=Lax{age}"
-            )
+            age = "; Max-Age=0" if not cookie else f"; Max-Age={max_age}" if max_age else ""
+            self.send_header("Set-Cookie", f"{COOKIE_NAME}={cookie}; {COOKIE_FLAGS}{age}")
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
@@ -550,14 +422,15 @@ def resolve_static(url_path: str, root: Path = ROOT) -> Path | None:
 
 def serve(
     api: DiscoverApi,
-    port: int = 8000,
+    port: int = 3000,
     *,
     app: AppApi | None = None,
     sessions: SessionStore | None = None,
     auto_login_email: str | None = None,
     accounts: AccountsApi | None = None,
     admin_auth: AdminAuth | None = None,
+    duo: DuoGate | None = None,
 ) -> DemoServer:
     """Create the server on 127.0.0.1 (call .serve_forever() to run it).
     `auto_login_email` turns login off for development (see DemoServer)."""
-    return DemoServer(("127.0.0.1", port), api, app, sessions, auto_login_email, accounts, admin_auth)
+    return DemoServer(("127.0.0.1", port), api, app, sessions, auto_login_email, accounts, admin_auth, duo)

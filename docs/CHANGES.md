@@ -4,6 +4,41 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-14 — One sign-in screen, remembered sign-ins, and Duo for admins
+
+**Request:** "make it so all users start at the login screen for first time login when they load into the website url, and then make it so if an admin account is typed into the login it makes it so you can be admin. Also add rememberance, and add dual authentication using duo only if it is an admin login. Users should only have to login once unless they logged out last session (this makes them log back in again)."
+
+### What changed
+- **Sign-in is on again.** `LOGIN_REQUIRED = True` in `src/backend/config.py`: the site opens on the sign-in screen for anyone not signed in.
+- **Remembered.** A sign-in lasts 30 days across browser and server restarts (8 hours for an admin). Signing out ends it, so the next visit starts at the sign-in screen. Sessions are kept in `data/sessions.json` (git-ignored, readable only by you) as SHA-256 hashes of the tokens, never the tokens.
+- **Admins sign in on the same screen.** Typing an admin username, or an admin account's email, reveals an "Admin password" field. `/admin` now shows this same screen (the separate `admin-login.html` page is gone).
+- **Duo for admins only** (`src/backend/duo.py`, `scripts/set_duo.py`). After the password, Duo must approve: a push to the admin's phone, or a passcode typed on the sign-in screen. Ordinary sign-ins never touch Duo.
+- Sign-in and session code moved out of `server.py` into `src/backend/server_auth.py` (`server.py` is back under 500 lines).
+- New dependency: `duo-client`.
+
+### Decisions
+- **Duo's Auth API, not its browser prompt.** The browser prompt needs a public `https://` address, which a local `http://127.0.0.1` server can't give. The Auth API is called by the server, so it works locally.
+- **Duo is off until set up.** Without `config/duo.local.json`, admin sign-in is password only and the server warns at start-up. Once set up it fails closed: if Duo is unreachable or says no, the admin is kept out.
+- **The sign-in screen now tells an admin name from an ordinary one** (it asks for a password). That is what was asked for; it does mean someone can learn which names are admin logins. The password, lock-out and Duo still stand in the way.
+- An admin username that looks like a Northeastern email is treated as the admin login, not as a new student account.
+- Admin sign-ins are remembered for 8 hours, not 30 days.
+- Development auto-login sessions (`serve.py --no-login`) are not written to the file.
+
+### Tests
+- `tests/backend/test_signin_flow.py` (14 tests); `test_admin_auth.py` updated. The sign-in screen was also driven end to end in headless Chrome against a throwaway server with a stand-in Duo. Real Duo was not contacted (no Duo account is set up).
+
+---
+
+## 2026-11-14 — The demo server runs on port 3000 by default
+
+**Request:** "Can you set the port to run on 3000?"
+
+### What changed
+- `scripts/serve.py` now listens on `http://127.0.0.1:3000/` unless `--port` says otherwise (was 8000). The default in `backend.server.serve` and the address printed by `scripts/set_admin_password.py` match.
+- Not changed: `docs/profile-backend-proposal.md` and `docs/BUGS.md` still mention port 8000.
+
+---
+
 ## 2026-11-14 — Search handles short words, plurals, typos, accents, weekends and flooding words
 
 **Request:** "do all the steps in the plan" (the eight-step search plan from the edge-case run below).

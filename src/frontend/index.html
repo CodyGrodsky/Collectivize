@@ -23,10 +23,22 @@
         <form class="signin" id="signin" novalidate>
             <label class="signin-label" for="signin-email">Northeastern email</label>
             <div class="signin-row">
-                <input class="signin-input" id="signin-email" type="email" autocomplete="email"
+                <input class="signin-input" id="signin-email" type="email" autocomplete="username"
                        inputmode="email" maxlength="254" required placeholder="you@northeastern.edu"
                        aria-describedby="signin-message">
                 <button class="signin-button" type="submit" id="signin-button">Sign in</button>
+            </div>
+            <!-- Shown only after an admin account is typed above. -->
+            <div class="signin-extra" id="signin-admin" hidden>
+                <label class="signin-label" for="signin-password">Admin password</label>
+                <input class="signin-input" id="signin-password" type="password" maxlength="200"
+                       autocomplete="current-password" aria-describedby="signin-message">
+                <div id="signin-duo" hidden>
+                    <label class="signin-label" for="signin-passcode">Duo passcode</label>
+                    <input class="signin-input" id="signin-passcode" inputmode="numeric" maxlength="20"
+                           autocomplete="one-time-code" placeholder="from the Duo Mobile app"
+                           aria-describedby="signin-message">
+                </div>
             </div>
             <p class="signin-message" id="signin-message" role="alert" aria-live="polite"></p>
             <p class="signin-note">Campus-only for now. Demo accounts: <code>drew.demo@northeastern.edu</code>, <code>alice.demo@northeastern.edu</code>.</p>

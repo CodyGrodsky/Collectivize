@@ -37,6 +37,7 @@ CREDENTIALS_PATH = PROJECT_ROOT / "config" / "admin.local.json"
 MIN_PASSWORD = 12
 MAX_PASSWORD = 200
 MAX_USERNAME = 64
+MAX_EMAIL = 254
 MAX_FAILURES = 5
 LOCK_SECONDS = 15 * 60
 SCRYPT_N, SCRYPT_R, SCRYPT_P, KEY_BYTES = 2**14, 8, 1, 32
@@ -56,6 +57,7 @@ class AdminCredential:
     email: str  # the platform-admin account this signs in to
     password_hash: str
     role: str = "admin"  # or "owner"
+    duo_username: str = ""  # their name in Duo, when it isn't the username
 
 
 def hash_password(password: str, salt: bytes | None = None) -> str:
@@ -114,7 +116,8 @@ class AdminAuth:
                 )
             return cls(tuple(
                 AdminCredential(str(e["username"]), str(e["email"]).lower(),
-                                str(e["password_hash"]), _role(e.get("role", "admin")))
+                                str(e["password_hash"]), _role(e.get("role", "admin")),
+                                str(e.get("duo_username", "")))
                 for e in entries
             ))
         except (KeyError, TypeError, ValueError) as error:
@@ -133,23 +136,43 @@ class AdminAuth:
     def credential(self, username: str) -> AdminCredential | None:
         return self._by_name.get(username.strip().casefold())
 
+    def knows(self, identifier: str) -> bool:
+        """Whether this is an admin's username or their account's email."""
+        return bool(self._candidates(identifier))
+
     def verify(self, username: str, password: str) -> str | None:
         """The admin account's email if the username and password match,
         else None. Raises LockedOutError while the username is locked."""
-        name = username.strip().casefold()[:MAX_USERNAME]
-        credential = self._by_name.get(name)
-        if credential is not None and self._locked(name):
-            raise LockedOutError
-        matches = check_password(password[:MAX_PASSWORD],
-                                 credential.password_hash if credential else _DUMMY_HASH)
-        if credential is None:
+        credential = self.check(username, password)
+        return credential.email if credential else None
+
+    def check(self, identifier: str, password: str) -> AdminCredential | None:
+        """The login whose username (or account email) and password match,
+        else None. Raises LockedOutError while it is locked."""
+        candidates = self._candidates(identifier)
+        if not candidates:
+            check_password(password[:MAX_PASSWORD], _DUMMY_HASH)  # same time as a real check
             return None
-        with self._lock:
-            if matches:
-                self._failures.pop(name, None)
-            else:
+        if all(self._locked(c.username.casefold()) for c in candidates):
+            raise LockedOutError
+        for credential in candidates:
+            name = credential.username.casefold()
+            if self._locked(name):
+                continue
+            if check_password(password[:MAX_PASSWORD], credential.password_hash):
+                with self._lock:
+                    self._failures.pop(name, None)
+                return credential
+            with self._lock:
                 self._failures.setdefault(name, []).append(self._clock())
-        return credential.email if matches else None
+        return None
+
+    def _candidates(self, identifier: str) -> list[AdminCredential]:
+        name = identifier.strip().casefold()[:MAX_EMAIL]
+        by_name = self._by_name.get(name)
+        if by_name is not None:
+            return [by_name]
+        return [c for c in self._by_name.values() if c.email == name]
 
     def _locked(self, name: str) -> bool:
         with self._lock:
@@ -171,7 +194,7 @@ def save_credential(credential: AdminCredential, path: Path = CREDENTIALS_PATH) 
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"admins": [
         {"username": c.username, "email": c.email, "password_hash": c.password_hash,
-         "role": c.role}
+         "role": c.role, "duo_username": c.duo_username}
         for c in existing.values()
     ]}
     path.touch(mode=0o600, exist_ok=True)

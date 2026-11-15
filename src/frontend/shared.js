@@ -50,7 +50,9 @@
                 throw new Error("Signed out. Taking you to sign in…");
             }
             if (!response.ok || data === null || typeof data !== "object") {
-                throw new Error(data?.error || "The server didn't answer properly. Start it with scripts/serve.py.");
+                const error = new Error(data?.error || "The server didn't answer properly. Start it with scripts/serve.py.");
+                error.data = data; // extra fields from the server, e.g. needs_passcode
+                throw error;
             }
             return data;
         }
