@@ -155,17 +155,18 @@ class AdminAuth:
             return None
         if all(self._locked(c.username.casefold()) for c in candidates):
             raise LockedOutError
-        for credential in candidates:
-            name = credential.username.casefold()
-            if self._locked(name):
-                continue
-            if check_password(password[:MAX_PASSWORD], credential.password_hash):
-                with self._lock:
-                    self._failures.pop(name, None)
-                return credential
-            with self._lock:
-                self._failures.setdefault(name, []).append(self._clock())
-        return None
+        tried = [c for c in candidates if not self._locked(c.username.casefold())]
+        matched = next((c for c in tried
+                        if check_password(password[:MAX_PASSWORD], c.password_hash)), None)
+        with self._lock:
+            if matched is not None:
+                # Several logins can share one account email: a right password
+                # for one of them is not a wrong guess at the others.
+                self._failures.pop(matched.username.casefold(), None)
+            else:
+                for credential in tried:
+                    self._failures.setdefault(credential.username.casefold(), []).append(self._clock())
+        return matched
 
     def _candidates(self, identifier: str) -> list[AdminCredential]:
         name = identifier.strip().casefold()[:MAX_EMAIL]

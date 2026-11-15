@@ -4,6 +4,117 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-14 — Connection requests are limited; remembered sign-ins renew with use; Secure cookie over https
+
+**Request:** "fix 12 and 13" (from the run-through of how the app differs from a normal application).
+
+### What changed
+- **12. Connection requests.** Two limits, so one account can't send requests to everyone:
+  - At most 25 requests waiting for an answer at once (`MAX_OPEN_REQUESTS` in `src/backend/graph/connections.py`). An answer or a cancel frees a place; accepted connections don't count.
+  - At most 20 new requests an hour per person (`CONNECT_REQUESTS_PER_HOUR` in `app_api.py`, using the new `src/backend/rate_limit.py`). Accepting someone else's request is never limited.
+  - Both show a plain message on the Connect button.
+- **13. Remembered sign-ins renew with use.** A sign-in now lasts 30 days after the person's *last* visit: each day they use the site, the 30 days start again and the browser's cookie is given the new lifetime. Someone who stops coming is signed out 30 days later. Admin sign-ins still end 8 hours after sign-in, used or not.
+- **13. The cookie is marked `Secure` over https.** When the site is reached through an https proxy (`X-Forwarded-Proto: https`), the session cookie gets `Secure`. On plain `http://127.0.0.1` it can't: the browser would drop the cookie.
+
+### Decisions
+- The waiting cap lives with the data (it survives restarts); the hourly brake is in memory and resets on restart.
+- A session is extended at most once a day, so the sessions file isn't rewritten on every click.
+- There is no upper limit on how long a sign-in can keep renewing.
+- Sign-ins made before this change don't renew; they do from the next sign-in.
+
+### Tests
+- `tests/backend/test_limits_and_renewal.py` (9 tests).
+
+---
+
+## 2026-11-14 — Short addresses, admin scripts for admins only, a Content-Security-Policy, and the other HTTP methods
+
+**Request:** "fix 7, 8, 14 and 15" (from the run-through of how the app differs from a normal application).
+
+### What changed
+- **8. Short addresses.** Pages are now `/discover`, `/my-events`, `/network`, `/profile`, `/account`, `/org`, `/admin`, with the sign-in screen at `/` (and `/home`). Scripts and stylesheets are at the top level (`/shared.js`). Nothing in an address shows where a file lives. Old addresses (`/src/frontend/discover.html`, `/discover.html`) redirect to the new ones with their query string; `/calendar` redirects to `/my-events?view=calendar`. The table is the new `src/backend/server_routes.py`; a file is only served through it.
+- **7. Admin scripts for admins only.** `/admin.js` and `/admin-team.js` answer "not found" to anyone who isn't a platform admin. `/admin` sends everyone else to the sign-in screen.
+- **14. Content-Security-Policy** on every answer, redirects included: only this site's own scripts run (no inline scripts, no other sites). Also `Permissions-Policy` (no camera, microphone or location) and `Cross-Origin-Opener-Policy`.
+- **15. HTTP methods.** HEAD answers like GET without the body; OPTIONS lists what is allowed; PUT, DELETE and PATCH get a plain 405 with an `Allow` header instead of Python's default error page.
+- Front end: every page link and image path uses the new addresses; `calendar.html` lost its inline script; a comment naming the repository folder was removed from `nav.js`.
+
+### Decisions
+- Styles may still be inline (`style-src 'unsafe-inline'`): a few pages set small inline styles from scripts. Scripts may not.
+- The policy allows Google Fonts because the older `main` page's stylesheet imports them.
+- `/` shows the sign-in screen directly when signed out and goes to `/discover` when signed in; `/home` always shows the landing page (the nav's wordmark link and the admin entrance `/home?admin=1`).
+- Old addresses redirect with 302, not 301, so browsers don't cache them permanently while addresses may still change.
+- After sign-in, "go back to where you were" only accepts this site's own page addresses.
+
+### Tests
+- `tests/backend/test_addresses.py` (47 tests). Existing tests that used the old addresses were updated. Every page, the sign-in and admin sign-in flows and the invite link were also loaded in headless Chrome: no policy violations, script errors or broken links.
+
+---
+
+## 2026-11-14 — Error pages, no dropped connections, and internal fields kept from users
+
+**Request:** "fix 1 through 6" (from the run-through of how the app differs from a normal application).
+
+### What changed
+1. **The browser always gets an answer.** A failure anywhere in a request (for example the database being briefly locked while the session is looked up) used to drop the connection. Now a person's browser gets a "Something went wrong" or "Collectivize is busy" page and the app's own requests get `{"error": ...}`, never the details (`AnswerMixin` in the new `src/backend/server_pages.py`).
+2. **Unknown addresses show a "Page not found" page** with a link home, instead of raw JSON. The app's own requests still get JSON. `/favicon.ico` now answers with the app icon.
+3. **Developer wording removed from what users see.** "Is scripts/serve.py running?" is now "Can't reach Collectivize right now. Check your connection and try again."; the fallback error is "Something went wrong. Please try again."; the sign-in screen no longer mentions the server's terminal.
+4. **The sign-in screen no longer lists demo accounts.** It says "Campus-only for now. We'll email you a code to sign in."
+5. **Ranking scores and distances are sent to platform admins only.** Any API answer containing `score` or `distance_km` has them removed for everyone else, whichever route produced it.
+6. **Going counts are no longer sent** to anyone but platform admins (`going_count`). My Events now gets `is_full` and uses that for its "Full" note.
+
+### Decisions
+- The filter is applied in one place at the HTTP layer, so the Python APIs and their tests are unchanged and a new route can't leak these fields by accident.
+- A platform admin viewing as someone still receives the fields.
+- Whether a request gets a page or JSON is decided by what it asks for (`Accept: text/html`), so pages opened in a browser get the page.
+- The error page is built into the server, not a file, so it still shows when something is broken.
+
+### Tests
+- `tests/backend/test_error_answers.py` (14 tests), including a check that no page text mentions `serve.py`, the terminal or demo account addresses.
+
+---
+
+## 2026-11-14 — Admin sign-in: saved passwords no longer break the password step
+
+**Request:** "for some reason the admin sign in isn't working and producing red error message on the front end beneath northeastern.edu"
+
+### What was wrong
+- Once a browser had saved the admin password, it filled in the name and the password together. The form took that as "a different name was typed", hid the password box again and showed only the prompt "This is an admin account. Enter its password." under the email field, in red, so it looked like an error and signing in went round in a circle. Reproduced on the running site; the server side was fine.
+
+### What changed
+- `src/frontend/signin-form.js` only starts over when the typed name really changes, and clears the old prompt when it does.
+- Prompts for the next step ("enter its password", "we emailed a code") are now dark grey; only real errors are red (`.signin-message.is-info` in `landing.css`).
+- `AdminAuth.check` (`src/backend/admin_auth.py`): when several logins share one account email and the email is typed, a correct password for one login no longer counts as a wrong guess against the others (which could lock them for 15 minutes). One test added.
+
+---
+
+## 2026-11-14 — Sign-in verifies the Northeastern address with an emailed code; one mailbox, one account
+
+**Request:** "can you make it so it verifies the .edu and then you can only use the same northeastern account once"
+
+### What changed
+- **A code proves the address.** Typing a Northeastern email no longer signs you in. The server sends a six-digit code to that address, and typing it back is what signs you in (`src/backend/email_verification.py`; `POST /api/signin` then `POST /api/signin/verify`). A new account is only created once its code has been entered.
+- **One mailbox, one account.** Capital letters and a "+tag" no longer make a second account: `Name+club@northeastern.edu` is `name@northeastern.edu`, on sign-in and when an admin creates or edits an account (`canonical_email` in `app_api.py`).
+- **Mail** (`src/backend/mailer.py`, `scripts/set_mail.py`). With a mail server set up, codes are emailed. Without one, the code is printed in the server's terminal and the sign-in screen says so. The fictional demo accounts (`name.demo@northeastern.edu`) have no mailbox, so their codes always go to the terminal.
+- **Sign-in form** is now one shared file, `src/frontend/signin-form.js`, used by the landing page and the invite page, with the code step and "Send a new code".
+- `EMAIL_VERIFICATION = True` in `src/backend/config.py` turns it off or on.
+
+### Rules built in
+- A code works once, for 10 minutes; a newer code replaces it; five wrong guesses throw it away.
+- One address can ask again after 30 seconds, at most 5 times an hour; the server sends at most 60 a minute.
+- Only a hash of the code is kept, in memory. The email holds the code and nothing about the person.
+- The answer is the same whether or not the address already has an account.
+- Admin accounts are never opened by an emailed code (password, plus Duo when set up).
+
+### Decisions
+- I read "only use the same northeastern account once" as one Collectivize account per Northeastern mailbox. It does not limit someone to one signed-in browser.
+- The code is asked for at each sign-in, not only the first; a sign-in is still remembered for 30 days, so it is rarely needed.
+- Tests and callers that pass no verifier keep the old behaviour (the email signs in at once), like the other optional sign-in pieces.
+
+### Tests
+- `tests/backend/test_email_verification.py` (22 tests). The landing and invite pages were also driven in headless Chrome against a throwaway server. No real email was sent (no mail server is set up).
+
+---
+
 ## 2026-11-14 — One sign-in screen, remembered sign-ins, and Duo for admins
 
 **Request:** "make it so all users start at the login screen for first time login when they load into the website url, and then make it so if an admin account is typed into the login it makes it so you can be admin. Also add rememberance, and add dual authentication using duo only if it is an admin login. Users should only have to login once unless they logged out last session (this makes them log back in again)."

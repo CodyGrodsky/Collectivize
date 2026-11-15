@@ -51,6 +51,7 @@ from backend.app_api import (
     _id,
     _name_from_email,
     _person,
+    canonical_email,
 )
 from backend.audit import AuditLog
 from backend.config import ALLOWED_EMAIL_DOMAINS
@@ -391,7 +392,7 @@ def _new_email(graph: CollectivizeGraph, value: Any, *, keep: str | None) -> str
     """A valid, allowed sign-in email that no other account (than `keep`) uses."""
     if not isinstance(value, str) or len(value) > MAX_EMAIL_LENGTH:
         raise ApiError(HTTPStatus.BAD_REQUEST, "enter an email address")
-    address = value.strip().lower()
+    address = canonical_email(value)  # one mailbox, one account
     match = EMAIL_SHAPE.match(address)
     if match is None:
         raise ApiError(HTTPStatus.BAD_REQUEST, "enter a valid email address")

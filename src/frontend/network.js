@@ -54,7 +54,7 @@
                         window.location.assign(center.isOrg ? Ui.orgHref(id) : Ui.profileHref(id));
                     } else if (id && id !== this.viewer) this.open(id);
                     else if (this.data && !this.data.isSelf) this.open("");
-                    else window.location.assign("profile.html");
+                    else window.location.assign("profile");
                 },
             });
 

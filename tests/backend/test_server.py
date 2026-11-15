@@ -289,14 +289,14 @@ def test_unknown_routes_and_a_viewer_parameter_is_ignored(server):
 
 
 def test_home_redirects_to_sign_in_or_discover(server):
-    status, headers, _ = fetch(f"{server}/", token="")
-    assert status == 302 and headers["Location"] == "/src/frontend/index.html"
+    status, _, body = fetch(f"{server}/", token="")
+    assert status == 200 and b'id="signin"' in body  # signed out: the sign-in screen
     status, headers, _ = fetch(f"{server}/")
-    assert status == 302 and headers["Location"] == "/src/frontend/discover.html"
+    assert status == 302 and headers["Location"] == "/discover"
 
 
 def test_the_real_discover_page_is_served(server):
-    status, headers, body = fetch(f"{server}/src/frontend/discover.html")
+    status, headers, body = fetch(f"{server}/discover")
     assert status == 200 and headers["Content-Type"].startswith("text/html")
     assert b'id="search-input"' in body
     assert fetch(f"{server}/data/test.db")[0] == 404
@@ -345,7 +345,7 @@ def test_network_map_over_http(server, seeded):
     assert status == 200 and json.loads(body)["is_self"] is True
     assert fetch(f"{server}/api/network", token="")[0] == 401  # signed out
     assert fetch(f"{server}/api/network?center=nobody")[0] == 404
-    status, _, body = fetch(f"{server}/src/frontend/network.html")
+    status, _, body = fetch(f"{server}/network")
     assert status == 200 and b'id="nw-root"' in body
 
 

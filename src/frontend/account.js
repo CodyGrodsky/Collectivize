@@ -40,10 +40,10 @@
                 : `You're signed in on ${account.sessions} browsers.`;
             $("steps").replaceChildren(
                 AccountPage.step(true, "Signed in with your Northeastern email", null),
-                AccountPage.step(Boolean(profile.bio || profile.about), "Fill in your profile", "profile.html"),
-                AccountPage.step(counts.connections > 0, "Connect with someone you know", "network.html"),
-                AccountPage.step(counts.orgs > 0, "Join a community", "discover.html"),
-                AccountPage.step(counts.rsvps > 0, "RSVP to your first event", "discover.html"),
+                AccountPage.step(Boolean(profile.bio || profile.about), "Fill in your profile", "profile"),
+                AccountPage.step(counts.connections > 0, "Connect with someone you know", "network"),
+                AccountPage.step(counts.orgs > 0, "Join a community", "discover"),
+                AccountPage.step(counts.rsvps > 0, "RSVP to your first event", "discover"),
             );
         }
 
@@ -78,7 +78,7 @@
             try {
                 await Api.post("/api/account/signout-all", {}, { redirectOnSignOut: false });
             } finally {
-                location.replace("index.html");
+                location.replace("/");
             }
         }
 
@@ -87,7 +87,7 @@
             try {
                 await Api.post("/api/account/delete", { confirm: $("confirm").value },
                                { redirectOnSignOut: false });
-                location.replace("index.html");
+                location.replace("/");
             } catch (error) {
                 status.textContent = error.message;
                 status.classList.add("is-error");

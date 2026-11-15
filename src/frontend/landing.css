@@ -98,6 +98,20 @@ body {
 .signin-extra { margin-top: 12px; }
 .signin-extra .signin-input { display: block; width: 100%; }
 .signin-extra .signin-label { margin-top: 12px; }
+/* A prompt for the next step ("enter its password"), not an error. */
+.signin-message.is-info { color: #33403d; }
+
+.signin-link {
+    margin-top: 8px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #266956;
+    font: inherit;
+    font-size: 13px;
+    text-decoration: underline;
+    cursor: pointer;
+}
 
 .signin-button {
     height: 44px;

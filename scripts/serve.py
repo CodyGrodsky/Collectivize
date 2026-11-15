@@ -28,12 +28,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from backend.config import DATA_DIR, LOGIN_REQUIRED, load_config
+from backend.config import DATA_DIR, EMAIL_VERIFICATION, LOGIN_REQUIRED, load_config
 from backend.accounts import AccountsApi
 from backend.admin_auth import AdminAuth, AdminAuthError
 from backend.app_api import AppApi
 from backend.audit import AuditLog
 from backend.duo import DuoError, DuoGate
+from backend.email_verification import EmailVerifier
+from backend.mailer import ConsoleMailer, MailError, load_mailer
 from backend.graph.query_understanding import ClaudeQueryExtractor, QueryReader
 from backend.server import ApiError, DiscoverApi, demo_graph_factory, serve
 from backend.sessions import SessionStore
@@ -77,7 +79,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         admin_auth = AdminAuth.load()
         duo = DuoGate.load()
-    except (AdminAuthError, DuoError) as error:
+        mailer = load_mailer()
+    except (AdminAuthError, DuoError, MailError) as error:
         log.error("%s", error)
         return 1
     sessions = SessionStore(audit_path=DATA_DIR / "view_as.log", path=DATA_DIR / "sessions.json")
@@ -86,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         server = serve(DiscoverApi(graphs), args.port, app=AppApi(graphs, reader=reader),
                        sessions=sessions, accounts=accounts, admin_auth=admin_auth, duo=duo,
+                       verifier=EmailVerifier(mailer) if EMAIL_VERIFICATION else None,
                        auto_login_email=None if login_on else args.login_as)
     except ApiError as error:  # e.g. --as with a non-Northeastern email, or an admin
         log.error("--as %s: %s", args.login_as, error.message)
@@ -105,6 +109,14 @@ def main(argv: list[str] | None = None) -> int:
     else:
         log.warning("Admin sign-in isn't set up, so nobody can open /admin. "
                     "Run: uv run python scripts/set_admin_password.py")
+    if not EMAIL_VERIFICATION:
+        log.warning("Email verification is OFF (EMAIL_VERIFICATION in config.py): "
+                    "typing an address is enough to sign in.")
+    elif isinstance(mailer, ConsoleMailer):
+        log.warning("Mail isn't set up, so sign-in codes are shown HERE in this terminal, "
+                    "not emailed. To email them run: uv run python scripts/set_mail.py")
+    else:
+        log.info("Sign-in codes are emailed (demo accounts' codes are shown here).")
     log.info("AI search: %s", "off (keywords only)" if args.no_ai else "on")
     if not login_on:
         log.warning("SIGN-IN IS OFF: everyone is signed in as %s. Development only. To turn it "

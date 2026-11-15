@@ -3,15 +3,21 @@ deals with cookies, sessions and the two sign-in routes (server.py mixes
 this into its RequestHandler).
 
 One sign-in screen for everyone (POST /api/signin with what was typed):
-- an ordinary Northeastern email signs in at once;
+- an ordinary Northeastern email is sent a six-digit code and answered
+  with {"verify": true}; the page sends the code to
+  POST /api/signin/verify, which is what signs the person in
+  (email_verification.py). Without a verifier (tests, old callers) the
+  email signs in at once;
 - an admin's username, or an admin account's email, is answered with
   {"admin": true}: the page then asks for the password and sends both to
   POST /api/admin/signin. If Duo is set up (duo.py) that request also
   needs Duo's approval: a push to the admin's phone, or a `passcode`.
 
-Remembered: a sign-in lasts REMEMBER_SECONDS (an admin's,
-ADMIN_SESSION_SECONDS) across browser and server restarts, until the
-person signs out. Signing out, an account being deleted, or "sign out
+Remembered: a sign-in lasts REMEMBER_SECONDS after the person's last
+visit (each day they use the site starts it again), across browser and
+server restarts, until they sign out. An admin's lasts
+ADMIN_SESSION_SECONDS from sign-in, used or not. The cookie is marked
+`Secure` whenever the site is reached over https. Signing out, an account being deleted, or "sign out
 everywhere" ends it, and the next visit starts at the sign-in screen.
 """
 
@@ -26,6 +32,7 @@ from urllib.parse import urlsplit
 from backend.admin_auth import MAX_EMAIL, MAX_PASSWORD, LockedOutError
 from backend.demo_api import ApiError
 from backend.duo import MAX_PASSCODE, DuoError
+from backend.email_verification import CODE_DIGITS, VerificationError
 from backend.objects.base import utc_now
 from backend.sessions import COOKIE_NAME, Session
 
@@ -35,6 +42,15 @@ MAX_BODY_BYTES = 4096
 REMEMBER_SECONDS = 30 * 24 * 60 * 60  # how long a sign-in is remembered
 ADMIN_SESSION_SECONDS = 8 * 60 * 60  # an admin sign-in ends sooner
 COOKIE_FLAGS = "Path=/; HttpOnly; SameSite=Lax"
+
+
+def cookie_flags(headers: Any) -> str:
+    """The session cookie's attributes. `Secure` (never sent over plain
+    http) whenever this request came over https, i.e. through a TLS proxy
+    that says so; a browser on plain http://127.0.0.1 would drop a Secure
+    cookie, so it is left off there."""
+    over_https = (headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower() == "https"
+    return f"{COOKIE_FLAGS}; Secure" if over_https else COOKIE_FLAGS
 
 
 class AuthHandlerMixin:
@@ -59,7 +75,14 @@ class AuthHandlerMixin:
         return morsel.value if morsel else None
 
     def _session(self, *, auto: bool = True) -> Session | None:
-        session = self.server.sessions.get(self._cookie())
+        token = self._cookie()
+        session = self.server.sessions.get(token)
+        if session is not None:
+            # Used today: a remembered sign-in starts its 30 days again, and
+            # the browser's cookie is given the new lifetime.
+            renewed = self.server.sessions.refresh(token)
+            if renewed:
+                self._renewed_cookie = (token, renewed)
         if session is None:
             if self._ended_reason():
                 # Deleted or signed out by someone else: back to the home
@@ -100,13 +123,17 @@ class AuthHandlerMixin:
                 **self.server.accounts.rights(session.person_id)}
 
     def end_headers(self) -> None:
+        flags = cookie_flags(self.headers)
         token = getattr(self, "_pending_cookie", None)
+        renewed = getattr(self, "_renewed_cookie", None)
         if token:
-            self.send_header("Set-Cookie", f"{COOKIE_NAME}={token}; {COOKIE_FLAGS}")
-            self._pending_cookie = None
+            self.send_header("Set-Cookie", f"{COOKIE_NAME}={token}; {flags}")
         elif getattr(self, "_clear_cookie", False):
-            self.send_header("Set-Cookie", f"{COOKIE_NAME}=; {COOKIE_FLAGS}; Max-Age=0")
-        self._clear_cookie = False
+            self.send_header("Set-Cookie", f"{COOKIE_NAME}=; {flags}; Max-Age=0")
+        elif renewed and not getattr(self, "_cookie_sent", False):
+            self.send_header("Set-Cookie", f"{COOKIE_NAME}={renewed[0]}; {flags}; Max-Age={renewed[1]}")
+        self._pending_cookie = self._renewed_cookie = None
+        self._clear_cookie = self._cookie_sent = False
         super().end_headers()
 
     # --- signing in ----------------------------------------------------------------
@@ -120,8 +147,19 @@ class AuthHandlerMixin:
             if auth and isinstance(typed, str) and len(typed) <= MAX_EMAIL and auth.knows(typed):
                 self._json(HTTPStatus.OK, {"admin": True})  # next: the password
                 return
+            if self.server.verifier is not None:
+                # Prove the mailbox first. The same answer whether or not the
+                # address has an account, so nothing is given away.
+                address = self.server.app.check_email(typed)
+                if auth and self._is_admin_account(self.server.app.account_id(address)):
+                    self._json(HTTPStatus.OK, {"admin": True})
+                    return
+                self.server.verifier.start(address)
+                self._json(HTTPStatus.OK, {"verify": True, "digits": CODE_DIGITS,
+                                           "emailed": self.server.verifier.is_emailed(address)})
+                return
             person_id = self.server.app.sign_in(body)
-        except ApiError as error:
+        except (ApiError, VerificationError) as error:
             self._json(error.status, {"error": error.message})
             return
         except Exception:
@@ -134,9 +172,39 @@ class AuthHandlerMixin:
             return
         self._start_session(person_id, REMEMBER_SECONDS)
 
+    def _is_admin_account(self, person_id: str | None) -> bool:
+        return person_id is not None and self.server.is_platform_admin(person_id)
+
+    def _verify_sign_in(self) -> None:
+        """POST /api/signin/verify {"email", "code", "invite"?}: the code
+        that was emailed. Only this starts an ordinary session."""
+        verifier = self.server.verifier
+        if verifier is None:
+            self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+            return
+        try:
+            body = self._read_json(MAX_BODY_BYTES)
+            address = self.server.app.check_email(body.get("email"))
+            code = body.get("code")
+            if not isinstance(code, str) or not 0 < len(code) <= CODE_DIGITS + 4:
+                raise VerificationError(HTTPStatus.UNAUTHORIZED, "enter the code from the email")
+            if self.server.admin_auth and self._is_admin_account(self.server.app.account_id(address)):
+                raise VerificationError(HTTPStatus.UNAUTHORIZED, "that code isn't right")
+            verifier.check(address, code)
+            person_id = self.server.app.sign_in(body)  # creates the account on a first sign-in
+        except (ApiError, VerificationError) as error:
+            self._json(error.status, {"error": error.message})
+            return
+        except Exception:
+            log.exception("sign-in verification failed")
+            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "something went wrong"})
+            return
+        self._start_session(person_id, REMEMBER_SECONDS)
+
     def _start_session(self, person_id: str, ttl: float) -> None:
         self.server.sessions.end(self._cookie())
-        token = self.server.sessions.create(person_id, ttl)
+        # An ordinary sign-in renews with use; an admin's ends on schedule.
+        token = self.server.sessions.create(person_id, ttl, renew=ttl == REMEMBER_SECONDS)
         session = self.server.sessions.get(token)
         self._json(HTTPStatus.OK, self._me(session), cookie=token, max_age=int(ttl))
 

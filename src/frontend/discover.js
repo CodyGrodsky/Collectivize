@@ -477,7 +477,7 @@
                 full: item.is_full,
                 onChange: (state) => {
                     const updated = { ...item, my_rsvp: state.my_rsvp, starred: state.starred,
-                                      going_count: state.going_count, is_full: state.is_full ?? item.is_full };
+                                      is_full: state.is_full ?? item.is_full };
                     node.replaceWith(this.card(updated));
                     this.setStatus(DiscoverPage.savedText(updated));
                 },

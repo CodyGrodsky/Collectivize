@@ -19,7 +19,7 @@
             return;
         }
         if (!me.is_platform_admin) {
-            location.replace("discover.html"); // not for regular users or org admins
+            location.replace("discover"); // not for regular users or org admins
             return;
         }
         Rights.me = me;
@@ -49,7 +49,7 @@
         });
         search("");
         loadAudit();
-        // admin.html?id=<person id> opens that account straight away.
+        // admin?id=<person id> opens that account straight away.
         const id = new URLSearchParams(location.search).get("id");
         if (id) Manage.open(id);
     }
@@ -96,7 +96,7 @@
     async function viewAs(id, onError) {
         try {
             await Api.post("/api/admin/view-as", { person_id: id });
-            location.href = "discover.html";
+            location.href = "discover";
         } catch (error) {
             onError(error.message);
         }

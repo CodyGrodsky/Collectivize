@@ -24,23 +24,9 @@
         }
     }
 
-    $("signin").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const email = $("signin-email").value.trim();
-        const message = $("signin-message");
-        if (!email) {
-            message.textContent = "Enter your Northeastern email.";
-            return;
-        }
-        $("signin-button").disabled = true;
-        message.textContent = "";
-        try {
-            await Api.post("/api/signin", { email, invite: inviter ? code : null }, { redirectOnSignOut: false });
-            location.replace(inviter ? Ui.profileHref(inviter.id) : "discover.html");
-        } catch (error) {
-            message.textContent = error.message;
-            $("signin-button").disabled = false;
-        }
+    new window.SignInForm({
+        extra: () => ({ invite: inviter ? code : null }),
+        done: () => location.replace(inviter ? Ui.profileHref(inviter.id) : "discover"),
     });
 
     load();

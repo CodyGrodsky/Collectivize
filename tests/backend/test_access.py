@@ -86,18 +86,17 @@ def test_a_new_northeastern_email_gets_a_new_account(world):
     assert again["id"] == me["id"]
 
 
-@pytest.mark.parametrize("page", ["discover.html", "calendar.html", "profile.html",
-                                  "network.html", "my-events.html", "admin.html", "org.html"])
+@pytest.mark.parametrize("page", ["discover", "profile", "network", "my-events", "org", "account"])
 def test_signed_out_pages_redirect_to_the_landing_page(world, page):
-    status, headers, _ = call(f"{world[0]}/src/frontend/{page}")
+    status, headers, _ = call(f"{world[0]}/{page}")
     assert status == 302
-    assert headers["Location"].startswith("/src/frontend/index.html?next=")
+    assert headers["Location"] == f"/?next=%2F{page}"
 
 
 def test_signed_out_visitors_reach_only_landing_invite_and_assets(world):
     base = world[0]
-    for path in ("index.html", "invite.html", "landing.css", "shared.js"):
-        assert call(f"{base}/src/frontend/{path}")[0] == 200, path
+    for path in ("", "home", "invite", "landing.css", "shared.js"):
+        assert call(f"{base}/{path}")[0] == 200, path
     status, _, body = call(f"{base}/api/session")  # the landing page's quiet check
     assert status == 200 and json.loads(body) == {"signed_in": False}
     assert call(f"{base}/api/discover")[0] == 401
@@ -135,13 +134,13 @@ def test_no_on_campus_toggle_or_viewing_as_in_the_pages():
 def test_admin_page_and_api_are_for_platform_admins_only(world):
     base = world[0]
     student, _ = sign_in(base, "casey.demo@northeastern.edu")  # an org admin, not platform
-    status, headers, _ = call(f"{base}/src/frontend/admin.html", token=student)
-    assert status == 302 and headers["Location"] == "/src/frontend/discover.html"
+    status, headers, _ = call(f"{base}/admin", token=student)
+    assert status == 302 and headers["Location"] == "/home?admin=1"  # the sign-in screen
     assert call(f"{base}/api/admin/users", token=student)[0] == 403
     assert call(f"{base}/api/admin/view-as", {"person_id": "x"}, token=student)[0] == 403
     admin, me = sign_in(base, "pat.demo@northeastern.edu")
     assert me["is_platform_admin"]
-    assert call(f"{base}/src/frontend/admin.html", token=admin)[0] == 200
+    assert call(f"{base}/admin", token=admin)[0] == 200
 
 
 def test_view_as_is_read_only_logged_and_exits(world):
@@ -223,7 +222,7 @@ def no_login(world):
 
 def test_no_login_signs_everyone_in_with_a_real_session(no_login):
     base, result = no_login
-    status, headers, _ = call(f"{base}/src/frontend/discover.html")
+    status, headers, _ = call(f"{base}/discover")
     assert status == 200  # no redirect to sign-in
     token = headers["Set-Cookie"].split(";", 1)[0].split("=", 1)[1]
     status, headers, body = call(f"{base}/api/me")  # an API call with no cookie works too
@@ -243,7 +242,7 @@ def test_no_login_still_lets_you_switch_accounts(no_login):
 
 def test_login_is_on_unless_asked(world):
     base = world[0]
-    assert call(f"{base}/src/frontend/discover.html")[0] == 302
+    assert call(f"{base}/discover")[0] == 302
     assert call(f"{base}/api/me")[0] == 401
 
 

@@ -1,7 +1,7 @@
 "use strict";
 
 // Profile page: everything about a person except their network (that has
-// the Network tab to itself). URL: profile.html (you) or ?id=<person>.
+// the Network tab to itself). URL: profile (you) or ?id=<person>.
 //
 // - Your own page: the card, About, Top 3, orgs and events, with an edit
 //   mode for everything on it: name and text, Top 3, website, colors,
@@ -61,7 +61,7 @@
                 const data = await NetworkData.fetch(this.viewer, center);
                 if (request !== this.request) return; // a newer request took over
                 if (data.center.isOrg) { // an organization has its own page
-                    window.location.replace(`org.html?${new URLSearchParams({ id: data.center.id })}`);
+                    window.location.replace(`org?${new URLSearchParams({ id: data.center.id })}`);
                     return;
                 }
                 this.data = data;
@@ -95,7 +95,7 @@
         networkLink() {
             const { isSelf, center, networkOpen } = this.data;
             if (!isSelf && !networkOpen) return document.createTextNode("");
-            const href = isSelf ? "network.html" : `network.html?${new URLSearchParams({ center: center.id })}`;
+            const href = isSelf ? "network" : `network?${new URLSearchParams({ center: center.id })}`;
             return el("p", { className: "profile-network-link" }, [
                 el("a", { className: "page-button", text: isSelf ? "See your network" : `See ${center.name.split(" ")[0]}'s network`, attrs: { href } }),
             ]);
