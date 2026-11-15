@@ -15,6 +15,8 @@ import json
 import logging
 import secrets
 import threading
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -23,12 +25,14 @@ log = logging.getLogger(__name__)
 
 COOKIE_NAME = "collectivize_session"
 MAX_SESSIONS = 10_000
+MAX_REMEMBERED = 10_000  # ended tokens we still remember the reason for
 
 
 @dataclass(frozen=True)
 class Session:
     person_id: str
     view_as: str | None = None  # set only for platform admins
+    expires: float | None = None  # on the store's clock; None = until restart
 
     @property
     def viewer_id(self) -> str:
@@ -41,37 +45,63 @@ class Session:
 
 
 class SessionStore:
-    def __init__(self, audit_path: Path | None = None) -> None:
+    def __init__(
+        self, audit_path: Path | None = None, *, clock: Callable[[], float] = time.monotonic
+    ) -> None:
         self._sessions: dict[str, Session] = {}
+        self._clock = clock
+        # Why a token stopped working ("deleted", "signed_out"), so its
+        # browser is sent home instead of being signed in again.
+        self._ended: dict[str, str] = {}
         self._lock = threading.Lock()
         self._audit_path = audit_path
         self.audit: list[dict[str, str]] = []  # view-as log, newest last
 
-    def create(self, person_id: str) -> str:
+    def create(self, person_id: str, ttl: float | None = None) -> str:
+        """`ttl`: seconds until the session ends by itself (admin sign-ins)."""
         token = secrets.token_urlsafe(32)
+        expires = None if ttl is None else self._clock() + ttl
         with self._lock:
             if len(self._sessions) >= MAX_SESSIONS:
                 self._sessions.pop(next(iter(self._sessions)))
-            self._sessions[token] = Session(person_id)
+            self._sessions[token] = Session(person_id, expires=expires)
         return token
 
     def get(self, token: str | None) -> Session | None:
         if not token:
             return None
         with self._lock:
-            return self._sessions.get(token)
+            session = self._sessions.get(token)
+            if session and session.expires is not None and self._clock() >= session.expires:
+                del self._sessions[token]
+                self._remember(token, "expired")
+                return None
+            return session
+
+    def ended_reason(self, token: str | None) -> str | None:
+        """Why this token was ended by someone else, if it was."""
+        with self._lock:
+            return self._ended.get(token or "")
+
+    def _remember(self, token: str, reason: str) -> None:
+        if len(self._ended) >= MAX_REMEMBERED:
+            self._ended.pop(next(iter(self._ended)))
+        self._ended[token] = reason
 
     def end(self, token: str | None) -> None:
         with self._lock:
             self._sessions.pop(token or "", None)
 
-    def end_all(self, person_id: str) -> int:
-        """Sign this person out everywhere (account deleted, or signed out
-        by themselves or a platform admin). Returns how many sessions ended."""
+    def end_all(self, person_id: str, reason: str = "signed_out") -> int:
+        """Sign this person out everywhere (`reason`: "deleted", or
+        "signed_out" by themselves or a platform admin). Each of their
+        browsers is sent back to the home page on its next request.
+        Returns how many sessions ended."""
         with self._lock:
             tokens = [t for t, s in self._sessions.items() if s.person_id == person_id]
             for token in tokens:
                 del self._sessions[token]
+                self._remember(token, reason)
         return len(tokens)
 
     def count_for(self, person_id: str) -> int:

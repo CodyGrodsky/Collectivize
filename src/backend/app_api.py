@@ -46,7 +46,6 @@ EMAIL_SHAPE = re.compile(r"^[a-z0-9._%+-]+@([a-z0-9-]+(?:\.[a-z0-9-]+)+)$")
 MAX_EMAIL_LENGTH = 254
 MAX_INVITE_CODE = 100
 MAX_ID_LENGTH = 64
-ADMIN_SEARCH_LIMIT = 20
 MAX_QUERY = 200
 SEARCH_TYPES = ("people", "orgs", "events")
 
@@ -212,27 +211,6 @@ class AppApi:
             if not graph.visibility.is_platform_admin(person_id):
                 raise ApiError(HTTPStatus.FORBIDDEN, "only platform admins can do that")
 
-    def admin_users(self, admin_id: str, params: dict[str, str]) -> dict[str, Any]:
-        """Search every user by name or email (platform admins only)."""
-        self.require_platform_admin(admin_id)
-        needle = params.get("q", "").strip().casefold()[:100]
-        with self._graphs() as graph:
-            people = [
-                p for p in graph.store.nodes(Person)
-                if not needle or needle in p.display_name.casefold()
-                or needle in (p.email or "")
-            ]
-            people.sort(key=lambda p: p.display_name.casefold())
-            return {
-                "total": len(people),
-                "users": [
-                    {"id": p.id, "name": p.display_name, "email": p.email,
-                     "connections": len(graph.connections.connections_of(p.id)),
-                     "orgs": len(graph.visibility.org_ids_of(p.id))}
-                    for p in people[:ADMIN_SEARCH_LIMIT]
-                ],
-            }
-
     def admin_account_id(self, email: str) -> str | None:
         """The platform-admin account with this sign-in email, if there is one."""
         with self._graphs() as graph:
@@ -240,13 +218,6 @@ class AppApi:
                 if person.email == email and person.is_platform_admin:
                     return person.id
         return None
-
-    def check_view_as_target(self, admin_id: str, target: Any) -> str | None:
-        self.require_platform_admin(admin_id)
-        if target is None:
-            return None
-        with self._graphs() as graph:
-            return _person(graph, _id(target, "person")).id
 
     # --- connections (spec 4.2) ------------------------------------------------------
 

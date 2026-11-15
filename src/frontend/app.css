@@ -168,4 +168,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .account-field .input { color: var(--ink); }
 .account-danger { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--red); }
 .account-danger .panel-title { color: var(--red); }
+.team-powers { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 13px; }
+.team-powers label { display: inline-flex; align-items: center; gap: 5px; }
 .panel > .account-danger:first-child { margin-top: 0; padding-top: 0; border-top: 0; }

@@ -15,6 +15,15 @@
         .then(({ signed_in: signedIn }) => { if (signedIn) location.replace(next); })
         .catch(() => {});
 
+    // Sent here because the account was ended from somewhere else.
+    const NOTICES = {
+        deleted: "That account was deleted.",
+        signed_out: "You were signed out.",
+        expired: "Your sign-in ended. Sign in again.",
+    };
+    const notice = NOTICES[new URLSearchParams(location.search).get("notice")];
+    if (notice) $("signin-message").textContent = notice;
+
     $("signin").addEventListener("submit", async (event) => {
         event.preventDefault();
         const email = $("signin-email").value.trim();

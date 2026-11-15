@@ -13,6 +13,7 @@
 (() => {
     const LANDING = "/src/frontend/index.html";
     const HOME = "/src/frontend/discover.html";
+    const WATCH_MS = 8000; // how often an open page checks it is still signed in
 
     class Api {
         static async get(path, params = {}, settings = {}) {
@@ -45,7 +46,7 @@
                 // Not JSON: usually the page was opened without the demo server.
             }
             if (response.status === 401 && redirectOnSignOut) {
-                Session.toSignIn();
+                Session.toSignIn(data?.reason);
                 throw new Error("Signed out. Taking you to sign in…");
             }
             if (!response.ok || data === null || typeof data !== "object") {
@@ -58,11 +59,36 @@
     class Session {
         static me = null;
         static pending = null;
+        static watching = false;
 
         /** The signed-in person: {id, name, is_platform_admin, viewing_as}. */
         static async current() {
-            if (!Session.pending) Session.pending = Api.get("/api/me").then((me) => (Session.me = me));
+            if (!Session.pending) {
+                Session.pending = Api.get("/api/me").then((me) => {
+                    Session.me = me;
+                    Session.watch();
+                    return me;
+                });
+            }
             return Session.pending;
+        }
+
+        /** While a page is open, notice if this account is deleted or signed
+            out elsewhere, and go back to the home page straight away. */
+        static watch() {
+            if (Session.watching) return;
+            Session.watching = true;
+            const check = async () => {
+                if (document.hidden) return;
+                try {
+                    const state = await Api.get("/api/session", {}, { redirectOnSignOut: false });
+                    if (state.signed_in === false) Session.toSignIn(state.reason || "signed_out");
+                } catch {
+                    // The server is unreachable: nothing to do until it is back.
+                }
+            };
+            setInterval(check, WATCH_MS);
+            document.addEventListener("visibilitychange", check);
         }
 
         static async signOut() {
@@ -73,9 +99,12 @@
             }
         }
 
-        static toSignIn() {
+        /** `reason` ("deleted", "signed_out", "expired"): the account was
+            ended from elsewhere, so go home and say why, with no way back. */
+        static toSignIn(reason) {
             const here = location.pathname + location.search;
-            location.replace(`${LANDING}?${new URLSearchParams({ next: here })}`);
+            const query = reason ? { notice: reason } : { next: here };
+            location.replace(`${LANDING}?${new URLSearchParams(query)}`);
         }
 
         /** Where to go after signing in: a page of this app, else Discover. */

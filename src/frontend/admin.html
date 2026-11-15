@@ -10,12 +10,13 @@
     <link rel="stylesheet" href="nav.css">
     <script src="nav.js"></script>
     <script src="shared.js" defer></script>
+    <script src="admin-team.js" defer></script>
     <script src="admin.js" defer></script>
 </head>
 <body>
     <main class="page" id="admin" hidden>
         <h1 class="page-title">Platform admin</h1>
-        <p class="page-subtitle">Find, open and manage any account. Viewing as someone is read-only, and every change you make here is logged.</p>
+        <p class="page-subtitle" id="admin-subtitle">Viewing as someone is read-only, and every change you make here is logged.</p>
 
         <section class="panel" id="manage" aria-labelledby="manage-title" hidden>
             <div class="panel-head">
@@ -44,12 +45,11 @@
                     </select></label>
                 <label class="row"><input type="checkbox" id="m-hide-connections">
                     <span>Hide their connections from others</span></label>
-                <label class="row"><input type="checkbox" id="m-admin">
-                    <span>Platform admin (can open this page)</span></label>
                 <div class="row">
                     <button class="button button-solid" type="submit" id="m-save">Save changes</button>
                     <button class="button" type="button" id="m-view">View as</button>
                     <button class="button" type="button" id="m-signout">Sign them out everywhere</button>
+                    <button class="button" type="button" id="m-make-admin" hidden>Make platform admin</button>
                 </div>
             </form>
             <p class="status" id="manage-status" role="status" aria-live="polite"></p>
@@ -75,7 +75,14 @@
             <ul class="list" id="users"></ul>
         </section>
 
-        <section class="panel" aria-labelledby="create-title">
+        <section class="panel" id="team" aria-labelledby="team-title" hidden>
+            <h2 class="panel-title" id="team-title">Admins and their powers</h2>
+            <p class="muted">Only you, the owner, see this. A change applies on that admin's next click. An admin with nothing ticked can only see the list of accounts and the log. To add one, open an account with Manage and choose "Make platform admin"; they also need a login from <code>scripts/set_admin_password.py</code>.</p>
+            <p class="status" id="team-status" role="status" aria-live="polite"></p>
+            <ul class="list" id="team-list"></ul>
+        </section>
+
+        <section class="panel" id="create" aria-labelledby="create-title" hidden>
             <h2 class="panel-title" id="create-title">Create an account</h2>
             <form class="row" id="create-form" novalidate>
                 <label class="sr-only" for="c-email">Northeastern email</label>
