@@ -4,6 +4,12 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Discover: friends going as 1, 2 or 3+ icons; "Friends are attending"
+
+- The friends row shows 1, 2 or 3 blank icons, and a "+" after three when more are going (no exact count). The text beside it is always "Friends are attending" (`discover.js`, `discover.css`).
+
+---
+
 ## 2026-11-15 — Discover: friends going anonymous again (with a count); "Like your orgs" hidden
 
 - **Friends going (`discover.js`, `discover.css`).** Profile pictures removed again: friends stay anonymous. The row now shows one blank icon per friend going (1, 2 or 3), then "+N" past three, and the text keeps the count ("A friend is attending" / "4 friends are attending"). `Ui.photo` (added in the entry below) is removed from `shared.js`.

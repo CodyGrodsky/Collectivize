@@ -521,18 +521,16 @@
         }
 
         /** Friends going stay anonymous: one blank icon per friend (up to
-            three, then "+N"), never names, initials or pictures (Cody's change). */
+            three, then "+"), never names, initials or pictures (Cody's change). */
         friends(container, names) {
             if (!names.length) return;
             container.hidden = false;
             const avatars = container.querySelector(".dc-avatars");
             const icons = [...avatars.querySelectorAll(".dc-avatar")]; // the card template's three blank icons
             icons.slice(names.length).forEach((icon) => icon.remove());
-            if (names.length > FRIEND_ICONS) {
-                avatars.append(el("span", { className: "dc-avatar dc-avatar-more", text: `+${names.length - FRIEND_ICONS}` }));
-            }
-            container.querySelector(".dc-friends-text").textContent = names.length === 1
-                ? "A friend is attending" : `${names.length} friends are attending`;
+            // 1, 2 or 3+: past three, a "+" (no exact number).
+            if (names.length > FRIEND_ICONS) avatars.append(el("span", { className: "dc-avatar dc-avatar-more", text: "+" }));
+            container.querySelector(".dc-friends-text").textContent = "Friends are attending";
         }
 
         renderPages(data) {
