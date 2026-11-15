@@ -93,10 +93,11 @@
             more.textContent = membersOpen ? "Show fewer" : `Show ${Math.min(org.members.length, EXPANDED) - TOP} more`;
             more.setAttribute("aria-expanded", String(membersOpen));
 
+            // Folded, "Show N more" says it all; past ten, point to the search.
             hint.textContent = query && !matches.length ? `No members match “${memberQuery.trim()}”.`
-                : matches.length > limit
-                    ? `Showing ${limit} of ${matches.length}${query ? " matches" : ""}. ${query ? "Keep typing to narrow it down." : "Search to find anyone else."}`
-                    : "";
+                : query && matches.length > limit ? `Showing ${limit} of ${matches.length} matches. Keep typing to narrow it down.`
+                    : !query && membersOpen && matches.length > limit ? `Showing ${limit} of ${matches.length}. Search to find anyone else.`
+                        : "";
             hint.hidden = !hint.textContent;
         }
         draw();
