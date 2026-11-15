@@ -36,8 +36,16 @@
                 localStorage.setItem(SCORES_KEY, scores.checked ? "1" : "0");
             } catch { /* not remembered */ }
         });
+        Manage.bind();
+        $("create-form").addEventListener("submit", (event) => {
+            event.preventDefault();
+            create();
+        });
         search("");
         loadAudit();
+        // admin.html?id=<person id> opens that account straight away.
+        const id = new URLSearchParams(location.search).get("id");
+        if (id) Manage.open(id);
     }
 
     async function search(q) {
@@ -56,16 +64,11 @@
 
     function userRow(user) {
         const view = el("button", { className: "button", text: "View as", attrs: { type: "button" } });
-        view.addEventListener("click", async () => {
-            view.disabled = true;
-            try {
-                await Api.post("/api/admin/view-as", { person_id: user.id });
-                location.href = "discover.html";
-            } catch (error) {
-                $("users-status").textContent = error.message;
-                view.disabled = false;
-            }
-        });
+        view.addEventListener("click", () => viewAs(user.id, (message) => {
+            $("users-status").textContent = message;
+        }));
+        const manage = el("button", { className: "button button-solid", text: "Manage", attrs: { type: "button" } });
+        manage.addEventListener("click", () => Manage.open(user.id));
         return el("li", { className: "list-item" }, [
             Ui.avatar(user),
             el("div", { className: "list-main" }, [
@@ -73,16 +76,172 @@
                 el("p", { className: "list-meta",
                           text: `${user.email || "no email"} · ${user.connections} connections · ${user.orgs} orgs` }),
             ]),
+            manage,
             view,
         ]);
     }
+
+    async function viewAs(id, onError) {
+        try {
+            await Api.post("/api/admin/view-as", { person_id: id });
+            location.href = "discover.html";
+        } catch (error) {
+            onError(error.message);
+        }
+    }
+
+    /** The "Manage account" panel: one account, opened from the list. */
+    class Manage {
+        static account = null;
+
+        static bind() {
+            $("manage-close").addEventListener("click", () => Manage.show(null));
+            $("manage-form").addEventListener("submit", (event) => {
+                event.preventDefault();
+                Manage.save();
+            });
+            $("m-view").addEventListener("click", () => viewAs(Manage.account.id, Manage.say));
+            $("m-signout").addEventListener("click", () => Manage.run("/api/admin/account/signout", {},
+                (data) => `Signed out of ${data.sessions_ended} session${data.sessions_ended === 1 ? "" : "s"}.`));
+            $("delete-form").addEventListener("submit", (event) => {
+                event.preventDefault();
+                Manage.remove();
+            });
+        }
+
+        static say(message, isError = true) {
+            const status = $("manage-status");
+            status.textContent = message;
+            status.classList.toggle("is-error", isError);
+        }
+
+        static async open(id) {
+            try {
+                Manage.show(await Api.get("/api/admin/account", { id }));
+                Manage.say("", false);
+                $("manage").scrollIntoView({ block: "start" });
+            } catch (error) {
+                $("users-status").textContent = error.message;
+            }
+        }
+
+        static show(account) {
+            Manage.account = account;
+            $("manage").hidden = !account;
+            if (!account) return;
+            const { settings, counts } = account;
+            $("manage-title").textContent = `Manage ${account.name}`;
+            $("manage-facts").textContent = [
+                `Joined ${TIME.format(new Date(account.created_at))}`,
+                `${counts.connections} connections`, `${counts.orgs} orgs`, `${counts.rsvps} RSVPs`,
+                `${account.sessions} active session${account.sessions === 1 ? "" : "s"}`,
+                `AI uses history: ${settings.ai_uses_history ? "on" : "off"}`,
+                `analytics consent: ${settings.analytics_consent ? "on" : "off"} (theirs to change)`,
+            ].join(" · ");
+            $("m-name").value = account.name;
+            $("m-email").value = account.email || "";
+            $("m-bio").value = account.profile.bio;
+            $("m-profile-visibility").value = settings.profile_visibility;
+            $("m-rsvp-visibility").value = settings.rsvp_visibility;
+            $("m-hide-connections").checked = settings.hide_connections;
+            $("m-admin").checked = account.is_platform_admin;
+            $("m-confirm").value = "";
+        }
+
+        /** Only what was changed is sent. */
+        static changes() {
+            const { account } = Manage;
+            const now = {
+                display_name: $("m-name").value.trim(),
+                email: $("m-email").value.trim().toLowerCase(),
+                bio: $("m-bio").value.trim(),
+                profile_visibility: $("m-profile-visibility").value,
+                rsvp_visibility: $("m-rsvp-visibility").value,
+                hide_connections: $("m-hide-connections").checked,
+                is_platform_admin: $("m-admin").checked,
+            };
+            const before = {
+                display_name: account.name, email: account.email || "", bio: account.profile.bio,
+                profile_visibility: account.settings.profile_visibility,
+                rsvp_visibility: account.settings.rsvp_visibility,
+                hide_connections: account.settings.hide_connections,
+                is_platform_admin: account.is_platform_admin,
+            };
+            return Object.fromEntries(Object.entries(now).filter(([key, value]) => value !== before[key]));
+        }
+
+        static async save() {
+            const changes = Manage.changes();
+            if (!Object.keys(changes).length) {
+                Manage.say("Nothing to save.", false);
+                return;
+            }
+            $("m-save").disabled = true;
+            try {
+                Manage.show(await Api.post("/api/admin/account", { person_id: Manage.account.id, ...changes }));
+                Manage.say("Saved.", false);
+                refresh();
+            } catch (error) {
+                Manage.say(error.message);
+            } finally {
+                $("m-save").disabled = false;
+            }
+        }
+
+        static async run(path, body, done) {
+            try {
+                const data = await Api.post(path, { person_id: Manage.account.id, ...body });
+                Manage.say(done(data), false);
+                refresh();
+                return data;
+            } catch (error) {
+                Manage.say(error.message);
+                return null;
+            }
+        }
+
+        static async remove() {
+            const data = await Manage.run("/api/admin/account/delete", { confirm: $("m-confirm").value }, () => "");
+            if (!data) return;
+            Manage.show(null);
+            $("users-status").textContent = "Account deleted.";
+        }
+    }
+
+    async function create() {
+        const status = $("create-status");
+        const body = { email: $("c-email").value.trim() };
+        if ($("c-name").value.trim()) body.display_name = $("c-name").value.trim();
+        try {
+            const account = await Api.post("/api/admin/account/create", body);
+            status.textContent = `Created ${account.name}.`;
+            status.classList.remove("is-error");
+            $("create-form").reset();
+            refresh();
+            Manage.show(account);
+        } catch (error) {
+            status.textContent = error.message;
+            status.classList.add("is-error");
+        }
+    }
+
+    function refresh() {
+        search($("user-query").value.trim());
+        loadAudit();
+    }
+
+    const ACTIONS = {
+        "view-as start": "Started viewing as", "view-as stop": "Stopped viewing as",
+        update: "Edited", create: "Created", delete: "Deleted", "sign-out": "Signed out",
+    };
 
     async function loadAudit() {
         try {
             const { entries } = await Api.get("/api/admin/audit");
             $("audit").replaceChildren(...entries.map((e) => el("li", { className: "list-item" }, [
                 el("div", { className: "list-main" }, [
-                    el("p", { className: "list-title", text: `${e.action === "start" ? "Started" : "Stopped"} viewing as ${e.target}` }),
+                    el("p", { className: "list-title",
+                              text: `${ACTIONS[e.action] || e.action} ${e.target}${e.detail ? ` (${e.detail})` : ""}` }),
                     el("p", { className: "list-meta", text: `${TIME.format(new Date(e.at))} · admin ${e.admin}` }),
                 ]),
             ])));

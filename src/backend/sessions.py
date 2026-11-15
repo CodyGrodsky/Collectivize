@@ -65,6 +65,19 @@ class SessionStore:
         with self._lock:
             self._sessions.pop(token or "", None)
 
+    def end_all(self, person_id: str) -> int:
+        """Sign this person out everywhere (account deleted, or signed out
+        by themselves or a platform admin). Returns how many sessions ended."""
+        with self._lock:
+            tokens = [t for t, s in self._sessions.items() if s.person_id == person_id]
+            for token in tokens:
+                del self._sessions[token]
+        return len(tokens)
+
+    def count_for(self, person_id: str) -> int:
+        with self._lock:
+            return sum(s.person_id == person_id for s in self._sessions.values())
+
     def view_as(self, token: str, target_id: str | None, now: datetime) -> Session:
         """Start (target) or stop (None) viewing as someone. The caller has
         already checked that this session's person is a platform admin."""

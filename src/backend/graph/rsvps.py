@@ -132,8 +132,9 @@ class RsvpService:
     def set_rsvp_visibility(
         self, person_id: str, by_person_id: str, level: Visibility
     ) -> Person:
-        """Who can see your RSVPs: NETWORK, CONNECTIONS or PRIVATE (nobody)."""
-        if person_id != by_person_id:
+        """Who can see your RSVPs: NETWORK, CONNECTIONS or PRIVATE (nobody).
+        A platform admin may set it for someone else's account."""
+        if not may_manage(self._store, person_id, by_person_id):
             raise PermissionDeniedError("only you can change who sees your RSVPs")
         if level not in RSVP_AUDIENCES:
             raise DomainRuleError(f"{level.name} isn't a choice for RSVPs")
@@ -201,3 +202,11 @@ class RsvpService:
         if event is None or not self._privacy.can_view_listing(viewer_id, event):
             raise NotFoundError(f"event {event_id!r} not found")
         return event
+
+
+def may_manage(store: GraphStore, person_id: str, by_person_id: str) -> bool:
+    """May `by_person_id` change this account's own settings? Only the
+    person themselves, or a platform admin (Collectivize staff)."""
+    if person_id == by_person_id:
+        return True
+    return store.has_node(by_person_id) and store.node(by_person_id, Person).is_platform_admin

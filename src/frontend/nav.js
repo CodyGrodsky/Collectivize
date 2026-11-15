@@ -15,6 +15,7 @@
         { label: "My Events", href: "my-events.html", icon: "bookmark" },
         { label: "Network", href: "network.html", icon: "graph" },
         { label: "Profile", href: "profile.html", icon: "profile" },
+        { label: "Account", href: "account.html", icon: "gear" },
     ];
     const ADMIN_PAGE = { label: "Admin", href: "admin.html", icon: "shield" };
 
@@ -29,6 +30,7 @@
         profile: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.5 3.6-5.5 7-5.5s6.2 2 7 5.5"/>',
         bookmark: '<path d="M7 4h10a1 1 0 0 1 1 1v15l-6-4-6 4V5a1 1 0 0 1 1-1z"/>',
         shield: '<path d="M12 3.5 19 6v5.5c0 4.3-2.9 7.6-7 9-4.1-1.4-7-4.7-7-9V6z"/>',
+        gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
         signout: '<path d="M14 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 8l-4 4 4 4M6 12h10"/>',
 
     };

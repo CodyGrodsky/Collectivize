@@ -1,0 +1,10 @@
+{
+  "_readme": "Shows the shape of config/admin.local.json. Don't edit or copy this by hand: run `uv run python scripts/set_admin_password.py`, which writes the real file (git-ignored) with a hashed password.",
+  "admins": [
+    {
+      "username": "your-admin-username",
+      "email": "pat.demo@northeastern.edu",
+      "password_hash": "scrypt$16384$8$1$<salt>$<hash>"
+    }
+  ]
+}

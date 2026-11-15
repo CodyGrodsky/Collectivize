@@ -26,7 +26,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from backend.config import DATA_DIR, LOGIN_REQUIRED, load_config
+from backend.accounts import AccountsApi
+from backend.admin_auth import AdminAuth, AdminAuthError
 from backend.app_api import AppApi
+from backend.audit import AuditLog
 from backend.graph.query_understanding import ClaudeQueryExtractor, QueryReader
 from backend.server import ApiError, DiscoverApi, demo_graph_factory, serve
 from backend.sessions import SessionStore
@@ -68,14 +71,26 @@ def main(argv: list[str] | None = None) -> int:
     # Search reads sentences with one small Claude call; --no-ai reads them locally.
     reader = QueryReader(None if args.no_ai else ClaudeQueryExtractor())
     try:
+        admin_auth = AdminAuth.load()
+    except AdminAuthError as error:
+        log.error("%s", error)
+        return 1
+    sessions = SessionStore(audit_path=DATA_DIR / "view_as.log")
+    accounts = AccountsApi(graphs, sessions, audit=AuditLog(DATA_DIR / "admin_audit.log"))
+    try:
         server = serve(DiscoverApi(graphs), args.port, app=AppApi(graphs, reader=reader),
-                       sessions=SessionStore(audit_path=DATA_DIR / "view_as.log"),
+                       sessions=sessions, accounts=accounts, admin_auth=admin_auth,
                        auto_login_email=None if login_on else args.login_as)
-    except ApiError as error:  # e.g. --as with a non-Northeastern email
+    except ApiError as error:  # e.g. --as with a non-Northeastern email, or an admin
         log.error("--as %s: %s", args.login_as, error.message)
         return 1
-    log.info("Collectivize demo on http://127.0.0.1:%d/  (sign in with e.g. drew.demo@northeastern.edu;"
-             " platform admin: pat.demo@northeastern.edu)", args.port)
+    log.info("Collectivize demo on http://127.0.0.1:%d/  (sign in with e.g. drew.demo@northeastern.edu)",
+             args.port)
+    if admin_auth.is_set_up:
+        log.info("Admin sign-in: http://127.0.0.1:%d/admin (username and password)", args.port)
+    else:
+        log.warning("Admin sign-in isn't set up, so nobody can open /admin. "
+                    "Run: uv run python scripts/set_admin_password.py")
     log.info("AI search: %s", "off (keywords only)" if args.no_ai else "on")
     if not login_on:
         log.warning("SIGN-IN IS OFF: everyone is signed in as %s. Development only. To turn it "

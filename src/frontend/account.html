@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#f5f4f0">
+    <title>Account · Collectivize</title>
+    <link rel="icon" href="../../app/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="app.css">
+    <link rel="stylesheet" href="nav.css">
+    <script src="nav.js"></script>
+    <script src="shared.js" defer></script>
+    <script src="account.js" defer></script>
+</head>
+<body>
+    <main class="page" id="account" hidden>
+        <h1 class="page-title">Account</h1>
+        <p class="page-subtitle" id="account-summary"></p>
+
+        <section class="panel" aria-labelledby="steps-title">
+            <h2 class="panel-title" id="steps-title">Getting set up</h2>
+            <ul class="list" id="steps"></ul>
+        </section>
+
+        <section class="panel" aria-labelledby="data-title">
+            <h2 class="panel-title" id="data-title">Your data</h2>
+            <label class="row"><input type="checkbox" id="ai-history">
+                <span>Let search use my interests, orgs and past events to tailor my own results</span></label>
+            <label class="row"><input type="checkbox" id="analytics">
+                <span>Include my data, with my name removed, in datasets used to improve Collectivize</span></label>
+            <p class="status" id="settings-status" role="status" aria-live="polite"></p>
+            <p class="muted">Who can see your profile, RSVPs and connections is on your <a href="profile.html">Profile</a>.</p>
+        </section>
+
+        <section class="panel" aria-labelledby="sessions-title">
+            <h2 class="panel-title" id="sessions-title">Signed-in browsers</h2>
+            <p class="muted" id="sessions-text"></p>
+            <button class="button" type="button" id="signout-all">Sign out everywhere</button>
+        </section>
+
+        <section class="panel">
+            <form class="account-danger" id="delete-form" novalidate>
+                <h2 class="panel-title">Delete my account</h2>
+                <p class="muted">Erases your account, connections, memberships and RSVPs for good. This can't be undone. Type your email to confirm.</p>
+                <div class="row">
+                    <label class="sr-only" for="confirm">Your email</label>
+                    <input class="input" id="confirm" type="email" maxlength="254" autocomplete="off" placeholder="your email">
+                    <button class="button button-danger" type="submit">Delete my account</button>
+                </div>
+                <p class="status" id="delete-status" role="alert" aria-live="polite"></p>
+            </form>
+        </section>
+    </main>
+</body>
+</html>

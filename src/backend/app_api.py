@@ -233,6 +233,14 @@ class AppApi:
                 ],
             }
 
+    def admin_account_id(self, email: str) -> str | None:
+        """The platform-admin account with this sign-in email, if there is one."""
+        with self._graphs() as graph:
+            for person in graph.store.nodes(Person):
+                if person.email == email and person.is_platform_admin:
+                    return person.id
+        return None
+
     def check_view_as_target(self, admin_id: str, target: Any) -> str | None:
         self.require_platform_admin(admin_id)
         if target is None:

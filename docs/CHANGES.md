@@ -4,6 +4,65 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-14 — A hidden, password-protected admin sign-in at /admin
+
+**Request:** "I need a hidden method to sign in that is still easy to log in from, but normal people won't be able to. Make a config file that contains a field for username and password for admins (if this is secure enough and if not, then recommend other methods)"
+
+### What changed
+- **`/admin` is the admin entrance.** It isn't linked from any page. It shows a username and password form (`admin-login.html`) until you are signed in as a platform admin, then the Admin page.
+- **Credentials live in `config/admin.local.json`**, which is git-ignored and readable only by you. It holds a username, the admin account's email and a salted scrypt hash of the password, never the password itself. `config/admin.example.json` shows the shape.
+- **`scripts/set_admin_password.py`** creates or changes an admin's username and password (`--generate` makes a strong one).
+- **Admin accounts can no longer be opened by email.** Before, anyone who typed `pat.demo@northeastern.edu` on the sign-in page became the admin. Now the email form and `serve.py --as` both refuse platform-admin accounts.
+- New code: `src/backend/admin_auth.py` (`AdminAuth`), `POST /api/admin/signin` in `server.py`.
+
+### Security rules built in
+- A plain `password` field in the file is refused at startup.
+- Wrong username and wrong password get the same answer and take the same time.
+- Five wrong passwords lock that username for fifteen minutes.
+- Every admin sign-in, and every failed one, goes in the admin log (never the password).
+- Until the script has been run, nobody can open `/admin`.
+
+### Decisions
+- A config file with a plain-text password was not secure enough (anyone with the repo or the file would have it), so the file stores a hash and stays out of git.
+- "Hidden" means unlinked; the password is what keeps people out, not the URL.
+
+### Tests
+- `tests/backend/test_admin_auth.py` (15 tests).
+
+---
+
+## 2026-11-14 — Account management: admin tools and a user Account page
+
+**Request:** "We need an admin page where we can access and manage accounts freely and then a user page that represents the full user run through. Can you create the secure methods that this requires"
+
+### What changed
+- **New backend module `src/backend/accounts.py` (`AccountsApi`)** with two separate sets of methods:
+  - *Your own account:* read it, change your two data settings (`ai_uses_history`, `analytics_consent`; no API could set these before), sign out everywhere, delete your account (true erasure).
+  - *Platform admins:* read any account in full, edit it (profile fields, visibility settings, sign-in email, platform-admin role), create an account, sign someone out everywhere, delete an account.
+- **New routes:** `GET/POST /api/account`, `POST /api/account/signout-all`, `POST /api/account/delete`, `GET/POST /api/admin/account`, `POST /api/admin/account/create|signout|delete`.
+- **Admin page** (`admin.html`): a "Manage" button on each user opens a panel to edit, view as, sign out or delete that account; a "Create an account" form; the log now lists every admin change. `admin.html?id=<person id>` opens an account directly.
+- **New Account page** (`account.html`, in the sidebar): sign-in email, a "Getting set up" checklist (profile, first connection, community, first RSVP), data settings, sign out everywhere, delete my account.
+- **Admin audit log** (`src/backend/audit.py`, written to `data/admin_audit.log`): admin, action, account and the names of changed fields, never the values.
+
+### Security rules built in
+- The acting person always comes from the session, never the request. Each admin method checks the stored admin flag first, before reading any input.
+- Deleting needs the account's email typed back. Admins can't delete themselves from the admin page, can't change their own admin role, and the last platform admin can't be removed or deleted.
+- Removing someone's admin role signs them out, so no old admin session lingers. Deleting an account ends its sessions.
+- Admins can't change anyone's consent settings; those stay with the person.
+- No account changes while "viewing as" someone (still read-only).
+- The server now refuses any POST whose `Origin` is another site.
+
+### Decisions
+- "Manage freely" is done with explicit, logged admin methods rather than letting admins act as a user; view-as stays read-only as the v1.1 spec asks.
+- The graph layer's "only you can edit your profile / RSVP visibility" rule now also lets a platform admin through (`may_manage` in `graph/rsvps.py`).
+- Self-deletion is not written to the admin log (the account is meant to be gone).
+- I read "a user page that represents the full user run through" as an Account page covering the account from first sign-in to deletion.
+
+### Tests
+- `tests/backend/test_accounts.py` (27 tests): non-admins refused on every admin route, validation, guard rails, logging, erasure, cross-site POST refused.
+
+---
+
 ## 2026-11-14 — Search lists what's in your network first, above a divider
 
 **Request:** "make it so everything you are connected to is above the top results and there is a clear divider separating the connected part and the top results."

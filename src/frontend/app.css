@@ -161,3 +161,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* Connection requests: the sender's card with Accept / Decline. */
 .requests { display: grid; gap: 14px; }
 .request-actions { justify-content: flex-end; margin-top: 8px; }
+
+/* Account forms (admin "Manage account" and the Account page). */
+.account-form { display: grid; gap: 10px; max-width: 520px; }
+.account-field { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.account-field .input { color: var(--ink); }
+.account-danger { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--red); }
+.account-danger .panel-title { color: var(--red); }
+.panel > .account-danger:first-child { margin-top: 0; padding-top: 0; border-top: 0; }

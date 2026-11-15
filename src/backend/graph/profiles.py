@@ -10,8 +10,9 @@ Reading (`view`):
 - Orgs and events are filtered one by one with the existing rules, so a
   private membership or RSVP never appears, whatever the profile setting.
 
-Editing (`update`): only the person themselves, only the fields in
-EDITABLE, and every limit is checked when the new Person is built.
+Editing (`update`): only the person themselves (or a platform admin
+managing the account), only the fields in EDITABLE, and every limit is
+checked when the new Person is built.
 """
 
 from __future__ import annotations
@@ -39,7 +40,7 @@ from .connections import ConnectionService
 from .errors import NotFoundError, PermissionDeniedError
 from .privacy import PrivacyService
 from .roster import RosterService
-from .rsvps import RsvpService
+from .rsvps import RsvpService, may_manage
 from .store import GraphStore
 
 MAX_LISTED = 6  # orgs and events shown per list
@@ -168,8 +169,9 @@ class ProfileService:
     # --- editing -------------------------------------------------------------
 
     def update(self, person_id: str, by_person_id: str, **changes: Any) -> Person:
-        """Change your own profile and its settings. Returns the saved person."""
-        if person_id != by_person_id:
+        """Change your own profile and its settings (a platform admin may
+        change anyone's). Returns the saved person."""
+        if not may_manage(self._store, person_id, by_person_id):
             raise PermissionDeniedError("only you can edit your profile")
         person = self._store.node(person_id, Person)
         unknown = sorted(set(changes) - set(EDITABLE))

@@ -12,6 +12,9 @@ API (JSON; the viewer is always the signed-in person):
     POST /api/rsvp, /api/star, /api/connect, /api/connection, /api/invites
     GET  /api/requests, /api/org, /api/invite (public); POST /api/org, /api/org/members
     GET  /api/admin/users, /api/admin/audit; POST /api/admin/view-as (platform admins)
+    GET  /api/account; POST /api/account, /api/account/signout-all, /api/account/delete
+    GET  /api/admin/account?id=; POST /api/admin/account, /api/admin/account/create,
+         /api/admin/account/signout, /api/admin/account/delete   (see accounts.py)
 
 Access (v1.1 spec 4.10): campus-only. Signing in with a Northeastern email
 starts a session (an HttpOnly cookie). Signed out, only the landing/sign-in
@@ -27,6 +30,11 @@ asks for sign-in by default is `LOGIN_REQUIRED` in config.py (temporarily
 False); `serve.py --login` / `--no-login` override it for one run. This
 module itself always has the gate on unless `auto_login_email` is passed.
 
+Admin sign-in: /admin (not linked anywhere) asks for an admin username and
+password (admin_auth.py; POST /api/admin/signin). When the server is given
+an AdminAuth, platform-admin accounts can sign in only that way: the email
+form and the development auto-login both refuse them.
+
 Platform admins can "view as" someone from /admin: read-only (every change
 is refused), with a banner on every page, and logged (see sessions.py).
 
@@ -36,6 +44,8 @@ Safety:
 - Listens on 127.0.0.1 only.
 - Serves static files only from src/frontend, public and app (never data/,
   source code or dotfiles); every path is resolved and checked.
+- A POST whose Origin is another site is refused (on top of SameSite
+  cookies and JSON-only bodies), so no other page can act as you.
 - Every input is validated; errors come back as {"error": "..."} without
   internals. JSON responses carry no-store and nosniff headers.
 - AI search: identical searches are answered from a small in-memory cache,
@@ -56,6 +66,8 @@ from typing import Any
 from http.cookies import CookieError, SimpleCookie
 from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 
+from backend.accounts import AccountsApi
+from backend.admin_auth import MAX_PASSWORD, MAX_USERNAME, AdminAuth, LockedOutError
 from backend.app_api import AppApi
 from backend.demo_api import (  # re-exported: callers import these from here
     PER_PAGE,
@@ -76,13 +88,14 @@ LANDING_PAGE = "/src/frontend/index.html"
 HOME_PAGE = LANDING_PAGE
 SIGNED_IN_HOME = "/src/frontend/discover.html"
 ADMIN_PAGE = "/src/frontend/admin.html"
+ADMIN_LOGIN_PAGE = "/src/frontend/admin-login.html"
 # Pages a signed-out visitor may open (v1.1 spec 4.10). Assets (CSS, JS,
 # images) are always served: they hold no one's data.
 INVITE_PAGE = "/src/frontend/invite.html"
-PUBLIC_PAGES = frozenset({LANDING_PAGE, INVITE_PAGE})
+PUBLIC_PAGES = frozenset({LANDING_PAGE, INVITE_PAGE, ADMIN_LOGIN_PAGE})
 MAX_BODY_BYTES = 4096
 # A full profile edit is bigger: 1000 characters of emoji is about 4 KB alone.
-BODY_LIMITS = {"/api/profile": 8192}
+BODY_LIMITS = {"/api/profile": 8192, "/api/admin/account": 8192}
 READ_ONLY_ALLOWED = frozenset({"/api/signout", "/api/admin/view-as"})
 
 __all__ = ["PER_PAGE", "ApiError", "DemoServer", "DiscoverApi", "RequestHandler",
@@ -102,10 +115,17 @@ class DemoServer(ThreadingHTTPServer):
         app: AppApi | None = None,
         sessions: SessionStore | None = None,
         auto_login_email: str | None = None,
+        accounts: AccountsApi | None = None,
+        admin_auth: AdminAuth | None = None,
     ) -> None:
         self.api = api
+        # With an AdminAuth, platform admins sign in only at /admin with
+        # their username and password. None (tests, old callers): they
+        # sign in by email like anyone else.
+        self.admin_auth = admin_auth
         self.app = app or AppApi(api.graphs)
         self.sessions = sessions or SessionStore()
+        self.accounts = accounts or AccountsApi(api.graphs, self.sessions)
         # Development only (`serve.py --no-login`): visitors without a session
         # are signed in as this account. None (the default) means login is on.
         # Checked before the port opens, so a bad account fails cleanly.
@@ -113,7 +133,14 @@ class DemoServer(ThreadingHTTPServer):
             None if auto_login_email is None
             else self.app.sign_in({"email": auto_login_email})
         )
+        if self.auto_login_id and admin_auth and self.is_platform_admin(self.auto_login_id):
+            raise ApiError(HTTPStatus.FORBIDDEN,
+                           "that is a platform admin: admins sign in at /admin, not automatically")
         super().__init__(address, RequestHandler)
+
+    def is_platform_admin(self, person_id: str) -> bool:
+        with self.api.graphs() as graph:
+            return graph.visibility.is_platform_admin(person_id)
 
 
 class RequestHandler(BaseHTTPRequestHandler):
@@ -129,8 +156,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._get_api(url.path, params)
         elif url.path == "/":
             self._redirect(SIGNED_IN_HOME if self._session() else LANDING_PAGE)
-        elif url.path == "/admin":
-            self._redirect(ADMIN_PAGE)
+        elif url.path == "/admin":  # the admin entrance: not linked from any page
+            is_admin = self._is_platform_admin(self._session())
+            self._redirect(ADMIN_PAGE if is_admin else ADMIN_LOGIN_PAGE)
         elif url.path.startswith("/invite/"):  # shareable invite links
             code = url.path.removeprefix("/invite/").strip("/")
             self._redirect(INVITE_PAGE + "?" + urlencode({"code": code[:100]}))
@@ -139,8 +167,14 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlsplit(self.path).path
+        if not self._same_origin():
+            self._json(HTTPStatus.FORBIDDEN, {"error": "cross-site request refused"})
+            return
         if path == "/api/signin":
             self._sign_in()
+            return
+        if path == "/api/admin/signin":
+            self._admin_sign_in()
             return
         session = self._session(auto=path != "/api/signout")
         if path == "/api/signout":
@@ -180,6 +214,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         self, session: Session, params: dict[str, str]
     ) -> dict[str, Callable[[], dict[str, Any]]]:
         api, app, viewer = self.server.api, self.server.app, session.viewer_id
+        accounts = self.server.accounts
         own = {**params, "viewer": viewer, "near": "0"}  # no on/off-campus switch any more
         return {
             "/api/me": lambda: app.me(session.person_id, session.view_as),
@@ -194,10 +229,13 @@ class RequestHandler(BaseHTTPRequestHandler):
             "/api/my-calendar": lambda: app.my_calendar(viewer, params),
             "/api/admin/users": lambda: app.admin_users(session.person_id, params),
             "/api/admin/audit": lambda: self._audit(session),
+            "/api/account": lambda: accounts.my_account(session.person_id),
+            "/api/admin/account": lambda: accounts.admin_account(session.person_id, params),
         }
 
     def _post_routes(self, session: Session) -> dict[str, Callable[[dict[str, Any]], dict[str, Any]]]:
         api, app, viewer = self.server.api, self.server.app, session.viewer_id
+        accounts, me = self.server.accounts, session.person_id
 
         def own(handler: Callable[[dict[str, Any]], dict[str, Any]]):
             return lambda body: handler({**body, "viewer": viewer, "near": False})
@@ -213,9 +251,26 @@ class RequestHandler(BaseHTTPRequestHandler):
             "/api/connection": lambda body: app.connection(viewer, body),
             "/api/org/members": lambda body: app.org_members(viewer, body),
             "/api/admin/view-as": lambda body: self._view_as(session, body),
+            # Accounts: always the session's own person, never the view-as target.
+            "/api/account": lambda body: accounts.update_my_settings(me, body),
+            "/api/account/signout-all": lambda body: accounts.sign_out_everywhere(me),
+            "/api/account/delete": lambda body: accounts.delete_my_account(me, body),
+            "/api/admin/account": lambda body: accounts.admin_update(me, body),
+            "/api/admin/account/create": lambda body: accounts.admin_create(me, body),
+            "/api/admin/account/signout": lambda body: accounts.admin_sign_out(me, body),
+            "/api/admin/account/delete": lambda body: accounts.admin_delete(me, body),
         }
 
     # --- sessions ----------------------------------------------------------------
+
+    def _same_origin(self) -> bool:
+        """False when a browser says this POST comes from another site.
+        (Browsers always send Origin on cross-site POSTs; tools without one
+        still need the session cookie.)"""
+        origin = self.headers.get("Origin")
+        if not origin:
+            return True
+        return urlsplit(origin).netloc == (self.headers.get("Host") or "")
 
     def _cookie(self) -> str | None:
         jar = SimpleCookie()
@@ -272,9 +327,52 @@ class RequestHandler(BaseHTTPRequestHandler):
             log.exception("sign-in failed")
             self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "something went wrong"})
             return
+        if self.server.admin_auth and self.server.is_platform_admin(person_id):
+            # Admin accounts open only with the admin username and password.
+            self._json(HTTPStatus.FORBIDDEN, {"error": "that account can't sign in here"})
+            return
+        self._start_session(person_id)
+
+    def _start_session(self, person_id: str) -> None:
         self.server.sessions.end(self._cookie())
         token = self.server.sessions.create(person_id)
         self._json(HTTPStatus.OK, self.server.app.me(person_id, None), cookie=token)
+
+    def _admin_sign_in(self) -> None:
+        """POST /api/admin/signin {"username", "password"}. Every failure
+        gets the same answer, whatever was wrong."""
+        auth, refused = self.server.admin_auth, {"error": "wrong username or password"}
+        if auth is None:
+            self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+            return
+        try:
+            body = self._read_json(MAX_BODY_BYTES)
+            username, password = body.get("username"), body.get("password")
+            if not (isinstance(username, str) and isinstance(password, str)
+                    and 0 < len(username) <= MAX_USERNAME and 0 < len(password) <= MAX_PASSWORD):
+                self._json(HTTPStatus.UNAUTHORIZED, refused)
+                return
+            email = auth.verify(username, password)
+            person_id = self.server.app.admin_account_id(email) if email else None
+        except ApiError as error:
+            self._json(error.status, {"error": error.message})
+            return
+        except LockedOutError:
+            log.warning("admin sign-in: locked out after too many wrong passwords")
+            self._json(HTTPStatus.TOO_MANY_REQUESTS,
+                       {"error": "too many wrong passwords: try again in 15 minutes"})
+            return
+        except Exception:
+            log.exception("admin sign-in failed")
+            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "something went wrong"})
+            return
+        now = utc_now()
+        if person_id is None:
+            self.server.accounts.audit.record("", "sign-in failed", "", now)
+            self._json(HTTPStatus.UNAUTHORIZED, refused)
+            return
+        self.server.accounts.audit.record(person_id, "sign-in", person_id, now)
+        self._start_session(person_id)
 
     def _view_as(self, session: Session, body: dict[str, Any]) -> dict[str, Any]:
         target = self.server.app.check_view_as_target(session.person_id, body.get("person_id"))
@@ -283,7 +381,10 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def _audit(self, session: Session) -> dict[str, Any]:
         self.server.app.require_platform_admin(session.person_id)
-        return {"entries": list(reversed(self.server.sessions.audit[-100:]))}
+        views = [{**e, "action": f"view-as {e['action']}", "detail": ""}
+                 for e in self.server.sessions.audit]
+        entries = sorted(views + self.server.accounts.audit.entries(), key=lambda e: e["at"])
+        return {"entries": list(reversed(entries[-100:]))}
 
     def log_message(self, format: str, *args: Any) -> None:
         """One short log line per request (method and path, no query)."""
@@ -413,7 +514,9 @@ def serve(
     app: AppApi | None = None,
     sessions: SessionStore | None = None,
     auto_login_email: str | None = None,
+    accounts: AccountsApi | None = None,
+    admin_auth: AdminAuth | None = None,
 ) -> DemoServer:
     """Create the server on 127.0.0.1 (call .serve_forever() to run it).
     `auto_login_email` turns login off for development (see DemoServer)."""
-    return DemoServer(("127.0.0.1", port), api, app, sessions, auto_login_email)
+    return DemoServer(("127.0.0.1", port), api, app, sessions, auto_login_email, accounts, admin_auth)
