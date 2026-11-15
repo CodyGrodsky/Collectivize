@@ -109,9 +109,6 @@ select { font: inherit; color: inherit; }
 .nw-map.can-move { cursor: grab; touch-action: none; }
 .nw-map.is-dragging { cursor: grabbing; }
 
-
-
-
 .nw-world.is-gliding { transition: transform var(--duration-normal) var(--ease-out); }
 
 /* In the bubble's place when someone's network is closed to you. */
@@ -132,25 +129,6 @@ select { font: inherit; color: inherit; }
     text-underline-offset: 3px;
     cursor: pointer;
 }
-
-.nw-legend {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 4px 14px;
-    margin: 10px 0 0;
-    padding: 0;
-    list-style: none;
-    color: var(--b-muted);
-    font-size: 11.5px;
-}
-
-.nw-legend li { display: flex; align-items: center; gap: 6px; }
-
-.nw-key { width: 11px; height: 11px; border: 1.5px solid var(--b-accent); border-radius: 50%; background: var(--b-bg); }
-.nw-key.is-org { border-radius: 3px; background: color-mix(in srgb, var(--b-accent) 14%, var(--b-bg)); }
-.nw-key.is-line { width: 20px; height: 0; border: 0; border-top: 2.2px solid color-mix(in srgb, var(--b-ink) 70%, var(--b-bg)); border-radius: 0; background: none; }
-.nw-key.is-line.is-org { border-top: 2px solid var(--b-accent); background: none; opacity: .6; }
 
 /* --- inside the bubble --------------------------------------------------- */
 

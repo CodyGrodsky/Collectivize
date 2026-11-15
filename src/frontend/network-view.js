@@ -5,14 +5,13 @@
 //   bubble.element          put this on the page (the Network tab)
 //   bubble.draw(map)        lay out and draw the server's map (network-layout.js)
 //
-// NetworkBubble is the map plus its "Back to the middle" button and key;
+// NetworkBubble is the map plus its "Back to the middle" button;
 // NetworkView is the map alone.
 //
 // Whatever fits inside the box is shown; the rest is cut off at its edge.
-// When the network is bigger than the box you can move around it by
-// dragging (mouse or touch) or with the arrow keys, and tabbing to a node
-// that is out of sight brings it into view. A network that fits doesn't
-// move.
+// Every network (yours or a friend's) can be moved around by dragging
+// (mouse or touch) or with the arrow keys, and tabbing to a node that is
+// out of sight brings it into view.
 //
 // Server text is only ever inserted as text.
 
@@ -21,6 +20,7 @@
     const RADIUS = 210; // half the box's shorter side, in map units (the SVG scales to its box)
     const LABEL_ROOM = 52; // a node this close to the edge would lose its label
     const KEY_STEP = 70; // one arrow-key press
+    const MIN_PAN = RADIUS * 0.6; // how far any network can be dragged from the middle
     const DRAG_START = 6; // pointer travel (px) before a press counts as a drag
     const NODE = { center: 34, org: 27, person: 21 };
     const LABEL_LINE = 18; // characters per line of a label
@@ -95,7 +95,10 @@
 
         draw(layout, { isSelf }) {
             this.isSelf = isSelf;
-            this.limit = layout.reach + LABEL_ROOM > RADIUS ? layout.reach + LABEL_ROOM - RADIUS * 0.6 : 0;
+            // Every network can be dragged around, even one that fits the box
+            // (a friend's small network moves just like your own big one).
+            const beyond = layout.reach + LABEL_ROOM - RADIUS * 0.6;
+            this.limit = Math.max(beyond, MIN_PAN);
             this.offset = { x: 0, y: 0 };
 
             // No circle: the map is clipped to its whole box.
@@ -288,14 +291,7 @@
         return node;
     }
 
-    const KEY = [
-        ["nw-key is-org", "Your community"],
-        ["nw-key", "Your connection"],
-        ["nw-key is-line", "Connected"],
-        ["nw-key is-line is-org", "In the community"],
-    ];
-
-    /** The network as one element: the map, a "Back to the middle" button, and key. */
+    /** The network as one element: the map and a "Back to the middle" button (no key). */
     class NetworkBubble {
         constructor({ onOpen }) {
             const map = document.createElementNS(SVG, "svg");
@@ -314,15 +310,8 @@
 
             const circle = el("div", "nw-circle");
             circle.append(map);
-            const key = el("ul", "nw-legend");
-            key.setAttribute("aria-label", "Key");
-            for (const [className, label] of KEY) {
-                const item = el("li");
-                item.append(el("span", className), label);
-                key.append(item);
-            }
             this.element = el("div", "nw-bubble");
-            this.element.append(circle, this.empty, this.move, key);
+            this.element.append(circle, this.empty, this.move);
 
             this.view = new NetworkView(map, {
                 onOpen,
