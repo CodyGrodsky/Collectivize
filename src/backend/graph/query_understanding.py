@@ -25,8 +25,11 @@ import json
 import logging
 import re
 import threading
+import time
+import unicodedata
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import Any, Protocol
 
@@ -41,6 +44,8 @@ MAX_KEYWORDS = 8
 MAX_KEYWORD_CHARS = 30
 MAX_SUMMARY_CHARS = 120
 SENTENCE_WORDS = 4  # this many words or more reads as a sentence
+EXTRACT_TIMEOUT_SECONDS = 4.0  # longer than this and the sentence is read locally
+AI_REST_SECONDS = 60.0  # after a failure, don't make every search wait on AI again
 WORD = re.compile(r"\w+(?:'\w+)*")
 ISO_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 
@@ -73,7 +78,15 @@ FILLER = STOPWORDS | REQUEST_WORDS | {"going", "go", "do", "doing", "things", "t
                                       # praise that names no topic ("something rad")
                                       "rad", "awesome", "great", "amazing", "interesting",
                                       "exciting", "neat", "sweet", "sick", "dope", "epic",
-                                      "lit", "best", "whatever", "random"}
+                                      "lit", "best", "whatever", "random",
+                                      # joining words ("clubs about robotics",
+                                      # "people named alice", "who likes chess")
+                                      "about", "named", "called", "regarding", "related",
+                                      "involving", "interested", "likes", "liked", "love",
+                                      "loves", "enjoy", "enjoys", "tell", "give", "search",
+                                      "searching", "list", "upcoming", "happens", "is", "was",
+                                      "were", "be", "have", "has", "does", "did", "will",
+                                      "can", "there's", "theres", "let", "lets", "let's"}
 
 
 @dataclass(frozen=True)
@@ -84,6 +97,7 @@ class Extraction:
     types: frozenset[str] = frozenset()
     tags: tuple[str, ...] = ()  # topic labels, from the list the app gave
     day: date | None = None
+    days: int = 1  # how many days from `day`: 2 for "this weekend"
     summary: str = ""
 
 
@@ -137,7 +151,7 @@ def local_extract(text: str, today: date) -> Extraction:
     """Keywords, type filters and a date, read without AI."""
     words = words_of(text)
     types = {kind for kind, vocab in TYPE_WORDS.items() if any(w in vocab for w in words)}
-    day = _day_from(text, words, today)
+    day, days = _day_from(text, words, today)
     if day is not None:
         types.add("events")
     keywords: list[str] = []
@@ -151,26 +165,35 @@ def local_extract(text: str, today: date) -> Extraction:
         keywords=tuple(keywords[:MAX_KEYWORDS]),
         types=frozenset(types),
         day=day,
+        days=days,
     )
 
 
-def _day_from(text: str, words: list[str], today: date) -> date | None:
+def _day_from(text: str, words: list[str], today: date) -> tuple[date | None, int]:
+    """The first day asked for and how many days it covers."""
     iso = ISO_DATE.search(text)
     if iso:
         try:
-            return date(int(iso[1]), int(iso[2]), int(iso[3]))
+            return date(int(iso[1]), int(iso[2]), int(iso[3])), 1
         except ValueError:
-            return None
+            return None, 1
     if "today" in words or "tonight" in words:
-        return today
+        return today, 1
     if "tomorrow" in words:
-        return today + timedelta(days=1)
+        return today + timedelta(days=1), 1
     if "weekend" in words:
-        return _next_weekday(today, WEEKDAYS.index("saturday"))
+        return _weekend(today)
     for index, name in enumerate(WEEKDAYS):
         if name in words:
-            return _next_weekday(today, index)
-    return None
+            return _next_weekday(today, index), 1
+    return None, 1
+
+
+def _weekend(today: date) -> tuple[date, int]:
+    """Saturday and Sunday; on a Sunday, what's left of this weekend."""
+    if today.weekday() == WEEKDAYS.index("sunday"):
+        return today, 1
+    return _next_weekday(today, WEEKDAYS.index("saturday")), 2
 
 
 def _next_weekday(today: date, weekday: int) -> date:
@@ -186,14 +209,22 @@ class QueryReader:
     extractor. Answers for repeated sentences are cached (they don't
     depend on who asks)."""
 
-    def __init__(self, extractor: QueryExtractor | None = None, cache_size: int = 128) -> None:
+    def __init__(
+        self,
+        extractor: QueryExtractor | None = None,
+        cache_size: int = 128,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._extractor = extractor
+        self._clock = clock
+        self._resting_until = 0.0  # no AI calls before this (after a failure)
         self._cache: OrderedDict[tuple[str, date], Extraction] = OrderedDict()
         self._cache_size = cache_size
         self._lock = threading.Lock()
 
     def read(self, text: str, today: date, tag_labels: tuple[str, ...] = ()) -> Understanding:
-        text = " ".join(text.split())[:MAX_QUERY_CHARS]
+        text = " ".join(_printable(text).split())[:MAX_QUERY_CHARS]
         mode = classify(text)
         if mode == "empty":
             return Understanding("empty", Extraction())
@@ -206,13 +237,19 @@ class QueryReader:
             if cached is not None:
                 self._cache.move_to_end(key)
                 return Understanding(mode, cached, used_ai=True)
+        unavailable = Understanding(mode, local, note="AI isn't available right now, so this "
+                                                      "searched the words you typed.")
+        if self._clock() < self._resting_until:
+            return unavailable  # it just failed: answer at once instead of waiting again
         try:
             found = self._extractor.extract(ExtractRequest(text, today, tag_labels))
         except InterpreterError as error:
             log.info("query extractor unavailable (%s); reading it locally", error)
-            return Understanding(mode, local, note="AI isn't available right now, so this "
-                                                   "searched the words you typed.")
+            self._resting_until = self._clock() + AI_REST_SECONDS
+            return unavailable
         found = _sanitize(found, today, tag_labels)
+        if found.day is not None and found.day == local.day:
+            found = replace(found, days=local.days)  # "this weekend": both days
         if not (found.keywords or found.types or found.tags or found.day):
             found = local  # the extractor found nothing usable
         with self._lock:
@@ -220,6 +257,13 @@ class QueryReader:
             if len(self._cache) > self._cache_size:
                 self._cache.popitem(last=False)
         return Understanding(mode, found, used_ai=True)
+
+
+def _printable(text: str) -> str:
+    """Without invisible characters (zero-width joiners, control codes),
+    which would otherwise split a word in two."""
+    return "".join(ch for ch in text
+                   if ch.isspace() or unicodedata.category(ch) not in ("Cc", "Cf"))
 
 
 def _sanitize(found: Extraction, today: date, tag_labels: tuple[str, ...]) -> Extraction:
@@ -299,7 +343,8 @@ class ClaudeQueryExtractor:
             "topics": list(request.tag_labels),
         }, ensure_ascii=False)
         try:
-            self.client = self.client or make_client()
+            # One short try: a slow answer is worse than the local reading.
+            self.client = self.client or make_client(EXTRACT_TIMEOUT_SECONDS, max_retries=0)
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=EXTRACT_MAX_TOKENS,

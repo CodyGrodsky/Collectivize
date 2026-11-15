@@ -4,6 +4,47 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-14 — Search handles short words, plurals, typos, accents, weekends and flooding words
+
+**Request:** "do all the steps in the plan" (the eight-step search plan from the edge-case run below).
+
+### What changed
+1. **Matching** (new `src/backend/graph/text_match.py`). A keyword now matches the start of a word from two letters ("rob" finds robotics while typing), ignores accents and letter width ("café" = "cafe"), and treats plurals and endings alike ("robots", "hiking"/"hike"). Invisible characters no longer split a word.
+2. **Several words.** Results that contain every word are listed before results that contain only some. A word found in more than half of everything ("demo" in the demo data) is left out when another word narrows things down, and the page says so.
+3. **"This weekend"** covers Saturday and Sunday (on a Sunday, just that day). `SearchFilters.days`, `Extraction.days`; the API adds `filters.date_end`; Discover shows "Sat, Nov 14 – Sun, Nov 15".
+4. **Typos.** When nothing matches, one wrong, missing, extra or swapped letter per word is allowed (words of four letters or more), and the page says "Nothing matched “robtics”, so this shows results for “robotics”."
+5. **Filler and type words.** "about", "named", "called", "likes" and similar are no longer keywords. If the text named a kind ("people who like hiking") and nothing of that kind matched, every kind is searched and the page says so. A type ticked by hand is never widened.
+6. **AI timing.** The sentence reader waits at most 4 seconds with no retry (was 30 seconds plus a retry), then reads the sentence locally. After a failure it skips AI for 60 seconds so later searches don't wait again.
+7. **Scale.** On a temporary database with 7,726 people and 1,329 events, searches took 0.3–0.5 s. Most of that was thousands of repeated small lookups, so the demo server's store now remembers its own reads for the length of one request (`SqliteGraphStore(read_cache=True)`, cleared on every write and rollback). After: 0.15–0.25 s there, about 0.05 s on the demo database.
+8. **Tests.** `tests/backend/test_search_edge_cases.py` (113 tests): about 65 awkward inputs must each get a well-formed answer in under 2 s, plus tests for each behaviour above.
+
+### Decisions
+- Typo tolerance only runs when nothing matched as typed, so exact results are never mixed with guesses. A correction can only come from records the viewer may see.
+- A two- or three-letter start counts a little less (0.8) than a whole word.
+- The flooding rule needs a second, narrower word; "demo" on its own still searches for "demo".
+- The read cache is off by default and on only for the request-scoped store; a long-lived store would miss other connections' writes.
+
+### Not done / known
+- The Claude path itself was not timed (it costs money); only its timeout and fallback are tested.
+- The first search after the server starts is slower (about 1 s on the large database) while records are decoded for the first time.
+- "alice demo" on the large database takes about 1 s because it searches twice.
+- The older meaning-based search (`graph/ai_search.py`) has its own copy of the stem rule and was left alone.
+
+---
+
+## 2026-11-14 — Search: a page number like "²" no longer crashes
+
+**Request:** "make a plan to debug the search bar to be able to handle almost any input in reasonable time and return accurate results. Search for edge cases and make sure it still works"
+
+### What changed
+- `GET /api/find?page=²` answered 500 ("something went wrong"). Python counts "²" as a digit but can't turn it into a number. `AppApi.find` now accepts plain digits only and answers 400 like any other bad page.
+- Four cases added to `test_bad_search_input_is_refused` in `tests/backend/test_unified_search.py`.
+
+### Found, not fixed yet
+- A 100-query edge-case run (AI off) found no other crash and nothing slower than 0.35 s, but several accuracy gaps (short words, plurals, typos, accents, "this weekend", flooding words). The plan for those was given to the user in chat; nothing else was changed.
+
+---
+
 ## 2026-11-14 — Admin powers, an owner who manages admins, and deleted accounts sent home
 
 **Request:** "ensure that there are as little problems with platform admin as possible and also make it so if an account is deleted they are kicked back to home screen. Also make it so there is another account type that manages the admins and has the ability to change powers of admin. For example view only, delete power, view all info, impersonation power, etc."

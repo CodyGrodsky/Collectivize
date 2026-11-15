@@ -13,7 +13,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from backend.config import Environment
 from backend.objects import Edge, GraphRecord
@@ -74,7 +74,16 @@ def read_environment_stamp(path: Path | str) -> str | None:
 
 
 class SqliteGraphStore:
-    def __init__(self, path: Path | str, environment: Environment) -> None:
+    def __init__(
+        self, path: Path | str, environment: Environment, *, read_cache: bool = False
+    ) -> None:
+        """`read_cache`: remember what this store has already read, until it
+        next writes. Only for a store that lives for one request (the demo
+        server's): ranking asks the same small questions thousands of times
+        (who hosts this event? is the viewer an admin of that org?). A
+        long-lived store must leave it off, or it would miss other
+        connections' writes."""
+        self._cache: dict[Any, Any] | None = {} if read_cache else None
         if str(path) != IN_MEMORY:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.environment = environment
@@ -176,7 +185,13 @@ class SqliteGraphStore:
         if not include_inactive:
             clauses.append("state = 'active'")
         sql = f"SELECT type, data FROM edges WHERE {' AND '.join(clauses)} ORDER BY rowid"
-        return [_load(row) for row in self._conn.execute(sql, params)]  # type: ignore[misc]
+        if self._cache is None:
+            return [_load(row) for row in self._conn.execute(sql, params)]  # type: ignore[misc]
+        key = (sql, *params)
+        found = self._cache.get(key)
+        if found is None:
+            found = self._cache[key] = [_load(row) for row in self._conn.execute(sql, params)]
+        return list(found)  # a copy: callers may sort or extend it
 
     def edges_touching(self, node_id: str) -> list[Edge]:
         rows = self._conn.execute(
@@ -207,6 +222,7 @@ class SqliteGraphStore:
             yield
         except BaseException:
             self._depth -= 1
+            self._forget()  # what was read inside the block is being undone
             if is_outer:
                 self._conn.execute("ROLLBACK")
             else:
@@ -231,12 +247,22 @@ class SqliteGraphStore:
     def _write(self, sql: str, params: tuple[str, ...]) -> None:
         """Outside a transaction() block each write commits on its own."""
         self._conn.execute(sql, params)
+        self._forget()
+
+    def _forget(self) -> None:
+        if self._cache:
+            self._cache.clear()
 
     def _load_node(self, node_id: str) -> GraphRecord | None:
+        if self._cache is not None and node_id in self._cache:
+            return self._cache[node_id]
         row = self._conn.execute(
             "SELECT type, data FROM nodes WHERE id = ?", (node_id,)
         ).fetchone()
-        return _load(row) if row else None
+        found = _load(row) if row else None
+        if self._cache is not None:
+            self._cache[node_id] = found
+        return found
 
     def _stamp_environment(self, environment: Environment) -> None:
         row = self._conn.execute(

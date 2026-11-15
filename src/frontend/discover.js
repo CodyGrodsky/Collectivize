@@ -323,7 +323,11 @@
             parts.push(...types.map((t) => TYPE_LABEL[t]));
             const labels = Object.fromEntries(this.topics.map((t) => [t.slug, t.label]));
             parts.push(...data.filters.tags.map((slug) => labels[slug] || slug));
-            if (data.filters.date) parts.push(DATE.format(new Date(`${data.filters.date}T12:00:00`)));
+            if (data.filters.date) {
+                // "This weekend" covers two days: show both ends.
+                const days = [data.filters.date, data.filters.date_end].filter(Boolean);
+                parts.push(days.map((day) => DATE.format(new Date(`${day}T12:00:00`))).join(" – "));
+            }
             if (!this.state.q && !parts.length) {
                 line.hidden = true;
                 return;

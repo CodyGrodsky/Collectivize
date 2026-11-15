@@ -172,11 +172,11 @@ def thinking_options(model: str) -> dict[str, Any]:
     return {}
 
 
-def make_client(timeout: float = TIMEOUT_SECONDS) -> Any:
+def make_client(timeout: float = TIMEOUT_SECONDS, max_retries: int = 1) -> Any:
     """An Anthropic client using the key from backend.credentials, or the
     SDK's own credential sources when no key is stored."""
     key = anthropic_api_key()
-    options: dict[str, Any] = {"timeout": timeout, "max_retries": 1}
+    options: dict[str, Any] = {"timeout": timeout, "max_retries": max_retries}
     if key:
         options["api_key"] = key
     return anthropic.Anthropic(**options)

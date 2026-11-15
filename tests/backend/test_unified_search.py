@@ -28,10 +28,10 @@ from backend.graph.query_understanding import (
     local_extract,
     parse_extraction,
 )
+from backend.graph.text_match import keyword_fit
 from backend.graph.unified_search import (
     SearchFilters,
     UnifiedSearchService,
-    keyword_fit,
 )
 from backend.seed import seed_mock_data
 
@@ -399,6 +399,7 @@ def test_api_reports_how_the_query_was_read_and_the_filters_used(app, world):
 @pytest.mark.parametrize("params", [
     {"types": "people,spaceships"}, {"tags": "not-a-topic"}, {"date": "saturday"},
     {"page": "0"}, {"page": "x"}, {"q": "x" * 201},
+    {"page": "²"}, {"page": "1001"}, {"page": "-1"}, {"page": "1.5"},  # "²".isdigit() is True
 ])
 def test_bad_search_input_is_refused(app, world, params):
     with pytest.raises(ApiError):

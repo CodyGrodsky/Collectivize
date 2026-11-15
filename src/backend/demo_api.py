@@ -94,7 +94,8 @@ def demo_graph_factory(config: DatabaseConfig, *, use_ai: bool) -> GraphFactory:
 
     @contextmanager
     def factory() -> Iterator[CollectivizeGraph]:
-        store = SqliteGraphStore(config.path, config.environment)
+        # One store per request, so it may remember its own reads.
+        store = SqliteGraphStore(config.path, config.environment, read_cache=True)
         try:
             if use_ai:
                 yield CollectivizeGraph(store)

@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from http import HTTPStatus
 from typing import Any
 
@@ -74,7 +74,8 @@ class AppApi:
             raise ApiError(HTTPStatus.BAD_REQUEST, f"keep searches under {MAX_QUERY} characters")
         types = _csv(params.get("types"), set(SEARCH_TYPES), "type")
         page = params.get("page", "1")
-        if not page.isdigit() or not 1 <= int(page) <= 1000:
+        # ASCII digits only: "²".isdigit() is True but int("²") raises.
+        if not (page.isascii() and page.isdigit()) or not 1 <= int(page) <= 1000:
             raise ApiError(HTTPStatus.BAD_REQUEST, "page must be a whole number")
         day = None
         if params.get("date"):
@@ -114,6 +115,8 @@ class AppApi:
                     "types": sorted(result.applied.types),
                     "tags": list(result.applied.tag_slugs),
                     "date": result.applied.day.isoformat() if result.applied.day else None,
+                    # The last day, when the search covers more than one ("this weekend").
+                    "date_end": _last_day(result.applied),
                 },
             }
 
@@ -407,6 +410,12 @@ class AppApi:
 
 
 # --- helpers ---------------------------------------------------------------------------
+
+
+def _last_day(filters: SearchFilters) -> str | None:
+    if filters.day is None or filters.days <= 1:
+        return None
+    return (filters.day + timedelta(days=filters.days - 1)).isoformat()
 
 
 def _name_from_email(address: str) -> str:

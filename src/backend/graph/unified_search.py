@@ -13,15 +13,25 @@ Filters:
   date, so a day filter leaves them out).
 
 Ranking (scores are used to order results, never shown to users):
-- Keyword fit: the share of keywords found, weighted by where they were
-  found (a name counts more than a description). With keywords, only
-  results that match at least one are listed.
+- Keyword fit (text_match.py): the share of keywords found, weighted by
+  where they were found (a name counts more than a description). With
+  keywords, only results that match at least one are listed, and results
+  that match every keyword come before those that match only some.
 - People: fit, then graph proximity (1st > 2nd > 3rd+ degree), so search
   connects you to the closest people for what you're after. Degrees and
   paths are never returned.
 - Events: fit and the Discover likelihood (ranking.py).
 - Organizations: fit, then ones your connections or you belong to.
 - With no keywords and no type filter, the list is Discover's events.
+
+When a search would come back empty or useless, it is widened one step at
+a time, and the page says what was done:
+1. a keyword found in more than half of everything ("demo" in the demo
+   data) is left out when another keyword narrows things down;
+2. nothing matched: one wrong letter per word is allowed ("robtics");
+3. still nothing, and the text itself named a kind ("people who like
+   hiking"): every kind is searched;
+4. still nothing, and it was a sentence: its other filters alone.
 
 Privacy: people are matched only on what every signed-in user may see on
 their card (name, bio, Top 3), never on orgs or events, so search can't
@@ -47,14 +57,15 @@ from backend.objects import (
     Tagged,
 )
 
-from .discovery import DiscoveryItem, DiscoveryQuery, DiscoveryService, normalize_text
+from .discovery import DiscoveryItem, DiscoveryQuery, DiscoveryService
 from .privacy import PrivacyService
 from .query_understanding import TYPES, Extraction, QueryReader, Understanding, words_of
 from .store import GraphStore
+from .text_match import Fit, KeywordMatcher
 from .visibility import VisibilityService
 
 PER_PAGE = 10
-STEM_PREFIX = 4  # "robot" matches "robotics"
+FLOOD_SHARE = 0.5  # a keyword found in more than this share of everything says nothing
 PROXIMITY = {0: 0.0, 1: 1.0, 2: 0.6, 3: 0.3}
 NAME_WEIGHT, TAG_WEIGHT, TEXT_WEIGHT = 1.0, 0.8, 0.6
 
@@ -66,6 +77,7 @@ class SearchFilters:
     types: frozenset[str] = frozenset()
     tag_slugs: tuple[str, ...] = ()
     day: date | None = None
+    days: int = 1  # how many days from `day` ("this weekend" is two)
 
 
 @dataclass(frozen=True)
@@ -79,6 +91,7 @@ class SearchResult:
     # an org they belong to, or an event they're going to (or interested
     # in), host themselves, or that one of their orgs hosts.
     connected: bool = False
+    full: bool = True  # every keyword was found (listed before partial matches)
 
 
 @dataclass(frozen=True)
@@ -120,29 +133,57 @@ class UnifiedSearchService:
         tags = {t.slug: t for t in self._store.nodes(Tag)}
         today = now.astimezone(ZoneInfo(CAMPUS_TIMEZONE)).date()
         understanding = self._reader.read(text, today, tuple(t.label for t in tags.values()))
-        applied = _merge(filters, understanding.extraction, tags)
-        keywords = _keywords(understanding.extraction)
+        read = understanding.extraction
+        applied = _merge(filters, read, tags)
+        keywords = _keywords(read)
         tag_ids = tuple(tags[s].id for s in applied.tag_slugs if s in tags)
+        notes = [understanding.note] if understanding.note else []
 
-        results = self._gather(viewer_id, keywords, applied, tag_ids, now)
+        def gather(words: list[str], using: SearchFilters, fuzzy: bool = False):
+            matcher = KeywordMatcher(words, fuzzy=fuzzy)
+            return self._gather(viewer_id, matcher, using, tag_ids, now), matcher
+
+        results, matcher = gather(keywords, applied)
+        common = matcher.flooding(FLOOD_SHARE)
+        if common:
+            # "alice demo" here: "demo" is in nearly every name, so it says
+            # nothing. Search on the words that do narrow things down.
+            keywords = [k for k in keywords if k not in common]
+            results, matcher = gather(keywords, applied)
+            notes.append(f"Left out {_quoted(common)}: it matches almost everything here.")
+        if not results and matcher.can_be_fuzzy:
+            # Nothing matched as typed: allow one wrong letter per word.
+            results, matcher = gather(keywords, applied, fuzzy=True)
+            if results and matcher.corrections:
+                notes.append(f"Nothing matched {_quoted(matcher.corrections)}, so this shows "
+                             f"results for {_quoted(matcher.corrections.values())}.")
+        if not results and keywords and read.types and not filters.types:
+            # The text named a kind ("people who like hiking") and nothing of
+            # that kind matched: look at every kind instead.
+            wide = replace(applied, types=frozenset())
+            results, matcher = gather(keywords, wide)
+            if not results and matcher.can_be_fuzzy:
+                results, matcher = gather(keywords, wide, fuzzy=True)
+            if results:
+                kinds = " or ".join(sorted(read.types))
+                notes.append(f"No {kinds} matched {_quoted(keywords)}, so this searched everything.")
+                applied = wide
         if not results and keywords and understanding.mode == "sentence":
             # A request like "show me something rad": its words name nothing
             # here, so answer with what the rest of it asked for (any type,
             # topic or day it gave) instead of an empty page.
-            results = self._gather(viewer_id, [], applied, tag_ids, now)
+            results, matcher = gather([], applied)
             if results:
-                missed = ", ".join(keywords)
-                understanding = replace(
-                    understanding,
-                    extraction=replace(understanding.extraction, keywords=(), summary=""),
-                    note=f"Nothing matched “{missed}”, so here's what's coming up.",
-                )
+                notes.append(f"Nothing matched “{', '.join(keywords)}”, so here's what's coming up.")
+                keywords = []
+                read = replace(read, summary="")
+        understanding = replace(understanding, note=" ".join(notes),
+                                extraction=replace(read, keywords=tuple(keywords)))
 
         # A search for something lists what's already in your network first,
         # then everything else; each part keeps its best-first order.
         # Plain Discover (nothing typed or ticked) stays one ranked list.
-        grouped = bool(_keywords(understanding.extraction) or applied.types
-                       or applied.tag_slugs or applied.day)
+        grouped = bool(keywords or applied.types or applied.tag_slugs or applied.day)
         if grouped:
             results.sort(key=lambda r: not r.connected)  # stable
 
@@ -158,14 +199,15 @@ class UnifiedSearchService:
     def _gather(
         self,
         viewer_id: str,
-        keywords: list[str],
+        matcher: KeywordMatcher,
         applied: SearchFilters,
         tag_ids: tuple[str, ...],
         now: datetime,
     ) -> list[SearchResult]:
-        """Everything that matches, best first."""
+        """Everything that matches: results with every keyword first, then
+        best first."""
         types = set(applied.types) or set(TYPES)
-        if not keywords and not applied.types:
+        if not matcher.keywords and not applied.types:
             types = {"events"}  # nothing asked for: Discover's ranked events
         if applied.day is not None or applied.tag_slugs:
             types.discard("people")  # people have no date or public topics
@@ -173,15 +215,16 @@ class UnifiedSearchService:
             types.discard("orgs")
         results: list[SearchResult] = []
         if "people" in types:
-            results += self._people(viewer_id, keywords)
+            results += self._people(viewer_id, matcher)
         if "orgs" in types:
-            results += self._orgs(viewer_id, keywords, set(tag_ids))
+            results += self._orgs(viewer_id, matcher, set(tag_ids))
         if "events" in types:
-            results += self._events(viewer_id, keywords, tag_ids, applied.day, now)
-        results.sort(key=lambda r: (-r.score, _sort_name(r)))
+            results += self._events(viewer_id, matcher, tag_ids, applied, now)
+        results.sort(key=lambda r: (not r.full, -r.score, _sort_name(r)))
         return results
 
-    def _people(self, viewer_id: str, keywords: list[str]) -> list[SearchResult]:
+    def _people(self, viewer_id: str, matcher: KeywordMatcher) -> list[SearchResult]:
+        keywords = matcher.keywords
         degrees = self._visibility.distances(viewer_id)
         found = []
         for person in self._store.nodes(Person):
@@ -189,11 +232,11 @@ class UnifiedSearchService:
                 continue
             if not self._privacy.can_view(viewer_id, person):
                 continue
-            fit = 1.0
+            fit, full = 1.0, True
             if keywords:
                 top3 = " ".join((person.top3_title, *person.top3_items))
-                fit = keyword_fit(keywords, [(person.display_name, NAME_WEIGHT),
-                                             (person.bio, TEXT_WEIGHT), (top3, TEXT_WEIGHT)])
+                fit, full = matcher.fit([(person.display_name, NAME_WEIGHT),
+                                         (person.bio, TEXT_WEIGHT), (top3, TEXT_WEIGHT)])
                 if fit == 0:
                     continue
             closeness = PROXIMITY.get(degrees.get(person.id, -1), 0.0)
@@ -201,10 +244,11 @@ class UnifiedSearchService:
                 continue  # browsing people: only those within three hops
             score = 0.65 * fit + 0.35 * closeness if keywords else closeness
             found.append(SearchResult("person", person.id, score, node=person,
-                                      connected=degrees.get(person.id) == 1))
+                                      connected=degrees.get(person.id) == 1, full=full))
         return found
 
-    def _orgs(self, viewer_id: str, keywords: list[str], tag_ids: set[str]) -> list[SearchResult]:
+    def _orgs(self, viewer_id: str, matcher: KeywordMatcher, tag_ids: set[str]) -> list[SearchResult]:
+        keywords = matcher.keywords
         labels = {t.id: t.label for t in self._store.nodes(Tag)}
         mine = set(self._visibility.org_ids_of(viewer_id))
         friends = set(self._visibility.distances(viewer_id, 1)) - {viewer_id}
@@ -215,9 +259,9 @@ class UnifiedSearchService:
             org_tags = {e.target_id for e in self._store.edges(Tagged, source_id=org.id)}
             if tag_ids and not org_tags & tag_ids:
                 continue
-            fit = 1.0
+            fit, full = 1.0, True
             if keywords:
-                fit = keyword_fit(keywords, [
+                fit, full = matcher.fit([
                     (org.name, NAME_WEIGHT),
                     (" ".join(labels.get(t, "") for t in org_tags), TAG_WEIGHT),
                     (org.kind.value, TEXT_WEIGHT),
@@ -228,36 +272,38 @@ class UnifiedSearchService:
                        if m.is_confirmed_current}
             social = 1.0 if org.id in mine else min(1.0, len(members & friends) / 3)
             score = 0.8 * fit + 0.2 * social if keywords else 0.5 + 0.5 * social
-            found.append(SearchResult("org", org.id, score, node=org, connected=org.id in mine))
+            found.append(SearchResult("org", org.id, score, node=org, connected=org.id in mine,
+                                      full=full))
         return found
 
     def _events(
         self,
         viewer_id: str,
-        keywords: list[str],
+        matcher: KeywordMatcher,
         tag_ids: tuple[str, ...],
-        day: date | None,
+        applied: SearchFilters,
         now: datetime,
     ) -> list[SearchResult]:
+        keywords = matcher.keywords
         after = before = None
-        if day is not None:
+        if applied.day is not None:
             zone = ZoneInfo(CAMPUS_TIMEZONE)
-            after = datetime.combine(day, time.min, zone)
-            before = after + timedelta(days=1)
+            after = datetime.combine(applied.day, time.min, zone)
+            before = datetime.combine(applied.day + timedelta(days=applied.days), time.min, zone)
         labels = {t.id: t.label for t in self._store.nodes(Tag)}
         mine = set(self._visibility.org_ids_of(viewer_id))
-        fits: dict[str, float] = {}
+        fits: dict[str, Fit] = {}
 
         def matches(event: Event, host: Organization | Person, tag_ids: set[str]) -> bool:
             """Checked before ranking, so only events that match are ranked."""
             host_name = host.name if isinstance(host, Organization) else host.display_name
-            fits[event.id] = keyword_fit(keywords, [
+            fits[event.id] = matcher.fit([
                 (event.title, NAME_WEIGHT),
                 (" ".join(labels.get(t, "") for t in tag_ids), TAG_WEIGHT),
                 (host_name, TAG_WEIGHT),
                 (event.description, TEXT_WEIGHT), (event.location, TEXT_WEIGHT),
             ])
-            return fits[event.id] > 0
+            return fits[event.id].score > 0
 
         items = self._discovery.rank_all(
             DiscoveryQuery(viewer_id=viewer_id, tag_ids=tag_ids,
@@ -266,44 +312,18 @@ class UnifiedSearchService:
         )
         found = []
         for item in items:
-            fit = fits.get(item.event.id, 1.0)
+            fit, full = fits.get(item.event.id, Fit(1.0, True))
             score = 0.6 * fit + 0.4 * item.score if keywords else item.score
             if item.is_cancelled:
                 score -= 1.0  # cancelled events always sink to the bottom
             connected = (item.my_rsvp in (RsvpStatus.GOING, RsvpStatus.INTERESTED)
                          or item.host.id == viewer_id or item.host.id in mine)
-            found.append(SearchResult("event", item.event.id, score, event=item, connected=connected))
+            found.append(SearchResult("event", item.event.id, score, event=item,
+                                      connected=connected, full=full))
         return found
 
 
-# --- matching ------------------------------------------------------------------------
-
-
-def keyword_fit(keywords: list[str], fields: list[tuple[str, float]]) -> float:
-    """0..1: each keyword scores the weight of the best field it's found
-    in (on a shared stem, so "robot" finds "robotics"), averaged over the
-    keywords. A keyword phrase found whole in a name counts fully."""
-    if not keywords:
-        return 1.0
-    words = [(set(words_of(text)), normalize_text(text), weight) for text, weight in fields if text]
-    total = 0.0
-    for keyword in keywords:
-        parts = words_of(keyword)
-        best = 0.0
-        for present, raw, weight in words:
-            if len(parts) > 1 and normalize_text(keyword) in raw:
-                best = max(best, weight)
-            elif parts and all(any(_same_stem(p, w) for w in present) for p in parts):
-                best = max(best, weight)
-        total += best
-    return total / len(keywords)
-
-
-def _same_stem(a: str, b: str) -> bool:
-    if a == b:
-        return True
-    shorter, longer = sorted((a, b), key=len)
-    return len(shorter) >= STEM_PREFIX and longer.startswith(shorter)
+# --- helpers -------------------------------------------------------------------------
 
 
 def _keywords(extraction: Extraction) -> list[str]:
@@ -318,7 +338,14 @@ def _merge(filters: SearchFilters, read: Extraction, tags: dict[str, Tag]) -> Se
         types=filters.types or read.types,
         tag_slugs=filters.tag_slugs or read_slugs,
         day=filters.day or read.day,
+        # A ticked day that is the one the text gave keeps the text's span,
+        # so page two of "this weekend" is still both days.
+        days=read.days if filters.day in (None, read.day) and read.day else 1,
     )
+
+
+def _quoted(words: Any) -> str:
+    return ", ".join(f"“{w}”" for w in words)
 
 
 def _sort_name(result: SearchResult) -> Any:
