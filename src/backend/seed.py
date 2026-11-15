@@ -73,7 +73,7 @@ ORGS = {
     "university": ("Northbridge University", OrgKind.INSTITUTION),
     "ifc": ("Northbridge Interfraternity Council", OrgKind.COUNCIL),
     "national": ("Alpha Beta National", OrgKind.NATIONAL),
-    "chapter": ("Alpha Beta, Gamma Chapter", OrgKind.CHAPTER),
+    "chapter": ("Sigma Chi Pi Chapter", OrgKind.CHAPTER),
     "robotics": ("Robotics Club", OrgKind.CLUB),
     "chess": ("Chess Club", OrgKind.CLUB),  # deliberately left unclaimed
     "surf": ("Surf Club", OrgKind.CLUB),
@@ -81,6 +81,10 @@ ORGS = {
     "cooking": ("Cooking Club", OrgKind.CLUB),
     "delta": ("Alpha Beta, Delta Chapter", OrgKind.CHAPTER),
     "sigma": ("Sigma Tau, Epsilon Chapter", OrgKind.CHAPTER),
+}
+# Org pages that link to a website (a reserved, always-safe example address).
+WEBSITES = {
+    "chapter": "https://example.org/",
 }
 PEOPLE = {
     "avery": "Avery (demo chapter admin)",
@@ -278,7 +282,10 @@ class _MockWorld:
         }
         orgs = {
             key: save(
-                Organization(name=f"{DEMO_PREFIX} {name}", kind=kind, provenance=self._staff())
+                Organization(
+                    name=f"{DEMO_PREFIX} {name}", kind=kind,
+                    website_url=WEBSITES.get(key), provenance=self._staff(),
+                )
             ).id
             for key, (name, kind) in ORGS.items()
         }

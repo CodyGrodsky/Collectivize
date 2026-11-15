@@ -45,14 +45,56 @@
         const status = el("p", { className: "status", attrs: { role: "status", "aria-live": "polite" } });
         const meta = [KIND[org.kind] || org.kind, ...org.tags].join(" · ");
         const header = [
+            ...[websiteBox()].filter(Boolean),
             el("h1", { className: "page-title", text: cleanName(org.name) }),
             el("p", { className: "page-subtitle", text: meta }),
         ];
-        if (org.website_url) {
-            header.push(el("p", {}, [el("a", { text: org.website_url, attrs: { href: org.website_url, rel: "noopener noreferrer", target: "_blank" } })]));
-        }
         if (org.is_member) header.push(el("p", {}, [el("span", { className: "pill pill-green", text: org.can_manage ? "You're an admin" : "You're a member" })]));
         root.replaceChildren(...header, status, members(status), events(), ...(org.can_manage ? [editor(status)] : []));
+    }
+
+    /** An http(s) address we're willing to link to, or null. */
+    function safeLink(value) {
+        try {
+            const url = new URL(String(value || ""));
+            return url.protocol === "https:" || url.protocol === "http:" ? url : null;
+        } catch {
+            return null;
+        }
+    }
+
+    /** The box at the very top: the org's website, opened in a new tab.
+        Admins of an org without one get a box that takes them to the editor. */
+    function websiteBox() {
+        const url = safeLink(org.website_url);
+        if (url) {
+            return el("a", { className: "org-site", attrs: {
+                href: url.href, target: "_blank", rel: "noopener noreferrer nofollow",
+                "aria-label": `Visit the ${cleanName(org.name)} website (opens in a new tab)`,
+            } }, [
+                el("span", { className: "org-site-icon", text: "🌐", attrs: { "aria-hidden": "true" } }),
+                el("span", { className: "org-site-text" }, [
+                    el("span", { className: "org-site-label", text: "Website" }),
+                    el("span", { className: "org-site-url", text: url.host.replace(/^www\./, "") + url.pathname.replace(/\/$/, "") }),
+                ]),
+                el("span", { className: "org-site-go", text: "Visit ↗", attrs: { "aria-hidden": "true" } }),
+            ]);
+        }
+        if (!org.can_manage) return null;
+        const add = el("button", { className: "org-site is-empty", attrs: { type: "button" } }, [
+            el("span", { className: "org-site-icon", text: "🌐", attrs: { "aria-hidden": "true" } }),
+            el("span", { className: "org-site-text" }, [
+                el("span", { className: "org-site-label", text: "Website" }),
+                el("span", { className: "org-site-url", text: "Add a link to your website" }),
+            ]),
+            el("span", { className: "org-site-go", text: "Add +", attrs: { "aria-hidden": "true" } }),
+        ]);
+        add.addEventListener("click", () => {
+            const input = document.getElementById("org-website");
+            input?.scrollIntoView({ behavior: "smooth", block: "center" });
+            input?.focus({ preventScroll: true });
+        });
+        return add;
     }
 
     /** The top three, "Show more" for up to ten, and a search over everyone
@@ -195,6 +237,7 @@
     function editor(status) {
         const name = el("input", { className: "input", attrs: { value: org.name, maxlength: "80", "aria-label": "Name" } });
         const site = el("input", { className: "input", attrs: { value: org.website_url || "", type: "url", placeholder: "https://…", "aria-label": "Website" } });
+        site.id = "org-website";
         const save = el("button", { className: "button button-solid", text: "Save", attrs: { type: "submit" } });
         const form = el("form", {}, [
             el("label", { className: "row", attrs: { style: "margin-bottom:8px" } }, [el("span", { text: "Name", attrs: { style: "width:70px" } }), name]),

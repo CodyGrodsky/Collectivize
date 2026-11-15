@@ -4,6 +4,13 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Sigma Chi Pi Chapter, and a website box on org pages
+
+- `src/backend/seed.py`: the demo chapter "Alpha Beta, Gamma Chapter" is now "Sigma Chi Pi Chapter", and it links to a website (`WEBSITES`, the reserved example address https://example.org/ so the demo never points at a real site). `demo/collectivize-demo.db` reseeded; `src/frontend/main.js` and `tests/backend/test_server.py` updated to the new name.
+- `src/frontend/org.js` / `app.css`: the website is now a box at the very top of the org page (globe, address, "Visit ↗") that opens the site in a new tab; only http(s) addresses are linked. Admins of an org without a website see a dashed "Add a link to your website" box that jumps to the Website field in the editor. The old plain link under the title is gone.
+
+---
+
 ## 2026-11-15 — Demo calendar: mostly your orgs, fewer "going", two you host
 
 - `DemoCalendar` (`src/backend/seed.py`) now joins Drew to up to 4 busy orgs (blue), hosts 2 events as Drew (red), then tops days up with maybe / saved and only a few going, about 2 events a day. Demo DB reseeded.
