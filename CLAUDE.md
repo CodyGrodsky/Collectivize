@@ -4,20 +4,16 @@
 
 (What happened and why: `HANDOFF.md`.)
 
-**All work is happening on the `vercel-demo` branch of the fork
+**All work is happening on `main` of the fork
 https://github.com/CodyGrodsky/Collectivize** while we run a public demo on Vercel
-(https://collectivize-tau.vercel.app). Pushes to it there deploy themselves. Switch before doing anything:
+(https://collectivize-tau.vercel.app). Pushes to it deploy themselves. Work in a clone of the fork:
 
 ```
-git remote add fork https://github.com/CodyGrodsky/Collectivize.git
-git fetch fork
-git switch -c vercel-demo --track fork/vercel-demo
+git clone https://github.com/CodyGrodsky/Collectivize.git collectivize-vercel
 ```
 
-Push with `git push fork vercel-demo`.
-
-Then read `VERCEL.md` and `CLAUDE.md` on that branch. `main` is parked as the Railway /
-real-server version. `vercel-demo` gets merged back here when we switch to Railway; this note
+Then read `VERCEL.md` and `CLAUDE.md` there. This repo's `main` is parked as the Railway /
+real-server version. The fork's `main` gets merged back here when we switch to Railway; this note
 goes away then.
 
 ## Rules (from `rules.md`, on every branch)
