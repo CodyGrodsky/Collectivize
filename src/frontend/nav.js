@@ -10,13 +10,13 @@
 
 (() => {
     const PAGES = [
-        { label: "Discover", href: "discover.html", icon: "discover" },
-        { label: "My Events", href: "my-events.html", icon: "calendar" },
-        { label: "Network", href: "network.html", icon: "graph" },
-        { label: "Profile", href: "profile.html", icon: "profile" },
-        { label: "Account", href: "account.html", icon: "gear" },
+        { label: "Discover", href: "discover", icon: "discover" },
+        { label: "My Events", href: "my-events", icon: "calendar" },
+        { label: "Network", href: "network", icon: "graph" },
+        { label: "Profile", href: "profile", icon: "profile" },
+        { label: "Account", href: "account", icon: "gear" },
     ];
-    const ADMIN_PAGE = { label: "Admin", href: "admin.html", icon: "shield" };
+    const ADMIN_PAGE = { label: "Admin", href: "admin", icon: "shield" };
 
     // Inline icon paths (24x24, stroked) so the nav needs no extra files.
     const ICONS = {
@@ -34,10 +34,10 @@
 
     };
 
-    // Brand art, relative to the pages in src/frontend.
-    const LOGO = "../../public/brand/logo.svg";
-    const WORDMARK = "../../public/brand/wordmark-on-paper.svg";
-    const HOME_PAGE = "index.html";
+    // Brand art.
+    const LOGO = "/public/brand/logo.svg";
+    const WORDMARK = "/public/brand/wordmark-on-paper.svg";
+    const HOME_PAGE = "home";
 
     const STORAGE_KEY = "collectivize.nav.open";
     const PHONE = window.matchMedia("(max-width: 640px)");
@@ -167,7 +167,7 @@
                 try {
                     await window.Collectivize.Api.post("/api/admin/view-as", { person_id: null });
                 } finally {
-                    location.href = "admin.html";
+                    location.href = "admin";
                 }
             });
             bar.append(text, exit);
@@ -197,8 +197,7 @@
         }
 
         static isCurrent(href) {
-            const here = window.location.pathname.replace(/\/$/, "/index.html");
-            return new URL(href, window.location.href).pathname === here;
+            return new URL(href, window.location.href).pathname === window.location.pathname;
         }
 
         // Storage can be blocked (private windows, strict settings); the nav

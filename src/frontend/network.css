@@ -198,6 +198,11 @@ select { font: inherit; color: inherit; }
 .nw-node.is-center .nw-label { fill: var(--b-ink); font-size: 14.5px; font-weight: 650; }
 .is-person.is-you .nw-label { fill: var(--b-ink); font-weight: 650; }
 
+/* A node outlined in the background colour of its own profile; a
+   community's box is also filled with a much lighter version of it. */
+.nw-node.has-color .nw-shape { stroke: var(--n-line); }
+.nw-node.is-org.has-color:not(.is-center) .nw-shape { fill: color-mix(in srgb, var(--n-line) 14%, var(--b-bg)); }
+
 .is-pressable { cursor: pointer; }
 .is-pressable:focus { outline: none; }
 .is-pressable:hover .nw-shape { stroke-width: 3.5; }

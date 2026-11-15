@@ -110,6 +110,20 @@ def test_wrong_passwords_lock_the_username_for_a_while():
     assert admins.verify("boss", PASSWORD) == PAT
 
 
+def test_signing_in_by_a_shared_account_email_never_locks_the_other_logins():
+    # Three logins open the same admin account; the email is typed, not a username.
+    admins = AdminAuth(tuple(
+        AdminCredential(name, PAT, hash_password(f"{name} password long")) for name in ("one", "two", "three")
+    ))
+    for _ in range(MAX_FAILURES * 3):
+        assert admins.check(PAT, "three password long").username == "three"
+    assert admins.check("one", "one password long").username == "one"  # not locked by those
+    for _ in range(MAX_FAILURES):
+        assert admins.check(PAT, "nobody's password!") is None  # real wrong guesses do count
+    with pytest.raises(LockedOutError):
+        admins.check(PAT, "three password long")
+
+
 # --- over HTTP -------------------------------------------------------------------------
 
 
@@ -146,9 +160,9 @@ def test_the_admin_entrance_shows_the_sign_in_until_you_are_an_admin():
         student, _ = sign_in(base, "drew.demo@northeastern.edu")
         for token in (None, student):
             status, headers, _ = call(f"{base}/admin", token=token)
-            assert status == 302 and headers["Location"].endswith("index.html?admin=1")
+            assert status == 302 and headers["Location"] == "/home?admin=1"
         _, _, admin = admin_sign_in(base, "boss", PASSWORD)
-        assert call(f"{base}/admin", token=admin)[1]["Location"].endswith("admin.html")
+        assert call(f"{base}/admin", token=admin)[0] == 200  # the admin page itself
 
 
 def test_the_password_only_opens_a_real_platform_admin_account():

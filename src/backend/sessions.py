@@ -5,7 +5,10 @@ who signed in. Real email verification is future work, not this.
 
 Remembered: a session given a lifetime (`ttl`) is also written to a file,
 so the person stays signed in when the server or their browser restarts,
-until it runs out or they sign out. Only a SHA-256 hash of each token is
+until it runs out or they sign out. A `renew` session's lifetime starts
+again each day it is used (`refresh`), so someone who keeps coming back
+stays signed in and one who stops is signed out `ttl` after their last
+visit; without `renew` (admins) it ends `ttl` after sign-in, used or not. Only a SHA-256 hash of each token is
 kept, in memory and in the file, so reading the file gives nobody a
 working cookie. Sessions without a lifetime (development auto-login) live
 in memory only.
@@ -34,6 +37,7 @@ log = logging.getLogger(__name__)
 COOKIE_NAME = "collectivize_session"
 MAX_SESSIONS = 10_000
 MAX_REMEMBERED = 10_000  # ended tokens we still remember the reason for
+RENEW_AFTER_SECONDS = 24 * 60 * 60  # a renewing session is extended at most once a day
 
 
 @dataclass(frozen=True)
@@ -41,6 +45,7 @@ class Session:
     person_id: str
     view_as: str | None = None  # set only for platform admins
     expires: float | None = None  # on the store's clock; None = until restart
+    renew_ttl: float | None = None  # set: each day of use starts this lifetime again
 
     @property
     def viewer_id(self) -> str:
@@ -78,15 +83,18 @@ class SessionStore:
         self.audit: list[dict[str, str]] = []  # view-as log, newest last
         self._load()
 
-    def create(self, person_id: str, ttl: float | None = None) -> str:
+    def create(self, person_id: str, ttl: float | None = None, *, renew: bool = False) -> str:
         """`ttl`: seconds until the session ends by itself. With one, the
-        session is remembered across restarts."""
+        session is remembered across restarts. `renew`: using the session
+        extends it (see `refresh`)."""
         token = secrets.token_urlsafe(32)
         expires = None if ttl is None else self._clock() + ttl
         with self._lock:
             if len(self._sessions) >= MAX_SESSIONS:
                 self._sessions.pop(next(iter(self._sessions)))
-            self._sessions[_key(token)] = Session(person_id, expires=expires)
+            self._sessions[_key(token)] = Session(
+                person_id, expires=expires, renew_ttl=ttl if renew else None
+            )
             if expires is not None:
                 self._save()
         return token
@@ -103,6 +111,24 @@ class SessionStore:
                 self._save()
                 return None
             return session
+
+    def refresh(self, token: str | None) -> int | None:
+        """Called when a session is used. If it renews and hasn't been
+        extended in the last day, its lifetime starts again; returns the new
+        lifetime in seconds (for the browser's cookie), else None."""
+        if not token:
+            return None
+        key = _key(token)
+        with self._lock:
+            session = self._sessions.get(key)
+            if session is None or session.renew_ttl is None or session.expires is None:
+                return None
+            now = self._clock()
+            if session.expires - now > session.renew_ttl - RENEW_AFTER_SECONDS:
+                return None  # extended recently enough
+            self._sessions[key] = replace(session, expires=now + session.renew_ttl)
+            self._save()
+            return int(session.renew_ttl)
 
     def ended_reason(self, token: str | None) -> str | None:
         """Why this token was ended by someone else, if it was."""
@@ -171,7 +197,11 @@ class SessionStore:
             for key, entry in saved.items():
                 expires = float(entry["expires"])
                 if expires > now and len(key) == 64:
-                    self._sessions[key] = Session(str(entry["person_id"]), expires=expires)
+                    renew = entry.get("renew_ttl")
+                    self._sessions[key] = Session(
+                        str(entry["person_id"]), expires=expires,
+                        renew_ttl=float(renew) if renew else None,
+                    )
         except (OSError, KeyError, TypeError, ValueError, AttributeError):
             # An unreadable file only means everyone signs in again.
             log.warning("couldn't read the saved sessions; starting with none")
@@ -183,7 +213,7 @@ class SessionStore:
         if self._path is None:
             return
         payload = {"sessions": {
-            key: {"person_id": s.person_id, "expires": s.expires}
+            key: {"person_id": s.person_id, "expires": s.expires, "renew_ttl": s.renew_ttl}
             for key, s in self._sessions.items() if s.expires is not None
         }}
         temporary = self._path.with_suffix(".tmp")

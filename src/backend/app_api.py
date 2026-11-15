@@ -41,12 +41,14 @@ from backend.objects import (
     VerificationLevel,
 )
 from backend.objects.base import utc_now
+from backend.rate_limit import RateLimiter
 
 EMAIL_SHAPE = re.compile(r"^[a-z0-9._%+-]+@([a-z0-9-]+(?:\.[a-z0-9-]+)+)$")
 MAX_EMAIL_LENGTH = 254
 MAX_INVITE_CODE = 100
 MAX_ID_LENGTH = 64
 MAX_QUERY = 200
+CONNECT_REQUESTS_PER_HOUR = 20
 SEARCH_TYPES = ("people", "orgs", "events")
 
 
@@ -62,6 +64,9 @@ class AppApi:
         self._clock = clock
         # Without an extractor, sentences are read locally (no AI).
         self._reader = reader or QueryReader()
+        # A brake on bursts of connection requests (the lasting cap on how
+        # many may be waiting is ConnectionService's).
+        self._connect_limit = RateLimiter(CONNECT_REQUESTS_PER_HOUR, 3600)
 
     # --- unified search (spec 4.4 / 4.5) -------------------------------------------
 
@@ -129,13 +134,14 @@ class AppApi:
 
     # --- sign-in (spec 4.10) -----------------------------------------------------
 
-    def sign_in(self, body: dict[str, Any]) -> str:
-        """The person id for a Northeastern email. A new address gets a new,
-        empty account. Demo only: there is no email verification yet."""
-        email = body.get("email")
+    @staticmethod
+    def check_email(email: Any) -> str:
+        """The one stored form of a Northeastern address, or an ApiError.
+        One mailbox is one account: case and a "+tag" don't make a new one
+        ("Name+club@northeastern.edu" is "name@northeastern.edu")."""
         if not isinstance(email, str) or len(email) > MAX_EMAIL_LENGTH:
             raise ApiError(HTTPStatus.BAD_REQUEST, "enter your Northeastern email")
-        address = email.strip().lower()
+        address = canonical_email(email)
         match = EMAIL_SHAPE.match(address)
         if match is None:
             raise ApiError(HTTPStatus.BAD_REQUEST, "enter a valid email address")
@@ -145,6 +151,18 @@ class AppApi:
                 "Collectivize is campus-only for now: sign in with your Northeastern "
                 f"email (@{' or @'.join(ALLOWED_EMAIL_DOMAINS)})",
             )
+        return address
+
+    def account_id(self, address: str) -> str | None:
+        """The account that already uses this (canonical) address, if any."""
+        with self._graphs() as graph:
+            return next((p.id for p in graph.store.nodes(Person) if p.email == address), None)
+
+    def sign_in(self, body: dict[str, Any]) -> str:
+        """The person id for a Northeastern email. A new address gets a new,
+        empty account. The caller (server_auth.py) has already had the
+        address verified by an emailed code when verification is on."""
+        address = self.check_email(body.get("email"))
         invite = body.get("invite")
         if invite is not None and (not isinstance(invite, str) or len(invite) > MAX_INVITE_CODE):
             invite = None
@@ -239,6 +257,9 @@ class AppApi:
             if state == "pending_in":  # they already asked: asking back accepts
                 return self._answer(graph, viewer, other.id, "accept")
             if state == "none":
+                if not self._connect_limit.allow(viewer):
+                    raise ApiError(HTTPStatus.TOO_MANY_REQUESTS,
+                                   "you've sent a lot of connection requests: try again in an hour")
                 graph.connections.request(viewer, other.id, self._clock())
             return {"person_id": other.id,
                     "connection": graph.visibility.connection_state(viewer, other.id).value}
@@ -419,6 +440,13 @@ class AppApi:
 # --- helpers ---------------------------------------------------------------------------
 
 
+def canonical_email(email: str) -> str:
+    """Lower-cased, trimmed, and without a "+tag" in the name part, so the
+    same mailbox always gives the same address."""
+    name, at, domain = email.strip().lower().partition("@")
+    return f"{name.partition('+')[0]}{at}{domain}"
+
+
 def _last_day(filters: SearchFilters) -> str | None:
     if filters.day is None or filters.days <= 1:
         return None
@@ -529,7 +557,8 @@ def _my_events(
             continue
         entry = _event_json(graph, event, hosting=plan.get("hosting", False),
                             rsvp=plan.get("rsvp"), saved=plan.get("saved", False),
-                            going_count=graph.rsvps.going_count(event.id), capacity=event.capacity)
+                            going_count=graph.rsvps.going_count(event.id), capacity=event.capacity,
+                            is_full=graph.rsvps.is_full(event.id))
         (past if event.ends_at < now else upcoming).append((event.starts_at, entry))
     upcoming.sort(key=lambda pair: pair[0])
     past.sort(key=lambda pair: pair[0], reverse=True)

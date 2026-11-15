@@ -28,6 +28,10 @@ ALLOWED_EMAIL_DOMAINS: tuple[str, ...] = ("northeastern.edu",)
 # automatically as the demo account.
 # (For one run only: `serve.py --login` forces it on, `--no-login` off.)
 LOGIN_REQUIRED: bool = True
+# Signing in needs a six-digit code sent to the Northeastern address
+# (backend/email_verification.py). Codes are emailed when mail is set up
+# (scripts/set_mail.py) and shown in the server's terminal when it isn't.
+EMAIL_VERIFICATION: bool = True
 # The campus's time zone: "Saturday" in a search means Saturday here.
 CAMPUS_TIMEZONE = "America/New_York"
 DB_PATH_VAR = "COLLECTIVIZE_DB_PATH"

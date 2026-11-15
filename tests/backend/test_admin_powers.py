@@ -223,8 +223,8 @@ def test_a_deleted_account_is_sent_home_on_its_next_request(world):
     status, headers, body = call(f"{base}/api/discover", token=drew_token)
     assert status == 401 and json.loads(body)["reason"] == "deleted"
     assert "Max-Age=0" in headers["Set-Cookie"]  # the dead cookie is cleared
-    status, headers, _ = call(f"{base}/src/frontend/discover.html", token=drew_token)
-    assert status == 302 and headers["Location"].endswith("index.html?notice=deleted")
+    status, headers, _ = call(f"{base}/discover", token=drew_token)
+    assert status == 302 and headers["Location"] == "/?notice=deleted"
     assert json.loads(call(f"{base}/api/session", token=drew_token)[2]) == {"signed_in": False, "reason": "deleted"}
 
 
@@ -245,7 +245,7 @@ def test_a_deleted_account_is_not_signed_in_as_someone_else_with_login_off():
         assert post(base, "/api/account/delete", {"confirm": ALICE}, alice)[0] == 200
         status, _, body = call(f"{base}/api/me", token=alice)
         assert status == 401 and json.loads(body)["reason"] == "deleted"  # not quietly Drew
-        assert call(f"{base}/src/frontend/discover.html", token=alice)[0] == 302
+        assert call(f"{base}/discover", token=alice)[0] == 302
         assert get(base, "/api/me", None)[1]["id"] == result.people["drew"]  # a fresh browser still is
     finally:
         srv.shutdown()

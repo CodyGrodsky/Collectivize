@@ -87,12 +87,12 @@ def admin_post(base, **body):
 def test_sign_in_is_required_by_default_and_the_site_opens_on_the_sign_in_screen():
     assert config.LOGIN_REQUIRED is True
     with running() as (base, _, _):
-        status, headers, _ = call(f"{base}/")
-        assert status == 302 and headers["Location"].endswith("index.html")
-        status, headers, _ = call(f"{base}/src/frontend/discover.html")
-        assert status == 302 and "index.html?next=" in headers["Location"]
+        status, _, body = call(f"{base}/")
+        assert status == 200 and b'id="signin"' in body  # the sign-in screen itself
+        status, headers, _ = call(f"{base}/discover")
+        assert status == 302 and headers["Location"] == "/?next=%2Fdiscover"
         token, _ = sign_in(base, DREW)
-        assert call(f"{base}/", token=token)[1]["Location"].endswith("discover.html")
+        assert call(f"{base}/", token=token)[1]["Location"] == "/discover"
 
 
 @pytest.mark.parametrize("typed", ["boss", " BOSS ", PAT, "Pat.Demo@northeastern.edu"])
@@ -134,7 +134,7 @@ def test_a_sign_in_survives_a_server_restart_until_sign_out(tmp_path):
         status, _, body = call(f"{base}/api/me", token=drew)
         assert status == 200 and json.loads(body)["id"] == result.people["drew"]
         assert call(f"{base}/api/me", token=alice)[0] == 401  # signed out: sign in again
-        assert call(f"{base}/src/frontend/discover.html", token=alice)[0] == 302
+        assert call(f"{base}/discover", token=alice)[0] == 302
 
 
 def test_remembered_sessions_run_out_and_a_broken_file_just_means_signing_in_again(tmp_path):

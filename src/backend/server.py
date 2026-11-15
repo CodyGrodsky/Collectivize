@@ -46,15 +46,23 @@ Platform admins can "view as" someone from /admin: read-only (every change
 is refused), with a banner on every page, and logged (see sessions.py).
 
 Safety:
-- Demo only: sign-in has no email verification yet, so the server refuses
-  to run against the production database.
+- Demo only: the server refuses to run against the production database.
+- An email signs in only after a six-digit code sent to it is typed back
+  (when a verifier is given; `serve.py` gives one).
 - Listens on 127.0.0.1 only.
 - Serves static files only from src/frontend, public and app (never data/,
-  source code or dotfiles); every path is resolved and checked.
+  source code or dotfiles); every path is resolved and checked. Addresses
+  are short (`/discover`) and never show the repository's layout; the admin
+  page's scripts are served to platform admins only (server_routes.py).
+- Every answer carries a Content-Security-Policy (own scripts only).
+- GET, HEAD, POST and OPTIONS are answered; other methods get 405.
 - A POST whose Origin is another site is refused (on top of SameSite
   cookies and JSON-only bodies), so no other page can act as you.
 - Every input is validated; errors come back as {"error": "..."} without
-  internals. JSON responses carry no-store and nosniff headers.
+  internals. Whatever fails, the browser gets an answer: a small error
+  page for a person, JSON for the app (server_pages.py).
+- Ranking scores, distances and going counts are sent to platform admins
+  only. JSON responses carry no-store and nosniff headers.
 - AI search: identical searches are answered from a small in-memory cache,
   and only one runs at a time, so a busy page can't run up API costs.
 """
@@ -82,26 +90,32 @@ from backend.demo_api import (  # re-exported: callers import these from here
     demo_graph_factory,
 )
 from backend.duo import DuoGate
+from backend.email_verification import EmailVerifier
 from backend.graph import NotFoundError, PermissionDeniedError
 from backend.objects import DomainRuleError
 from backend.objects.base import utc_now
-from backend.server_auth import COOKIE_FLAGS, MAX_BODY_BYTES, AuthHandlerMixin
+from backend.server_auth import MAX_BODY_BYTES, AuthHandlerMixin, cookie_flags
+from backend.server_pages import AnswerMixin
+from backend.server_routes import (
+    ADMIN_LOGIN_PAGE,
+    ADMIN_ONLY,
+    ADMIN_PAGE,
+    CONTENT_SECURITY_POLICY,
+    FAVICON,
+    INVITE_PAGE,
+    LANDING_PAGE,
+    PUBLIC_PAGES,
+    SIGNED_IN_HOME,
+    file_for,
+    is_page,
+    moved_to,
+)
 from backend.sessions import COOKIE_NAME, Session, SessionStore
 
 log = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC_DIRS = ("src/frontend", "public", "app")
-LANDING_PAGE = "/src/frontend/index.html"
-HOME_PAGE = LANDING_PAGE
-SIGNED_IN_HOME = "/src/frontend/discover.html"
-ADMIN_PAGE = "/src/frontend/admin.html"
-# The admin entrance: the same sign-in screen, shown even to someone signed in.
-ADMIN_LOGIN_PAGE = "/src/frontend/index.html?admin=1"
-# Pages a signed-out visitor may open (v1.1 spec 4.10). Assets (CSS, JS,
-# images) are always served: they hold no one's data.
-INVITE_PAGE = "/src/frontend/invite.html"
-PUBLIC_PAGES = frozenset({LANDING_PAGE, INVITE_PAGE})
 # A full profile edit is bigger: 1000 characters of emoji is about 4 KB alone.
 BODY_LIMITS = {"/api/profile": 8192, "/api/admin/account": 8192}
 READ_ONLY_ALLOWED = frozenset({"/api/signout", "/api/admin/view-as"})
@@ -126,8 +140,12 @@ class DemoServer(ThreadingHTTPServer):
         accounts: AccountsApi | None = None,
         admin_auth: AdminAuth | None = None,
         duo: DuoGate | None = None,
+        verifier: EmailVerifier | None = None,
     ) -> None:
         self.api = api
+        # Set: an email must be proved with a code before it signs in.
+        # None (tests, old callers): typing the email is enough.
+        self.verifier = verifier
         self.duo = duo  # set: admin sign-ins also need Duo's approval
         # With an AdminAuth, platform admins sign in only at /admin with
         # their username and password. None (tests, old callers): they
@@ -157,35 +175,43 @@ class DemoServer(ThreadingHTTPServer):
             return graph.visibility.is_platform_admin(person_id)
 
 
-class RequestHandler(AuthHandlerMixin, BaseHTTPRequestHandler):
+class RequestHandler(AuthHandlerMixin, AnswerMixin, BaseHTTPRequestHandler):
     server: DemoServer
     server_version = "CollectivizeDemo"
     sys_version = ""
 
     def do_GET(self) -> None:
+        self._guarded(self._get)
+
+    def do_POST(self) -> None:
+        self._guarded(self._post)
+
+    def _get(self) -> None:
         """API routes, the home redirect, or a static file."""
         url = urlsplit(self.path)
         if url.path.startswith("/api/"):
             params = {k: v[0] for k, v in parse_qs(url.query).items()}
             self._get_api(url.path, params)
-        elif url.path == "/":
-            self._redirect(SIGNED_IN_HOME if self._session() else LANDING_PAGE)
-        elif url.path == "/admin":  # the admin entrance: not linked from any page
-            is_admin = self._is_platform_admin(self._session())
-            self._redirect(ADMIN_PAGE if is_admin else ADMIN_LOGIN_PAGE)
+        elif url.path == "/" and self._session():
+            self._redirect(SIGNED_IN_HOME)  # signed out, "/" is the sign-in screen
         elif url.path.startswith("/invite/"):  # shareable invite links
             code = url.path.removeprefix("/invite/").strip("/")
             self._redirect(INVITE_PAGE + "?" + urlencode({"code": code[:100]}))
+        elif url.path == "/favicon.ico":  # browsers ask for this by themselves
+            self._static(FAVICON)
         else:
-            self._static(url.path)
+            self._static(url.path, url.query)
 
-    def do_POST(self) -> None:
+    def _post(self) -> None:
         path = urlsplit(self.path).path
         if not self._same_origin():
             self._json(HTTPStatus.FORBIDDEN, {"error": "cross-site request refused"})
             return
         if path == "/api/signin":
             self._sign_in()
+            return
+        if path == "/api/signin/verify":
+            self._verify_sign_in()
             return
         if path == "/api/admin/signin":
             self._admin_sign_in()
@@ -308,7 +334,7 @@ class RequestHandler(AuthHandlerMixin, BaseHTTPRequestHandler):
             self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             return
         try:
-            self._json(HTTPStatus.OK, handler())
+            self._json(HTTPStatus.OK, self._for_viewer(handler()))
         except ApiError as error:
             self._json(error.status, {"error": error.message})
         except NotFoundError:
@@ -356,30 +382,40 @@ class RequestHandler(AuthHandlerMixin, BaseHTTPRequestHandler):
         self.send_response(status)
         if cookie is not None:
             age = "; Max-Age=0" if not cookie else f"; Max-Age={max_age}" if max_age else ""
-            self.send_header("Set-Cookie", f"{COOKIE_NAME}={cookie}; {COOKIE_FLAGS}{age}")
+            self.send_header("Set-Cookie", f"{COOKIE_NAME}={cookie}; {cookie_flags(self.headers)}{age}")
+            self._cookie_sent = True  # this answer already sets the cookie
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self._security_headers()
         self.end_headers()
-        self.wfile.write(data)
+        self._send_body(data)
 
-    def _static(self, url_path: str) -> None:
-        target = resolve_static(url_path)
-        if target is None:
-            self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+    def _static(self, path: str, query: str = "") -> None:
+        """A page, script, stylesheet or image, by its address (server_routes.py)."""
+        moved = moved_to(path, query)
+        if moved is not None:  # an old address: send the browser to the new one
+            self._redirect(moved)
             return
-        if target.suffix == ".html":
-            public = urlsplit(url_path).path in PUBLIC_PAGES
-            session = None if public else self._session()
-            if not public and session is None:
-                reason = self._ended_reason()  # e.g. "deleted": say so, don't bounce back
-                query = {"notice": reason} if reason else {"next": url_path}
-                self._redirect(LANDING_PAGE + "?" + urlencode(query))
+        file = file_for(path)
+        target = None if file is None else resolve_static(file)
+        if target is None:
+            self._not_found()
+            return
+        if path in ADMIN_ONLY:
+            if not self._is_platform_admin(self._session()):
+                # The admin page sends everyone else to the sign-in screen;
+                # its scripts simply don't exist for them.
+                if path == ADMIN_PAGE:
+                    self._redirect(ADMIN_LOGIN_PAGE)
+                else:
+                    self._not_found()
                 return
-            if url_path == ADMIN_PAGE and not self._is_platform_admin(session):
-                self._redirect(SIGNED_IN_HOME)  # /admin is for platform admins only
-                return
+        elif is_page(path) and path not in PUBLIC_PAGES and self._session() is None:
+            reason = self._ended_reason()  # e.g. "deleted": say so, don't bounce back
+            where = {"notice": reason} if reason else {"next": path}
+            self._redirect(LANDING_PAGE + "?" + urlencode(where))
+            return
         data = target.read_bytes()
         content_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
         if content_type.startswith("text/") or content_type in ("application/javascript",):
@@ -390,18 +426,28 @@ class RequestHandler(AuthHandlerMixin, BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self._security_headers()
         self.end_headers()
-        self.wfile.write(data)
+        self._send_body(data)
+
+    def _not_found(self) -> None:
+        if self._wants_page():  # someone's browser: a page, not raw JSON
+            self._page(HTTPStatus.NOT_FOUND)
+        else:
+            self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
     def _redirect(self, location: str) -> None:
         self.send_response(HTTPStatus.FOUND)
         self.send_header("Location", location)
         self.send_header("Content-Length", "0")
+        self._security_headers()
         self.end_headers()
 
     def _security_headers(self) -> None:
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
 
 
 def resolve_static(url_path: str, root: Path = ROOT) -> Path | None:
@@ -430,7 +476,8 @@ def serve(
     accounts: AccountsApi | None = None,
     admin_auth: AdminAuth | None = None,
     duo: DuoGate | None = None,
+    verifier: EmailVerifier | None = None,
 ) -> DemoServer:
     """Create the server on 127.0.0.1 (call .serve_forever() to run it).
     `auto_login_email` turns login off for development (see DemoServer)."""
-    return DemoServer(("127.0.0.1", port), api, app, sessions, auto_login_email, accounts, admin_auth, duo)
+    return DemoServer(("127.0.0.1", port), api, app, sessions, auto_login_email, accounts, admin_auth, duo, verifier)

@@ -6,6 +6,8 @@ people agree, and either can remove it silently.
 - At most one connection edge per pair, in either direction.
 - Declining or removing hard-deletes the edge, so no record remains that
   the two people were ever linked.
+- Nobody can have more than MAX_OPEN_REQUESTS requests waiting for an
+  answer at once, so one account can't send requests to everyone.
 """
 
 from __future__ import annotations
@@ -24,6 +26,8 @@ from backend.objects import (
 
 from .errors import PermissionDeniedError
 from .store import GraphStore
+
+MAX_OPEN_REQUESTS = 25  # requests one person may have waiting for an answer
 
 
 class ConnectionService:
@@ -64,6 +68,13 @@ class ConnectionService:
             raise DomainRuleError("you cannot connect with yourself")
         if self.between(from_person_id, to_person_id) is not None:
             raise DomainRuleError("a connection or request already exists")
+        waiting = sum(not edge.is_established
+                      for edge in self._store.edges(Connected, source_id=from_person_id))
+        if waiting >= MAX_OPEN_REQUESTS:
+            raise DomainRuleError(
+                f"you have {waiting} connection requests waiting for an answer: "
+                "wait for some replies, or cancel a few, before sending more"
+            )
         edge = Connected(
             source_id=from_person_id,
             target_id=to_person_id,

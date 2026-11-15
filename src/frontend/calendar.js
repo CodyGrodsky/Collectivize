@@ -469,7 +469,7 @@
             // Discovery lives on Discover: open it with this day already set.
             const find = $("day-find");
             find.textContent = `Find events on ${FIND_FORMAT.format(this.selected)}`;
-            find.href = `discover.html?${new URLSearchParams({ date: PlanCalendar.isoDate(this.selected) })}`;
+            find.href = `discover?${new URLSearchParams({ date: PlanCalendar.isoDate(this.selected) })}`;
         }
 
         fillList(list, empty, entries) {

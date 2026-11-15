@@ -5,17 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#f5f4f0">
     <title>Calendar · Collectivize</title>
-    <link rel="icon" href="../../app/icon.svg" type="image/svg+xml">
+    <link rel="icon" href="/app/icon.svg" type="image/svg+xml">
     <!-- The calendar is now part of My Events. Old links (and ?date=) still work. -->
-    <script>
-        (() => {
-            const params = new URLSearchParams(location.search);
-            params.set("view", "calendar");
-            location.replace(`my-events.html?${params}`);
-        })();
-    </script>
+    <meta http-equiv="refresh" content="0; url=my-events?view=calendar">
 </head>
 <body>
-    <p><a href="my-events.html?view=calendar">The calendar is now in My Events.</a></p>
+    <p><a href="my-events?view=calendar">The calendar is now in My Events.</a></p>
 </body>
 </html>

@@ -195,7 +195,7 @@
         const start = new Date(event.starts_at);
         const notes = [];
         if (event.is_cancelled) notes.push("Cancelled");
-        else if (event.capacity && event.going_count != null && event.going_count >= event.capacity) notes.push("Full");
+        else if (event.is_full) notes.push("Full");
         const meta = [...notes, `${DATE.format(start)}, ${TIME.format(start)}`, event.location]
             .filter(Boolean).join(" · ");
         const parts = [

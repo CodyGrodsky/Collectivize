@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#f5f4f0">
     <title>Collectivize</title>
-    <link rel="icon" href="../../app/icon.svg" type="image/svg+xml">
+    <link rel="icon" href="/app/icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="landing.css">
     <link rel="stylesheet" href="logo-spin.css">
     <script src="shared.js" defer></script>
+    <script src="signin-form.js" defer></script>
     <script src="landing.js" defer></script>
     <script type="module">
         import { initLogo3D } from "./logo3d.js";
@@ -21,13 +22,17 @@
 <body>
     <main class="cover">
         <div class="cover-hero" id="hero">
+<<<<<<< HEAD
             <!-- The 3D dot logo (logo3d.js). The spinning image shows until it's ready,
                  and stays if WebGL or the three.js download isn't available. -->
             <div class="cover-logo3d" id="logo3d" role="img" aria-label="Collectivize logo">
                 <img class="cover-logo logo-spin" src="../../public/brand/logo.svg" alt="" width="600" height="600">
             </div>
+=======
+            <img class="cover-logo logo-spin" src="/public/brand/logo.svg" alt="" width="600" height="600">
+>>>>>>> e958a1bba480de7527dc47746c866261c5aabdc1
             <h1 class="cover-title">
-                <img class="cover-wordmark" src="../../public/brand/wordmark-on-paper.svg" alt="Collectivize" width="1210" height="128">
+                <img class="cover-wordmark" src="/public/brand/wordmark-on-paper.svg" alt="Collectivize" width="1210" height="128">
             </h1>
         </div>
 
@@ -39,20 +44,8 @@
                        aria-describedby="signin-message">
                 <button class="signin-button" type="submit" id="signin-button">Sign in</button>
             </div>
-            <!-- Shown only after an admin account is typed above. -->
-            <div class="signin-extra" id="signin-admin" hidden>
-                <label class="signin-label" for="signin-password">Admin password</label>
-                <input class="signin-input" id="signin-password" type="password" maxlength="200"
-                       autocomplete="current-password" aria-describedby="signin-message">
-                <div id="signin-duo" hidden>
-                    <label class="signin-label" for="signin-passcode">Duo passcode</label>
-                    <input class="signin-input" id="signin-passcode" inputmode="numeric" maxlength="20"
-                           autocomplete="one-time-code" placeholder="from the Duo Mobile app"
-                           aria-describedby="signin-message">
-                </div>
-            </div>
             <p class="signin-message" id="signin-message" role="alert" aria-live="polite"></p>
-            <p class="signin-note">Campus-only for now. Demo accounts: <code>drew.demo@northeastern.edu</code>, <code>alice.demo@northeastern.edu</code>.</p>
+            <p class="signin-note">Campus-only for now. We'll email you a code to sign in.</p>
         </form>
     </main>
 </body>

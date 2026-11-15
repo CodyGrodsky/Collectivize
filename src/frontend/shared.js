@@ -11,8 +11,8 @@
 "use strict";
 
 (() => {
-    const LANDING = "/src/frontend/index.html";
-    const HOME = "/src/frontend/discover.html";
+    const LANDING = "/"; // the sign-in screen
+    const HOME = "/discover";
     const WATCH_MS = 8000; // how often an open page checks it is still signed in
 
     class Api {
@@ -37,7 +37,7 @@
             try {
                 response = await fetch(url, options);
             } catch {
-                throw new Error("Can't reach the Collectivize server. Is scripts/serve.py running?");
+                throw new Error("Can't reach Collectivize right now. Check your connection and try again.");
             }
             let data = null;
             try {
@@ -50,7 +50,7 @@
                 throw new Error("Signed out. Taking you to sign in…");
             }
             if (!response.ok || data === null || typeof data !== "object") {
-                const error = new Error(data?.error || "The server didn't answer properly. Start it with scripts/serve.py.");
+                const error = new Error(data?.error || "Something went wrong. Please try again.");
                 error.data = data; // extra fields from the server, e.g. needs_passcode
                 throw error;
             }
@@ -111,8 +111,9 @@
 
         /** Where to go after signing in: a page of this app, else Discover. */
         static nextPage(next) {
-            if (typeof next === "string" && next.startsWith("/src/frontend/") && !next.includes("//")
-                && !next.startsWith(LANDING)) {
+            // Only one of this site's own pages ("/profile?id=…"): never another
+            // site, and not the sign-in screen itself.
+            if (typeof next === "string" && /^\/[a-z0-9-]+(\?[^#]*)?$/.test(next) && !next.startsWith("/home")) {
                 return next;
             }
             return HOME;
@@ -272,11 +273,11 @@
 
         /** Someone's profile page (as far as they let you see it). */
         profileHref(id) {
-            return `profile.html?${new URLSearchParams({ id })}`;
+            return `profile?${new URLSearchParams({ id })}`;
         },
 
         orgHref(id) {
-            return `org.html?${new URLSearchParams({ id })}`;
+            return `org?${new URLSearchParams({ id })}`;
         },
     });
 

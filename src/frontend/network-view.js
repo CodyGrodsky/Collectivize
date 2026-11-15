@@ -170,6 +170,17 @@
             this.place(false);
         }
 
+        /** Outline each node in its own colour: `colors` maps an id to a
+         *  #RRGGBB. Nodes without one keep the default look. */
+        paint(colors) {
+            for (const group of this.svg.querySelectorAll(".nw-node[data-id]")) {
+                const color = colors.get(group.dataset.id);
+                group.classList.toggle("has-color", Boolean(color));
+                if (color) group.style.setProperty("--n-line", color);
+                else group.style.removeProperty("--n-line");
+            }
+        }
+
         // --- moving around -------------------------------------------------------
 
         /** Move the view so map point (x, y) is at the circle's middle. */
@@ -250,8 +261,9 @@
         // --- nodes ---------------------------------------------------------------
 
         /** A positioned node: shape, initials and a label underneath. */
-        node({ x, y, name, label, kind, radius, order, shape }) {
+        node({ id, x, y, name, label, kind, radius, order, shape }) {
             const group = svg("g", { transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})` }, `nw-node ${kind}`);
+            if (id) group.dataset.id = id;
             group.dataset.x = x.toFixed(1);
             group.dataset.y = y.toFixed(1);
             const inner = svg("g", { style: `--order: ${Math.min(order, 30)}` }, "nw-node-inner");
@@ -320,7 +332,9 @@
                 shape: center.isOrg ? NetworkView.square(radius) : svg("circle", { r: radius }, "nw-shape"),
             });
             // You, in the middle of your own network: opens your profile.
+            // Anyone else in the middle: opens their profile (a community: its page).
             if (this.isSelf) this.pressable(group, "You. Open your profile", "");
+            else this.pressable(group, `${center.name}. Open ${center.isOrg ? "its page" : "their profile"}`, center.id);
             return group;
         }
 
@@ -399,6 +413,11 @@
                 : `Map of your connections and communities linked to ${map.center.name}`);
             const footprint = (node, isCenter) => NetworkView.footprint(node, isCenter, map.isSelf);
             this.view.draw(window.Collectivize.NetworkLayout.arrange(map, Math.random, footprint), { isSelf: map.isSelf });
+        }
+
+        /** Outline nodes in their own colours (id -> #RRGGBB). */
+        paint(colors) {
+            this.view.paint(colors);
         }
     }
 
