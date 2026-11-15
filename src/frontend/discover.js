@@ -23,7 +23,7 @@
     const TYPE_LABEL = { people: "People", orgs: "Organizations", events: "Events" };
     const KIND = { chapter: "Chapter", national: "National organization", council: "Council", club: "Club", institution: "Institution" };
     const SCORES_KEY = "collectivize.admin.scores";
-    const FRIEND_PHOTOS = 3; // friends' pictures on a card before "+N"
+    const FRIEND_ICONS = 3; // blank friend icons on a card (discover.html's template) before "+N"
 
     const $ = (id) => document.getElementById(id);
     const { Api, EventActions, Ui } = window.Collectivize;
@@ -456,7 +456,8 @@
             this.expandable(node, item);
 
             const shown = reasons.slice(1).filter(
-                (r) => !/friends? going$|away\)?$|^Fits what you asked for|^Not much like|^Hosted by your org/.test(r),
+                // "Like your orgs: …" still comes from the server (ranking, admin scores); it just isn't shown.
+                (r) => !/friends? going$|away\)?$|^Fits what you asked for|^Not much like|^Hosted by your org|^Like your orgs/.test(r),
             );
             q(".dc-reasons").replaceChildren(...shown.slice(0, 3).map((reason) => el("li", { text: reason })));
             this.friends(q(".dc-friends"), item.friends_going);
@@ -519,17 +520,17 @@
             return `“${item.title}”: ${what}. Your calendar is updated.`;
         }
 
-        /** Friends going: their profile pictures, never their names or
-            initials (Cody's change). Up to three, then "+N". */
+        /** Friends going stay anonymous: one blank icon per friend (up to
+            three, then "+N"), never names, initials or pictures (Cody's change). */
         friends(container, names) {
             if (!names.length) return;
             container.hidden = false;
-            const shown = names.slice(0, FRIEND_PHOTOS);
-            const photos = shown.map((name) => el("span", { className: "dc-avatar dc-photo", text: Ui.photo(name) }));
-            if (names.length > shown.length) {
-                photos.push(el("span", { className: "dc-avatar dc-avatar-more", text: `+${names.length - shown.length}` }));
+            const avatars = container.querySelector(".dc-avatars");
+            const icons = [...avatars.querySelectorAll(".dc-avatar")]; // the card template's three blank icons
+            icons.slice(names.length).forEach((icon) => icon.remove());
+            if (names.length > FRIEND_ICONS) {
+                avatars.append(el("span", { className: "dc-avatar dc-avatar-more", text: `+${names.length - FRIEND_ICONS}` }));
             }
-            container.querySelector(".dc-avatars").replaceChildren(...photos);
             container.querySelector(".dc-friends-text").textContent = names.length === 1
                 ? "A friend is attending" : `${names.length} friends are attending`;
         }

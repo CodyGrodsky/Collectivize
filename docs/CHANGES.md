@@ -4,6 +4,13 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Discover: friends going anonymous again (with a count); "Like your orgs" hidden
+
+- **Friends going (`discover.js`, `discover.css`).** Profile pictures removed again: friends stay anonymous. The row now shows one blank icon per friend going (1, 2 or 3), then "+N" past three, and the text keeps the count ("A friend is attending" / "4 friends are attending"). `Ui.photo` (added in the entry below) is removed from `shared.js`.
+- **"Like your orgs: …" reason (`discover.js`).** No longer shown on event cards. The backend still produces it (`graph/explain.py`) for ranking and the admin scores view; only the card filter changed. Backend untouched.
+
+---
+
 ## 2026-11-15 — Discover: friends going show their profile pictures
 
 - An event card's "Friends are attending" row used three blank person icons whatever happened. It now shows the profile picture of each friend actually going (the demo's animal emoji, the same one as on their profile and the network map), up to three, then "+N". Still no names or initials (Cody's rule). The text says how many: "A friend is attending" / "4 friends are attending" (`discover.js`, `discover.css`).
