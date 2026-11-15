@@ -4,6 +4,13 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Demo: real Northeastern club names, fake people
+
+- `demo/neu_orgs.json`: the public list of Boston student orgs from engage.northeastern.edu (580 names and categories).
+- `scripts/neu_org_names.py` (`NeuNamer`): renames the demo's clubs and chapters to real club names (closest name match), and the campus/councils to Northeastern. People stay fictional. Run after reseeding the demo DB.
+
+---
+
 ## 2026-11-15 — Merged James's main (admin security) into the fork
 
 - Brought in `JamesKempel/Collectivize` main ("merge situation": TOTP, account rules, admin setup, hidden admins).
