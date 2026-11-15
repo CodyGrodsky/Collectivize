@@ -274,7 +274,6 @@
         ["nw-key is-org", "Your community"],
         ["nw-key", "Your connection"],
         ["nw-key is-line", "Connected"],
-        ["nw-key is-line is-near", "Close, not connected"],
         ["nw-key is-line is-org", "In the community"],
     ];
 

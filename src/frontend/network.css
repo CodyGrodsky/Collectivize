@@ -3,8 +3,7 @@
 
    The bubble is a small fixed-size circle. Inside it: squares are
    communities, circles are people; a bold line joins two people who
-   accepted a connection, a light dashed line joins two who are only close
-   in the network, and a line in the accent color joins a community to the
+   accepted a connection, and a line in the accent color joins a community to the
    middle. When the bubble sits inside someone's profile it takes on their
    colors (--p-*); elsewhere it uses the house colors. */
 
@@ -148,15 +147,13 @@ select { font: inherit; color: inherit; }
 .nw-key { width: 11px; height: 11px; border: 1.5px solid var(--b-accent); border-radius: 50%; background: var(--b-bg); }
 .nw-key.is-org { border-radius: 3px; background: color-mix(in srgb, var(--b-accent) 14%, var(--b-bg)); }
 .nw-key.is-line { width: 20px; height: 0; border: 0; border-top: 2.2px solid color-mix(in srgb, var(--b-ink) 70%, var(--b-bg)); border-radius: 0; background: none; }
-.nw-key.is-line.is-near { border-top: 1.5px dashed color-mix(in srgb, var(--b-ink) 38%, var(--b-bg)); }
 .nw-key.is-line.is-org { border-top: 2px solid var(--b-accent); background: none; opacity: .6; }
 
 /* --- inside the bubble --------------------------------------------------- */
 
 /* Bold: a connection both people accepted, whoever is in the middle.
-   Light: not connected, but close in the network. No line: no real tie. */
+   No line: not connected. */
 .nw-link { stroke: color-mix(in srgb, var(--b-ink) 70%, var(--b-bg)); stroke-width: 2.2; }
-.nw-link.is-near { stroke: color-mix(in srgb, var(--b-ink) 30%, var(--b-bg)); stroke-width: 1.1; stroke-dasharray: 3 5; }
 .nw-link.is-org { stroke: var(--b-accent); stroke-width: 2; opacity: .6; }
 
 .nw-node-inner {
