@@ -95,13 +95,23 @@ export async function initLogo3D(options = {}) {
   outer.add(inner);
   scene.add(outer);
 
+  // The room each state needs (width, height in scene units). The camera comes
+  // in close for the logo and pulls back for the wide wordmark, so the logo
+  // fills the box even where the box is narrow.
+  const FRAME = { logo: [3.1, 3.1], word: [WORD_WIDTH * 1.12, 1.4], network: [3.4, 3.2] };
+  let framed = 'logo';
+  const fitZ = () => {
+    const [fw, fh] = FRAME[framed] || FRAME.logo;
+    const view = 2 * Math.tan((camera.fov * Math.PI) / 360);
+    return Math.max(fw / (view * camera.aspect), fh / view);
+  };
+
   function resize() {
     const w = Math.max(1, el.clientWidth);
     const h = Math.max(1, el.clientHeight);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
-    const fitZ = (WORD_WIDTH * 1.12) / (2 * Math.tan((camera.fov * Math.PI) / 360) * camera.aspect);
-    camera.position.z = Math.max(4.2, fitZ);
+    camera.position.z = fitZ();
     camera.updateProjectionMatrix();
   }
   resize();
@@ -234,6 +244,7 @@ export async function initLogo3D(options = {}) {
     to = shapes[name].positions;
     scaleTo = shapes[name].scale;
     current = name;
+    framed = name;
     morphT = reduced ? 0.999 : 0;
     sinceMorph = 0;
   }
@@ -366,6 +377,7 @@ export async function initLogo3D(options = {}) {
     outer.rotation.x = rotX + followX;
     outer.rotation.y = rotY + followY + sway;
     outer.position.set(panX, panY, 0);
+    camera.position.z += (fitZ() - camera.position.z) * Math.min(1, dt * 2.5);
     material.uniforms.uScale.value = canvas.height / (2 * Math.tan((camera.fov * Math.PI) / 360));
 
 

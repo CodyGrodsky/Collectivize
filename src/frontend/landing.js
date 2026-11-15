@@ -14,7 +14,7 @@
 
     // Already signed in: carry on to the page they asked for, or, with none
     // (e.g. the nav's wordmark link), show the home page without the sign-in
-    // form, where the wordmark leads to Discover.
+    // form, with a link to Discover.
     Api.get("/api/session", {}, { redirectOnSignOut: false })
         .then(({ signed_in: signedIn }) => {
             if (!signedIn || adminEntrance) return; // /admin always shows the form
@@ -25,13 +25,7 @@
 
     function showSignedIn() {
         $("signin").hidden = true;
-        const wordmark = document.querySelector(".cover-wordmark");
-        const link = document.createElement("a");
-        link.className = "cover-wordmark-link";
-        link.href = "discover";
-        wordmark.alt = "Collectivize: go to Discover";
-        wordmark.replaceWith(link);
-        link.append(wordmark);
+        $("cover-go").hidden = false;
     }
 
     // Sent here because the account was ended from somewhere else.
