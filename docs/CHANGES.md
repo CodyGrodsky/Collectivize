@@ -1815,3 +1815,6 @@ My Events and Calendar are now one page, with hosting, working week/day views an
 - **Colours:** Saved is dark gold (the pressed bookmark button matches), My orgs is light blue, Hosting is dark red. Going and Maybe are unchanged.
 - **Discover:** no more bubbles above titles on events, people or orgs. "Cancelled" and "Full" are now plain text at the start of the date line. "Add to calendar" is removed except on events you host. "Hosted by …" is bold.
 - **Backend:** `GET /api/my-events` now includes events you host, with `hosting: true/false`. `GET /api/find` adds `is_hosting` on events and accepts `scope=mine` (anything else is a 400). `SearchFilters.event_ids` limits a search to given events. Tests: `tests/backend/test_my_events_hosting.py` (30 tests).
+
+
+Tab icon is the new logo; Saved and Hosting use light fills. `app/icon.svg`, the tab icon every page links to, now holds the current logo (a copy of `public/brand/logo.svg`), and `main.html` now has a tab icon too. On the calendar (key, month chips, week/day blocks), Saved is light gold and Hosting is light red, each with a coloured outline, like Maybe and My orgs. The pressed bookmark button is the same light gold, and the day panel's "Hosting" tag is light red.

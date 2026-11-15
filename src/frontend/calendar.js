@@ -525,16 +525,16 @@
         static tags(entry) {
             const tags = document.createElement("div");
             tags.className = "day-event-tags";
-            const add = (text, muted = false) => {
+            const add = (text, muted = false, kind = "") => {
                 const tag = document.createElement("span");
-                tag.className = `day-tag${muted ? " is-muted" : ""}`;
+                tag.className = `day-tag${muted ? " is-muted" : ""}${kind ? ` ${kind}` : ""}`;
                 tag.textContent = text;
                 tags.append(tag);
             };
             if (entry.relations.includes("going")) add("Going");
             else if (entry.relations.includes("maybe")) add("Maybe");
             if (entry.relations.includes("starred")) add("Saved");
-            if (entry.relations.includes("hosting")) add("Hosting");
+            if (entry.relations.includes("hosting")) add("Hosting", false, "is-hosting");
             if (entry.relations.includes("my_org")) add("Your org");
             if (entry.cancelled) add("Cancelled", true);
             if (entry.draft) add("Draft", true);
