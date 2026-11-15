@@ -170,6 +170,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .account-danger .panel-title { color: var(--red); }
 .team-powers { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 13px; }
 .team-powers label { display: inline-flex; align-items: center; gap: 5px; }
+.team-hidden { display: flex; align-items: center; gap: 5px; margin-top: 6px; font-size: 13px; }
 .panel > .account-danger:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 
 /* --- org page: members list (org.js) ------------------------------------- */

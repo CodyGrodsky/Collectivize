@@ -4,6 +4,14 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Merged James's main (admin security) into the fork
+
+- Brought in `JamesKempel/Collectivize` main ("merge situation": TOTP, account rules, admin setup, hidden admins).
+- Conflicts: the fork's newer home page (no wordmark) and network map (full screen, org mutual lines) kept; `accounts.py` keeps both `hidden` and `avatar` in the admin JSON; both changelogs kept.
+- `api/index.py`: demo session tokens now also carry the admin login name (sessions gained `login`).
+
+---
+
 ## 2026-11-15 — Random animal profile pictures; home screen opens Discover on click
 
 - `src/backend/objects/person.py`: `Person.avatar`, one of `AVATARS` (16 animal emoji), picked at random by `random_avatar()` when an account is created (email sign-in, invite, admin create) and kept. People saved before this have `""` and keep the animal picked from their name, so nobody's picture changes or goes blank. No reseed needed.

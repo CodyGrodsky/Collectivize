@@ -20,6 +20,10 @@ Rules every admin method follows:
    is all-or-nothing.
 3. Every change is written to the audit log: who, what, which account and
    which *fields*, never the values.
+   A person changes their own sign-in email only by proving the new
+   address with a code sent to it; the old address is told. When the
+   owner changes someone's email, the old address is told too and every
+   session of that account ends.
 4. Guard rails: deleting needs the account's email typed back; admins use
    their own account page to delete themselves; nobody changes their own
    admin role; the last platform admin can't be removed; only the owner
@@ -36,6 +40,14 @@ from datetime import datetime
 from http import HTTPStatus
 from typing import Any
 
+from backend.account_rules import (
+    CHANGED_BY_STAFF,
+    CHANGED_BY_YOU,
+    change_purpose,
+    new_email,
+    require_confirmation,
+    valid_email,
+)
 from backend.admin_policy import (
     CREATE,
     DELETE,
@@ -46,16 +58,13 @@ from backend.admin_policy import (
     AdminPolicy,
 )
 from backend.app_api import (
-    EMAIL_SHAPE,
-    MAX_EMAIL_LENGTH,
     _id,
     _name_from_email,
     _person,
-    canonical_email,
 )
 from backend.audit import AuditLog
-from backend.config import ALLOWED_EMAIL_DOMAINS
 from backend.demo_api import ApiError, GraphFactory
+from backend.email_verification import EmailVerifier, VerificationError
 from backend.graph import CollectivizeGraph
 from backend.network_api import AUDIENCE_NAMES, profile_changes
 from backend.objects import (
@@ -66,6 +75,7 @@ from backend.objects import (
     ProvenanceMethod,
     Rsvp,
     VerificationLevel,
+    Visibility,
 )
 from backend.objects.base import utc_now
 from backend.objects.person import ADMIN_POWERS, MAX_DISPLAY_NAME, random_avatar
@@ -99,6 +109,7 @@ class AccountsApi:
         self._clock = clock
         self._logins = logins
         self.policy = AdminPolicy(owners)
+        self.verifier: EmailVerifier | None = None  # set by the server: sends notices
         self.audit = audit or AuditLog()
 
     # --- your own account ----------------------------------------------------------
@@ -127,6 +138,59 @@ class AccountsApi:
         """End every session of yours, on every browser, including this one."""
         return {"signed_out": True, "sessions_ended": self._sessions.end_all(person_id)}
 
+    def start_email_change(
+        self, person_id: str, body: dict[str, Any], verifier: EmailVerifier | None
+    ) -> dict[str, Any]:
+        """Step 1 of changing your sign-in email: a code goes to the *new*
+        address. The answer is the same whether or not that address is
+        free, so it can't be used to find out who has an account."""
+        if verifier is None:
+            raise ApiError(HTTPStatus.SERVICE_UNAVAILABLE, "changing your email isn't available right now")
+        with self._graphs() as graph:
+            person = _person(graph, person_id)
+            if person.is_platform_admin:
+                raise ApiError(HTTPStatus.FORBIDDEN, "an admin account's email is set by the owner")
+            address = valid_email(body.get("email"))
+            if address == person.email:
+                raise ApiError(HTTPStatus.BAD_REQUEST, "that's already your email")
+            taken = any(p.email == address for p in graph.store.nodes(Person))
+        try:
+            verifier.start(address, change_purpose(person_id), send=not taken)
+        except VerificationError as error:
+            raise ApiError(error.status, error.message) from None
+        return {"verify": True, "email": address, "emailed": verifier.is_emailed(address)}
+
+    def finish_email_change(
+        self, person_id: str, body: dict[str, Any], verifier: EmailVerifier | None,
+        keep_session: str | None = None,
+    ) -> dict[str, Any]:
+        """Step 2: the code from the new address makes it your sign-in
+        email. Your other browsers are signed out and the old address is told."""
+        if verifier is None:
+            raise ApiError(HTTPStatus.SERVICE_UNAVAILABLE, "changing your email isn't available right now")
+        # (Not 401: to the pages that means "signed out", and this person isn't.)
+        code = body.get("code")
+        if not isinstance(code, str) or not 0 < len(code) <= 10:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "enter the code from the email")
+        with self._graphs() as graph:
+            person = _person(graph, person_id)
+            if person.is_platform_admin:
+                raise ApiError(HTTPStatus.FORBIDDEN, "an admin account's email is set by the owner")
+            address = valid_email(body.get("email"))
+            try:
+                verifier.check(address, code, change_purpose(person_id))
+            except VerificationError as error:
+                raise ApiError(HTTPStatus.BAD_REQUEST, error.message) from None
+            if any(p.email == address for p in graph.store.nodes(Person)):
+                raise ApiError(HTTPStatus.BAD_REQUEST, "that code isn't right")  # taken meanwhile
+            old = person.email
+            saved = graph.store.save_node(replace(person, email=address))
+            account = self._account_json(graph, saved)
+        self._sessions.end_all(person_id, keep=keep_session)
+        if old:
+            verifier.notify(old, "Your Collectivize sign-in email was changed", CHANGED_BY_YOU)
+        return account
+
     def delete_my_account(self, person_id: str, body: dict[str, Any]) -> dict[str, Any]:
         """True erasure of your own account (see PrivacyService.erase_person).
         `confirm` must be your sign-in email. Not undoable."""
@@ -135,7 +199,7 @@ class AccountsApi:
             if self.policy.is_owner(person) and self.policy.owners_are_set:
                 raise ApiError(HTTPStatus.BAD_REQUEST,
                                "the owner account can't be deleted from the app")
-            _require_confirmation(person, body.get("confirm"))
+            require_confirmation(person, body.get("confirm"))
             self._keep_an_admin(graph, person)
             graph.privacy.erase_person(person.id)
         self._sessions.end_all(person_id, "deleted")
@@ -210,9 +274,10 @@ class AccountsApi:
                 raise ApiError(HTTPStatus.BAD_REQUEST, str(error)) from None
             person = _person(graph, _id(body.get("person_id"), "person"))
             self.policy.check_target(admin, person)
+            old_email = person.email
             account: dict[str, Any] = {}
             if "email" in body:
-                email = _new_email(graph, body["email"], keep=person.id)
+                email = new_email(graph, body["email"], keep=person.id)
                 if email != person.email:
                     self.policy.require_owner(graph, admin_id)
                     account["email"] = email
@@ -225,7 +290,15 @@ class AccountsApi:
                     person = graph.store.save_node(replace(person, **account))
             self.audit.record(admin_id, "update", person.id, self._clock(),
                               ", ".join(sorted({*changes, *account})))
-            return self._account_json(graph, person)
+            answer = self._account_json(graph, person)
+        if "email" in account:
+            # A new sign-in email is a new way in: nobody stays signed in on
+            # the strength of the old one, and the old address is told.
+            self._sessions.end_all(person.id)
+            if old_email and self.verifier is not None:
+                self.verifier.notify(old_email, "Your Collectivize sign-in email was changed",
+                                     CHANGED_BY_STAFF)
+        return answer
 
     def admin_create(self, admin_id: str, body: dict[str, Any]) -> dict[str, Any]:
         """Create an account for `email`, optionally with `display_name`
@@ -238,7 +311,7 @@ class AccountsApi:
             ):
                 raise ApiError(HTTPStatus.BAD_REQUEST,
                                f"display name must be 1 to {MAX_DISPLAY_NAME} characters")
-            email = _new_email(graph, body.get("email"), keep=None)
+            email = new_email(graph, body.get("email"), keep=None)
             person = graph.store.save_node(Person(
                 display_name=name.strip() if name else _name_from_email(email),
                 email=email,
@@ -273,7 +346,7 @@ class AccountsApi:
             self.policy.check_target(admin, person)
             if self.policy.is_owner(person) and self.policy.owners_are_set:
                 raise ApiError(HTTPStatus.BAD_REQUEST, "an owner account can't be deleted here")
-            _require_confirmation(person, body.get("confirm"))
+            require_confirmation(person, body.get("confirm"))
             self._keep_an_admin(graph, person)
             graph.privacy.erase_person(person.id)
         self._sessions.end_all(person.id, "deleted")
@@ -292,13 +365,19 @@ class AccountsApi:
                     "admins": [self._admin_json(p, owner_id) for p in people]}
 
     def set_admin(self, owner_id: str, body: dict[str, Any]) -> dict[str, Any]:
-        """Owner only: make `person_id` an admin or not (`is_admin`), and
-        choose their `powers` (a list from ADMIN_POWERS; empty = view only)."""
+        """Owner only: make `person_id` an admin or not (`is_admin`), choose
+        their `powers` (a list from ADMIN_POWERS; empty = view only), or set
+        `hidden`: a staff account that students can't find in search, the
+        network or by its profile address."""
         with self._graphs() as graph:
             self.policy.require_owner(graph, owner_id)
-            if set(body) - {"person_id", "is_admin", "powers"}:
-                raise ApiError(HTTPStatus.BAD_REQUEST, "send person_id, is_admin and/or powers")
+            if set(body) - {"person_id", "is_admin", "powers", "hidden"}:
+                raise ApiError(HTTPStatus.BAD_REQUEST, "send person_id, is_admin, powers and/or hidden")
             person = _person(graph, _id(body.get("person_id"), "person"))
+            if set(body) <= {"person_id", "hidden"}:  # any admin account, the owner's included
+                if "hidden" in body:
+                    person = self._set_hidden(graph, owner_id, person, body["hidden"])
+                return self._admin_json(person, owner_id)
             is_admin = body.get("is_admin", person.is_platform_admin)
             powers = body.get("powers", list(person.admin_powers))
             if not isinstance(is_admin, bool):
@@ -316,19 +395,40 @@ class AccountsApi:
                 self._keep_an_admin(graph, person)
             ordered = tuple(p for p in ADMIN_POWERS if p in powers) if is_admin else ()
             if (is_admin, ordered) == (person.is_platform_admin, person.admin_powers):
+                if "hidden" in body:
+                    person = self._set_hidden(graph, owner_id, person, body["hidden"])
                 return self._admin_json(person, owner_id)
             was_admin = person.is_platform_admin
-            person = graph.store.save_node(
-                replace(person, is_platform_admin=is_admin, admin_powers=ordered)
-            )
+            # Someone who stops being an admin is an ordinary, findable member again.
+            visibility = person.visibility if is_admin else Visibility.NETWORK
+            person = graph.store.save_node(replace(
+                person, is_platform_admin=is_admin, admin_powers=ordered, visibility=visibility
+            ))
             action = "powers" if was_admin and is_admin else "make admin" if is_admin else "remove admin"
             self.audit.record(owner_id, action, person.id, self._clock(), ", ".join(ordered))
             if was_admin and not is_admin:
                 self._sessions.end_all(person.id)  # an ex-admin starts over
+            elif "hidden" in body:
+                person = self._set_hidden(graph, owner_id, person, body["hidden"])
             return self._admin_json(person, owner_id)
+
+    def _set_hidden(
+        self, graph: CollectivizeGraph, owner_id: str, person: Person, hidden: Any
+    ) -> Person:
+        if not isinstance(hidden, bool):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "hidden must be true or false")
+        if not person.is_platform_admin:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "only an admin account can be hidden")
+        wanted = Visibility.PRIVATE if hidden else Visibility.NETWORK
+        if person.visibility is wanted:
+            return person
+        saved = graph.store.save_node(replace(person, visibility=wanted))
+        self.audit.record(owner_id, "hide admin" if hidden else "show admin", person.id, self._clock())
+        return saved
 
     def _admin_json(self, person: Person, viewer_id: str) -> dict[str, Any]:
         return {
+            "hidden": person.visibility is Visibility.PRIVATE,
             "id": person.id, "name": person.display_name, "avatar": person.avatar or None,
             "email": person.email,
             "is_platform_admin": person.is_platform_admin,
@@ -381,27 +481,3 @@ class AccountsApi:
             ],
             "sessions": self._sessions.count_for(person.id),
         }
-
-
-def _require_confirmation(person: Person, confirm: Any) -> None:
-    """Deleting needs the account's email (or its id, if it has none) typed back."""
-    expected = person.email or person.id
-    if not isinstance(confirm, str) or confirm.strip().lower() != expected.lower():
-        raise ApiError(HTTPStatus.BAD_REQUEST,
-                       "type the account's email exactly to confirm deleting it")
-
-
-def _new_email(graph: CollectivizeGraph, value: Any, *, keep: str | None) -> str:
-    """A valid, allowed sign-in email that no other account (than `keep`) uses."""
-    if not isinstance(value, str) or len(value) > MAX_EMAIL_LENGTH:
-        raise ApiError(HTTPStatus.BAD_REQUEST, "enter an email address")
-    address = canonical_email(value)  # one mailbox, one account
-    match = EMAIL_SHAPE.match(address)
-    if match is None:
-        raise ApiError(HTTPStatus.BAD_REQUEST, "enter a valid email address")
-    if match.group(1) not in ALLOWED_EMAIL_DOMAINS:
-        raise ApiError(HTTPStatus.BAD_REQUEST,
-                       f"accounts need an @{' or @'.join(ALLOWED_EMAIL_DOMAINS)} email")
-    if any(p.email == address and p.id != keep for p in graph.store.nodes(Person)):
-        raise ApiError(HTTPStatus.CONFLICT, "another account already uses that email")
-    return address

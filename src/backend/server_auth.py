@@ -10,8 +10,10 @@ One sign-in screen for everyone (POST /api/signin with what was typed):
   email signs in at once;
 - an admin's username, or an admin account's email, is answered with
   {"admin": true}: the page then asks for the password and sends both to
-  POST /api/admin/signin. If Duo is set up (duo.py) that request also
-  needs Duo's approval: a push to the admin's phone, or a `passcode`.
+  POST /api/admin/signin. A second step follows the password: Duo's
+  approval when Duo is set up (duo.py: a push to the admin's phone, or a
+  `passcode`), otherwise the current code from the login's authenticator
+  app when it has one (totp.py), sent as `passcode`.
 
 Remembered: a sign-in lasts REMEMBER_SECONDS after the person's last
 visit (each day they use the site starts it again), across browser and
@@ -30,6 +32,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from backend.admin_auth import MAX_EMAIL, MAX_PASSWORD, LockedOutError
+from backend.audit import ACTING_LOGIN
 from backend.demo_api import ApiError
 from backend.duo import MAX_PASSCODE, DuoError
 from backend.email_verification import CODE_DIGITS, VerificationError
@@ -77,6 +80,7 @@ class AuthHandlerMixin:
     def _session(self, *, auto: bool = True) -> Session | None:
         token = self._cookie()
         session = self.server.sessions.get(token)
+        ACTING_LOGIN.set(session.login if session else "")  # for the admin log
         if session is not None:
             # Used today: a remembered sign-in starts its 30 days again, and
             # the browser's cookie is given the new lifetime.
@@ -201,10 +205,11 @@ class AuthHandlerMixin:
             return
         self._start_session(person_id, REMEMBER_SECONDS)
 
-    def _start_session(self, person_id: str, ttl: float) -> None:
+    def _start_session(self, person_id: str, ttl: float, login: str = "") -> None:
         self.server.sessions.end(self._cookie())
         # An ordinary sign-in renews with use; an admin's ends on schedule.
-        token = self.server.sessions.create(person_id, ttl, renew=ttl == REMEMBER_SECONDS)
+        token = self.server.sessions.create(person_id, ttl, renew=ttl == REMEMBER_SECONDS,
+                                            login=login)
         session = self.server.sessions.get(token)
         self._json(HTTPStatus.OK, self._me(session), cookie=token, max_age=int(ttl))
 
@@ -242,18 +247,30 @@ class AuthHandlerMixin:
             return
         audit = self.server.accounts.audit
         if person_id is None:
-            audit.record("", "sign-in failed", "", utc_now())
+            audit.record("", "sign-in failed", "", utc_now(), login=username.strip()[:64])
             self._json(HTTPStatus.UNAUTHORIZED, refused)
             return
-        if self.server.duo is not None:  # the second factor, admins only
+        name, second = credential.username, "password"
+        if self.server.duo is not None:  # the second step, admins only
             try:
-                self.server.duo.approve(credential.duo_username or credential.username, passcode)
+                self.server.duo.approve(credential.duo_username or name, passcode)
             except DuoError as error:
-                audit.record(person_id, "sign-in failed", person_id, utc_now(), "duo")
+                audit.record(person_id, "sign-in failed", person_id, utc_now(), "duo", login=name)
                 self._json(HTTPStatus.UNAUTHORIZED, {
                     "error": error.message, "needs_passcode": error.needs_passcode, "duo": True,
                 })
                 return
-        audit.record(person_id, "sign-in", person_id, utc_now(),
-                     "password + duo" if self.server.duo else "password")
-        self._start_session(person_id, ADMIN_SESSION_SECONDS)
+            second = "password + duo"
+        elif credential.totp_secret:  # this login has an authenticator app
+            if not passcode or not auth.check_code(credential, passcode):
+                if passcode:
+                    audit.record(person_id, "sign-in failed", person_id, utc_now(), "code", login=name)
+                self._json(HTTPStatus.UNAUTHORIZED, {
+                    "error": "That code isn't right or has run out." if passcode
+                             else "Enter the 6-digit code from your authenticator app.",
+                    "needs_passcode": True,
+                })
+                return
+            second = "password + authenticator"
+        audit.record(person_id, "sign-in", person_id, utc_now(), second, login=name)
+        self._start_session(person_id, ADMIN_SESSION_SECONDS, login=name)

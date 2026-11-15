@@ -13,6 +13,8 @@ Rules:
   MAX_SENDS_PER_MINUTE a minute, so nobody can use it to flood mailboxes.
 - Only a hash of the code is kept, and only in memory.
 - `start` answers the same way whether or not the address has an account.
+- A code is for one purpose: a sign-in code can't confirm a change of
+  email, nor the other way round.
 """
 
 from __future__ import annotations
@@ -54,6 +56,9 @@ class _Pending:
     tries: int = 0
 
 
+SIGN_IN = "sign-in"
+
+
 def _digest(address: str, code: str) -> bytes:
     return hashlib.sha256(f"{address}:{code}".encode()).digest()
 
@@ -63,7 +68,7 @@ class EmailVerifier:
         self._mailer = mailer
         self._clock = clock
         self._lock = threading.Lock()
-        self._pending: dict[str, _Pending] = {}
+        self._pending: dict[tuple[str, str], _Pending] = {}  # (purpose, address) -> code
         self._sent: dict[str, deque[float]] = {}  # address -> when codes were sent
         self._all_sent: deque[float] = deque()
 
@@ -72,8 +77,17 @@ class EmailVerifier:
         mail isn't set up, or the address is a fictional demo account."""
         return not isinstance(self._mailer, ConsoleMailer) and not is_demo_address(address)
 
-    def start(self, address: str) -> None:
-        """Send a fresh code to this (already validated, canonical) address."""
+    def notify(self, address: str, subject: str, text: str) -> None:
+        """Tell an address something happened (best effort: never fails)."""
+        try:
+            self._mailer.send_notice(address, subject, text)
+        except MailError:
+            pass  # the change itself already happened; the server log has the failure
+
+    def start(self, address: str, purpose: str = SIGN_IN, *, send: bool = True) -> None:
+        """Send a fresh code to this (already validated, canonical) address.
+        `send=False` goes through the same limits but sends nothing (when the
+        request can't succeed and the caller must not say so)."""
         now = self._clock()
         with self._lock:
             sent = self._sent.setdefault(address, deque())
@@ -88,33 +102,36 @@ class EmailVerifier:
                 raise VerificationError(HTTPStatus.TOO_MANY_REQUESTS,
                                         "too many codes requested: try again later")
             code = f"{secrets.randbelow(10 ** CODE_DIGITS):0{CODE_DIGITS}d}"
-            if len(self._pending) >= MAX_PENDING:
-                self._pending.pop(next(iter(self._pending)))
-            self._pending[address] = _Pending(_digest(address, code), now + CODE_SECONDS)
             sent.append(now)
             self._all_sent.append(now)
+            if not send:
+                return
+            if len(self._pending) >= MAX_PENDING:
+                self._pending.pop(next(iter(self._pending)))
+            self._pending[(purpose, address)] = _Pending(_digest(address, code), now + CODE_SECONDS)
         try:
             self._mailer.send_code(address, code, CODE_SECONDS // 60)
         except MailError:
             with self._lock:
-                self._pending.pop(address, None)
+                self._pending.pop((purpose, address), None)
             raise VerificationError(HTTPStatus.SERVICE_UNAVAILABLE,
                                     "the code couldn't be emailed right now: try again soon") from None
 
-    def check(self, address: str, code: str) -> None:
-        """Returns only if this is the address's current code; then the code
-        is spent. Raises VerificationError otherwise."""
+    def check(self, address: str, code: str, purpose: str = SIGN_IN) -> None:
+        """Returns only if this is the address's current code for this
+        purpose; then the code is spent. Raises VerificationError otherwise."""
+        key = (purpose, address)
         with self._lock:
-            pending = self._pending.get(address)
+            pending = self._pending.get(key)
             if pending is None or self._clock() >= pending.expires:
-                self._pending.pop(address, None)
+                self._pending.pop(key, None)
                 raise VerificationError(HTTPStatus.UNAUTHORIZED,
                                         "that code has run out: ask for a new one")
             if not hmac.compare_digest(pending.digest, _digest(address, code.strip())):
                 pending.tries += 1
                 if pending.tries >= MAX_TRIES:
-                    del self._pending[address]
+                    del self._pending[key]
                     raise VerificationError(HTTPStatus.UNAUTHORIZED,
                                             "too many wrong codes: ask for a new one")
                 raise VerificationError(HTTPStatus.UNAUTHORIZED, "that code isn't right")
-            del self._pending[address]  # works once
+            del self._pending[key]  # works once

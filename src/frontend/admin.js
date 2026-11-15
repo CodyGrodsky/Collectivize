@@ -280,6 +280,7 @@
         update: "Edited", create: "Created", delete: "Deleted", "sign-out": "Signed out",
         "make admin": "Made admin:", "remove admin": "Removed admin:", powers: "Changed powers of",
         "sign-in": "Admin signed in:", "sign-in failed": "Failed admin sign-in",
+        "hide admin": "Hid admin account", "show admin": "Made admin account visible:",
     };
 
     async function loadAudit() {
@@ -289,7 +290,8 @@
                 el("div", { className: "list-main" }, [
                     el("p", { className: "list-title",
                               text: `${ACTIONS[e.action] || e.action} ${e.target}${e.detail ? ` (${e.detail})` : ""}` }),
-                    el("p", { className: "list-meta", text: `${TIME.format(new Date(e.at))} · admin ${e.admin}` }),
+                    el("p", { className: "list-meta",
+                              text: `${TIME.format(new Date(e.at))} · ${e.login ? `by ${e.login}` : `admin ${e.admin}`}` }),
                 ]),
             ])));
             $("audit-empty").hidden = entries.length > 0;

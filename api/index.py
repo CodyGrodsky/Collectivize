@@ -16,6 +16,7 @@ platform admin Pat; it only ever sees fake data.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import os
@@ -73,26 +74,34 @@ class _SignedSessionStore(SessionStore):
 
     KEY = b"collectivize-public-demo"
 
-    def create(self, person_id: str, ttl: float | None = None, *, renew: bool = False) -> str:
-        token = f"{person_id}.{self._sign(person_id)}"
+    def create(
+        self, person_id: str, ttl: float | None = None, *, renew: bool = False, login: str = ""
+    ) -> str:
+        tag = base64.urlsafe_b64encode(login.encode()).decode().rstrip("=")
+        token = f"{person_id}.{tag}.{self._sign(person_id, login)}"
         with self._lock:
-            self._sessions[hashlib.sha256(token.encode()).hexdigest()] = Session(person_id)
+            self._sessions[hashlib.sha256(token.encode()).hexdigest()] = Session(person_id, login=login)
         return token
 
     def get(self, token: str | None) -> Session | None:
         session = super().get(token)
-        if session is not None or not token or "." not in token:
+        if session is not None or not token or token.count(".") != 2:
             return session
-        person_id, signature = token.rsplit(".", 1)
-        if not hmac.compare_digest(signature, self._sign(person_id)):
+        person_id, tag, signature = token.split(".")
+        try:
+            login = base64.urlsafe_b64decode(tag + "=" * (-len(tag) % 4)).decode()
+        except ValueError:
+            return None
+        if not hmac.compare_digest(signature, self._sign(person_id, login)):
             return None
         with self._lock:
             session = self._sessions.setdefault(
-                hashlib.sha256(token.encode()).hexdigest(), Session(person_id))
+                hashlib.sha256(token.encode()).hexdigest(), Session(person_id, login=login))
         return session
 
-    def _sign(self, person_id: str) -> str:
-        return hmac.new(self.KEY, person_id.encode(), hashlib.sha256).hexdigest()[:32]
+    def _sign(self, person_id: str, login: str) -> str:
+        message = f"{person_id}|{login}".encode()
+        return hmac.new(self.KEY, message, hashlib.sha256).hexdigest()[:32]
 
 
 _graphs = demo_graph_factory(load_config(), use_ai=False)

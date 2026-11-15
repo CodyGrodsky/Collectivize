@@ -21,6 +21,8 @@ from http import HTTPStatus
 from typing import Any
 from urllib.parse import urlsplit
 
+from backend.audit import ACTING_LOGIN
+
 log = logging.getLogger(__name__)
 
 ALLOWED_METHODS = "GET, HEAD, POST, OPTIONS"
@@ -98,6 +100,7 @@ class AnswerMixin:
     def _guarded(self, respond: Callable[[], None]) -> None:
         """Whatever goes wrong, the browser gets an answer: never a dropped
         connection, and never the details."""
+        ACTING_LOGIN.set("")  # nobody yet: set once the session is known
         try:
             respond()
         except (BrokenPipeError, ConnectionResetError):

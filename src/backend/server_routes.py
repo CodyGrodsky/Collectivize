@@ -39,7 +39,9 @@ IMAGE_DIRS = ("/app/", "/public/")
 
 CONTENT_SECURITY_POLICY = "; ".join((  # noqa: FLY002 (one rule per line)
     "default-src 'self'",
-    "script-src 'self'",  # no inline scripts, no other sites' scripts
+    # No inline scripts. The one outside source is the three.js library
+    # the home page's 3D logo imports.
+    "script-src 'self' https://cdn.jsdelivr.net",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob:",
