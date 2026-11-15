@@ -1,7 +1,7 @@
 "use strict";
 
 // Where everything sits on the network map. Pure maths, no DOM:
-//   Collectivize.NetworkLayout.arrange(map, random?) -> { center, orgs, people, links, reach }
+//   Collectivize.NetworkLayout.arrange(map, random?, footprint?) -> { center, orgs, people, links, reach }
 //
 // The node in focus is pinned at (0, 0). Everything else starts at a
 // random spot and is then pulled into place, as far out as it needs to go
@@ -13,7 +13,10 @@
 //     friends end up side by side; people who are only close in the
 //     network (map.near) are tied more loosely; so are people and the
 //     communities shown that they belong to (map.memberships);
-//   - all nodes push each other apart so nothing overlaps.
+//   - all nodes push each other apart so nothing overlaps;
+//   - last, every node's footprint (its shape plus the name under it, from
+//     `footprint(node, isCenter)`) is kept clear of every other one and of
+//     the center's, so no name is ever covered by another node or name.
 // The starting spots are random, so the same network is drawn a little
 // differently each time. Pass a `random` function to make it repeatable.
 
@@ -31,12 +34,50 @@
     const MEMBER_TIE = 115; // between a person and a community they belong to
     const MEMBER_PULL = 0.012;
 
+    const LABEL_PAD = 6; // space kept between two footprints
+    const CLEAR_STEPS = 400;
+
     const clamp = (value, limit) => Math.min(limit, Math.max(-limit, value));
+
+    /**
+     * Move nodes until no two footprints overlap. A footprint is a box around
+     * a node: `half` its width either side, `up` above and `down` below its
+     * middle (the name sits underneath). The center never moves; when two
+     * boxes overlap, they part along whichever way needs the smaller move.
+     */
+    function clearLabels(spots, centerBox) {
+        const boxes = [{ x: 0, y: 0, ...centerBox, fixed: true }, ...spots];
+        for (let step = 0; step < CLEAR_STEPS; step += 1) {
+            let moved = false;
+            for (let i = 0; i < boxes.length; i += 1) {
+                for (let j = i + 1; j < boxes.length; j += 1) {
+                    const a = boxes[i];
+                    const b = boxes[j];
+                    const overlapX = a.half + b.half + LABEL_PAD - Math.abs(a.x - b.x);
+                    const overlapY = Math.min(a.y + a.down, b.y + b.down)
+                        - Math.max(a.y - a.up, b.y - b.up) + LABEL_PAD;
+                    if (overlapX <= 0 || overlapY <= 0) continue;
+                    moved = true;
+                    // Part sideways or up/down, whichever is the shorter move.
+                    const sideways = overlapX < overlapY;
+                    const sign = sideways
+                        ? (b.x - a.x || (j % 2 ? 1 : -1)) > 0 ? 1 : -1
+                        : (b.y - a.y || (j % 2 ? 1 : -1)) > 0 ? 1 : -1;
+                    const amount = (sideways ? overlapX : overlapY) + 0.5;
+                    const shareA = a.fixed ? 0 : b.fixed ? 1 : 0.5;
+                    const axis = sideways ? "x" : "y";
+                    a[axis] -= sign * amount * shareA;
+                    b[axis] += sign * amount * (1 - shareA);
+                }
+            }
+            if (!moved) break;
+        }
+    }
 
     /** Tie length to the center: shorter the more the node shares with it. */
     const tieLength = (closeness, most) => (most > 0 ? FAR - (FAR - NEAR) * (closeness / most) : (FAR + NEAR) / 2);
 
-    function arrange(map, random = Math.random) {
+    function arrange(map, random = Math.random, footprint = null) {
         const center = { x: 0, y: 0 };
         const nodes = [...map.orgs.map((org) => ({ ...org, isOrg: true })), ...map.people];
         const most = Math.max(0, ...nodes.map((node) => node.closeness));
@@ -113,6 +154,11 @@
                 spot.x += clamp(moves[i].x, limit);
                 spot.y += clamp(moves[i].y, limit);
             });
+        }
+
+        if (footprint) {
+            for (const spot of spots) Object.assign(spot, footprint(spot.node, false));
+            clearLabels(spots, footprint(map.center, true));
         }
 
         const placed = spots.map((spot) => ({ ...spot.node, x: spot.x, y: spot.y }));

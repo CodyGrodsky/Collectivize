@@ -39,6 +39,16 @@
     }
 
     /** Up to two short lines for a label under a node. */
+    let measureContext = null;
+
+    /** Width of a line of label text, in map units (label font sizes are map units). */
+    function textWidth(text, size, weight) {
+        measureContext ||= document.createElement("canvas").getContext("2d");
+        const family = getComputedStyle(document.body).fontFamily || "sans-serif";
+        measureContext.font = `${weight} ${size}px ${family}`;
+        return measureContext.measureText(text).width;
+    }
+
     function wrapLabel(text) {
         if (text.length <= LABEL_LINE) return [text];
         const cut = text.lastIndexOf(" ", LABEL_LINE);
@@ -228,6 +238,27 @@
             return group;
         }
 
+        /**
+         * The room a node needs on the map: its shape plus the name under it
+         * (the same text, sizes and line breaks `node()` draws), so the layout
+         * can keep every name clear of other nodes and names.
+         */
+        static footprint(node, isCenter, isSelf) {
+            const radius = isCenter ? NODE.center : node.isOrg ? NODE.org : NODE.person;
+            const label = isCenter ? (isSelf ? "You" : node.name)
+                : node.isOrg ? node.name : node.isYou ? "You" : firstName(node.name);
+            const size = isCenter ? 14.5 : 13; // as in network.css
+            const weight = isCenter ? 650 : node.isOrg || node.isYou ? 600 : 400;
+            const lines = wrapLabel(label);
+            const halo = 4; // the label's background stroke
+            const width = Math.max(...lines.map((line) => textWidth(line, size, weight))) + halo;
+            return {
+                half: Math.max(radius, width / 2),
+                up: radius,
+                down: radius + 17 + (lines.length - 1) * 15 + 5 + halo / 2,
+            };
+        }
+
         /** Make a node act as a button for mouse, touch and keyboard. */
         pressable(group, label, id) {
             const press = () => {
@@ -333,7 +364,8 @@
             this.map.setAttribute("aria-label", map.isSelf
                 ? "Map of your connections and communities"
                 : `Map of your connections and communities linked to ${map.center.name}`);
-            this.view.draw(window.Collectivize.NetworkLayout.arrange(map), { isSelf: map.isSelf });
+            const footprint = (node, isCenter) => NetworkView.footprint(node, isCenter, map.isSelf);
+            this.view.draw(window.Collectivize.NetworkLayout.arrange(map, Math.random, footprint), { isSelf: map.isSelf });
         }
     }
 
