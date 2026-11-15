@@ -18,6 +18,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -69,3 +70,16 @@ DEMO = _NoSocketServer(
 class handler(RequestHandler):  # noqa: N801 (Vercel looks for this name)
     def __init__(self, request, client_address, server) -> None:  # type: ignore[no-untyped-def]
         super().__init__(request, client_address, DEMO)
+
+    def parse_request(self) -> bool:
+        """vercel.json rewrites every address to /api/index?__path=<original>;
+        put the original address back before the app routes it."""
+        ok = super().parse_request()
+        if ok:
+            url = urlsplit(self.path)
+            params = parse_qsl(url.query, keep_blank_values=True)
+            original = [v for k, v in params if k == "__path"]
+            if original:
+                rest = urlencode([(k, v) for k, v in params if k != "__path"])
+                self.path = "/" + original[0].lstrip("/") + ("?" + rest if rest else "")
+        return ok
