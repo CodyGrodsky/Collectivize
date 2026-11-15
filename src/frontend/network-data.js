@@ -69,6 +69,7 @@
             kind: "person",
             id, // needed to send them a connection request
             name,
+            avatar: text(raw.avatar) || null,
             role: text(raw.role),
             verified: raw.verified === true,
             colors: {
@@ -113,7 +114,7 @@
         if (!raw || !named(raw.center) || !Array.isArray(raw.orgs) || !Array.isArray(raw.people)) return null;
         const closeness = (item) => (Number.isInteger(item.closeness) && item.closeness > 0 ? item.closeness : 0);
         const people = raw.people.filter(named).map((person) => ({
-            id: person.id, name: person.name, isYou: person.is_you === true, closeness: closeness(person),
+            id: person.id, name: person.name, avatar: text(person.avatar) || null, isYou: person.is_you === true, closeness: closeness(person),
         }));
         const ids = new Set(people.map((person) => person.id));
         const pairs = (value) => list(value).filter((pair) => Array.isArray(pair)
@@ -123,7 +124,7 @@
         const isOrg = raw.center.kind === "org";
         const profile = raw.profile && typeof raw.profile === "object" ? raw.profile : {};
         return {
-            center: { id: raw.center.id, name: raw.center.name, isOrg },
+            center: { id: raw.center.id, name: raw.center.name, avatar: text(raw.center.avatar) || null, isOrg },
             isSelf: raw.is_self === true,
             orgs,
             people,

@@ -380,7 +380,7 @@
                 window.scrollTo({ top: 0 });
             });
             return el("li", { className: "nw-item nw-row" }, [
-                el("span", { className: markClass, text: initials(node.name) }),
+                el("span", { className: markClass, text: markClass === "nw-avatar" ? Ui.animal(node) : initials(node.name) }),
                 el("span", { className: "nw-row-text" }, [
                     el("span", { className: "nw-item-name", text: node.name }),
                     el("span", { className: "nw-item-sub", text: about }),

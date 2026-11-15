@@ -157,9 +157,6 @@
     // Draws a profile. Used for the pages and for the editor's live preview.
     // mode: "self" (your own page), "visitor", or "preview" (inert visitor view).
     // slots.onConnection: called after Connect / Accept succeeds, to redraw.
-    // Mock profile pictures (demo): an emoji picked from the name, the same everywhere.
-    const AVATARS = ["🦊", "🐼", "🐸", "🦁", "🐯", "🐨", "🐵", "🦉", "🐙", "🦄", "🐝", "🐢", "🐬", "🦋", "🐧", "🐻"];
-    const avatar = (name) => AVATARS[[...(name || "?")].reduce((sum, ch) => (sum * 31 + ch.codePointAt(0)) >>> 0, 7) % AVATARS.length];
 
     class ProfileRenderer {
         render(view, mode, slots = {}) {
@@ -189,7 +186,7 @@
         }
 
         static initials(view) {
-            return avatar(ProfileRenderer.shownName(view));
+            return window.Collectivize.Ui.animal({ name: ProfileRenderer.shownName(view), avatar: view.avatar });
         }
 
         static textInitials(view) {

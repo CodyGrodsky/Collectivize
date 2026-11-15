@@ -40,6 +40,7 @@ from backend.objects import (
     Tagged,
     VerificationLevel,
 )
+from backend.objects.person import random_avatar
 from backend.objects.base import utc_now
 from backend.rate_limit import RateLimiter
 
@@ -183,6 +184,7 @@ class AppApi:
             person = graph.store.save_node(Person(
                 display_name=_name_from_email(address),
                 email=address,
+                avatar=random_avatar(),
                 verification_level=VerificationLevel.UNIVERSITY_EMAIL,
                 provenance=Provenance(
                     created_by=None, method=ProvenanceMethod.SELF_CLAIM, created_at=self._clock()
@@ -226,6 +228,7 @@ class AppApi:
             return {
                 "id": person.id,
                 "name": person.display_name,
+                "avatar": person.avatar or None,
                 "is_platform_admin": person.is_platform_admin,
                 "viewing_as": None if viewing is None else {
                     "id": viewing.id, "name": viewing.display_name,
@@ -330,6 +333,7 @@ class AppApi:
         return {
             "id": person.id,
             "name": person.display_name,
+            "avatar": person.avatar or None,
             "bio": person.bio,
             "top3": {"title": person.top3_title, "items": list(person.top3_items)}
             if person.top3_title else None,
@@ -501,6 +505,7 @@ def _result_json(
     elif result.kind == "person":
         person = graph.store.node(result.id, Person)
         data = {"type": "person", "id": person.id, "name": person.display_name,
+                "avatar": person.avatar or None,
                 "bio": person.bio, "top3_title": person.top3_title or None,
                 "connection": graph.visibility.connection_state(viewer, person.id).value}
     else:
@@ -611,6 +616,7 @@ def _person_ref(
     return {
         "id": person.id,
         "name": person.display_name,
+        "avatar": person.avatar or None,
         "connection": graph.visibility.connection_state(viewer, person.id).value,
         **extra,
     }

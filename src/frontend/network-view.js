@@ -30,8 +30,6 @@
     const firstName = (name) => name.split(" ")[0];
 
     // Mock profile pictures (demo): an emoji picked from the name, the same everywhere.
-    const AVATARS = ["🦊", "🐼", "🐸", "🦁", "🐯", "🐨", "🐵", "🦉", "🐙", "🦄", "🐝", "🐢", "🐬", "🦋", "🐧", "🐻"];
-    const avatar = (name) => AVATARS[[...(name || "?")].reduce((sum, ch) => (sum * 31 + ch.codePointAt(0)) >>> 0, 7) % AVATARS.length];
     const initials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2)
         .map((word) => word[0].toUpperCase()).join("");
 
@@ -266,7 +264,7 @@
         // --- nodes ---------------------------------------------------------------
 
         /** A positioned node: shape, initials and a label underneath. */
-        node({ id, x, y, name, label, kind, radius, order, shape }) {
+        node({ id, x, y, name, avatar, label, kind, radius, order, shape }) {
             const group = svg("g", { transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})` }, `nw-node ${kind}`);
             if (id) group.dataset.id = id;
             group.dataset.x = x.toFixed(1);
@@ -275,7 +273,7 @@
             const title = svg("title");
             title.textContent = name;
             const mark = svg("text", { y: 1, "aria-hidden": "true" }, "nw-initials");
-            mark.textContent = String(kind).includes("org") ? initials(name) : avatar(name);
+            mark.textContent = String(kind).includes("org") ? initials(name) : window.Collectivize.Ui.animal({ name, avatar });
             const caption = svg("text", { y: radius + 17 }, "nw-label");
             wrapLabel(label).forEach((line, i) => {
                 const span = svg("tspan", { x: 0, dy: i === 0 ? 0 : 15 });

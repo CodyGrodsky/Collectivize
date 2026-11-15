@@ -4,6 +4,15 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Random animal profile pictures; home screen opens Discover on click
+
+- `src/backend/objects/person.py`: `Person.avatar`, one of `AVATARS` (16 animal emoji), picked at random by `random_avatar()` when an account is created (email sign-in, invite, admin create) and kept. People saved before this have `""` and keep the animal picked from their name, so nobody's picture changes or goes blank. No reseed needed.
+- The API sends `avatar` with each person (me, profiles, search, org members, admin lists, network map). `Ui.animal` / `Ui.avatar` in `src/frontend/shared.js` is now the one place that picks what to draw: the saved animal, else the name-based one. Profile cards, the network map and its lists, Discover, org pages and admin lists all use it (they used letters before, except profile cards and the map).
+- Home screen when signed in (`index.html`, `landing.js`, `landing.css`): the "Go to Discover" link is gone; a click (or Enter / Space) anywhere except the logo opens Discover. Clicking the logo still just spins it.
+- Tests: `tests/backend/test_avatars.py`, plus sign-up checks in `test_access.py`, `test_invites.py`, `test_accounts.py`.
+
+---
+
 ## 2026-11-15 — Vercel demo: admin login "Billy Joe"
 
 - `api/index.py`: `/admin` on the live demo accepts username "Billy Joe", password "collectivize-demo", signing in as the seeded platform admin Pat (owner). Public on purpose: fake data only (noted in `VERCEL.md`).

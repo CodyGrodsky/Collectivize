@@ -68,7 +68,7 @@ from backend.objects import (
     VerificationLevel,
 )
 from backend.objects.base import utc_now
-from backend.objects.person import ADMIN_POWERS, MAX_DISPLAY_NAME
+from backend.objects.person import ADMIN_POWERS, MAX_DISPLAY_NAME, random_avatar
 from backend.sessions import SessionStore
 
 PROFILE_KEYS = frozenset({
@@ -167,7 +167,8 @@ class AccountsApi:
             return {
                 "total": len(people),
                 "users": [
-                    {"id": p.id, "name": p.display_name, "email": p.email if full else None,
+                    {"id": p.id, "name": p.display_name, "avatar": p.avatar or None,
+                     "email": p.email if full else None,
                      "is_platform_admin": p.is_platform_admin,
                      "connections": len(graph.connections.connections_of(p.id)),
                      "orgs": len(graph.visibility.org_ids_of(p.id))}
@@ -241,6 +242,7 @@ class AccountsApi:
             person = graph.store.save_node(Person(
                 display_name=name.strip() if name else _name_from_email(email),
                 email=email,
+                avatar=random_avatar(),
                 verification_level=VerificationLevel.UNIVERSITY_EMAIL,
                 provenance=Provenance(
                     created_by=admin_id, method=ProvenanceMethod.STAFF, created_at=self._clock()
@@ -327,7 +329,8 @@ class AccountsApi:
 
     def _admin_json(self, person: Person, viewer_id: str) -> dict[str, Any]:
         return {
-            "id": person.id, "name": person.display_name, "email": person.email,
+            "id": person.id, "name": person.display_name, "avatar": person.avatar or None,
+            "email": person.email,
             "is_platform_admin": person.is_platform_admin,
             "is_owner": self.policy.is_owner(person),
             "is_you": person.id == viewer_id,
