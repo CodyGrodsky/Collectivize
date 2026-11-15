@@ -4,6 +4,13 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Vercel demo: admin login "Billy Joe"
+
+- `api/index.py`: `/admin` on the live demo accepts username "Billy Joe", password "collectivize-demo", signing in as the seeded platform admin Pat (owner). Public on purpose: fake data only (noted in `VERCEL.md`).
+- Sessions on the demo are now signed tokens (`_SignedSessionStore`), so a sign-in works on every Vercel instance instead of falling back to Drew when a request lands on another one. `src/backend/` unchanged.
+
+---
+
 ## 2026-11-15 — Sigma Chi Pi Chapter, and a website box on org pages
 
 - `src/backend/seed.py`: the demo chapter "Alpha Beta, Gamma Chapter" is now "Sigma Chi Pi Chapter", and it links to a website (`WEBSITES`, the reserved example address https://example.org/ so the demo never points at a real site). `demo/collectivize-demo.db` reseeded; `src/frontend/main.js` and `tests/backend/test_server.py` updated to the new name.

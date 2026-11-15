@@ -21,7 +21,9 @@ the fork's `main` merged back when we switch over (see "Switching back to Railwa
 - **Everyone is signed in automatically** as `drew.demo@northeastern.edu`. No email codes.
 - **AI search is off** (keyword search only), so the public link can't run up an Anthropic bill.
   No API keys or secrets are used by this deploy at all.
-- **`/admin` is locked.** No admin logins exist on the deploy.
+- **Demo admin:** go to `/admin` and sign in with username **Billy Joe**, password
+  **collectivize-demo**. That's Pat, the fictional platform admin (owner). It's public on
+  purpose: the deploy only has fake data. Sign out to go back to Drew.
 
 ## Shipping a change
 
