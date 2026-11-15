@@ -38,10 +38,15 @@
             this.centerId = NetworkPage.centerFromUrl();
             this.data = null;
             this.request = 0;
-            // Clicking yourself ("You") opens your Profile tab; anyone or
-            // anything else is put in the middle of the map.
+            // Clicking yourself ("You"): on your own map it opens your Profile
+            // tab; on someone else's it brings you back to your own network.
+            // Anyone or anything else is put in the middle of the map.
             this.bubble = new NetworkBubble({
-                onOpen: (id) => (!id || id === this.viewer ? window.location.assign("profile.html") : this.open(id)),
+                onOpen: (id) => {
+                    if (id && id !== this.viewer) this.open(id);
+                    else if (this.data && !this.data.isSelf) this.open("");
+                    else window.location.assign("profile.html");
+                },
             });
 
             $("nw-home").addEventListener("click", () => this.open(""));

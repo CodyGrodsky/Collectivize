@@ -13,14 +13,19 @@
 //     friends end up side by side; people who are only close in the
 //     network (map.near) are tied more loosely; so are people and the
 //     communities shown that they belong to (map.memberships);
-//   - all nodes push each other apart so nothing overlaps.
+//   - all nodes push each other apart so nothing overlaps;
+//   - nobody comes nearer the center than CENTER_GAP, so no node ever
+//     touches the middle node or covers its label.
 // The starting spots are random, so the same network is drawn a little
 // differently each time. Pass a `random` function to make it repeatable.
 
 (() => {
     const STEPS = 320;
-    const FAR = 150; // tie to the center for a node that shares nothing with it
-    const NEAR = 85; // ...and for one that shares a lot
+    const FAR = 175; // tie to the center for a node that shares nothing with it
+    const NEAR = 125; // ...and for one that shares a lot
+    // Closest any node may sit to the center: the middle node (radius 34)
+    // and its label below it, plus a person node (radius 21) and a gap.
+    const CENTER_GAP = 115;
     const PEER_TIE = 90; // between two connected people
     const NEAR_TIE = 125; // between two people who are close but not connected
     const PUSH = 5200; // how hard nodes push each other apart
@@ -112,20 +117,21 @@
                 const limit = 4 + 26 * cooling; // big moves early, small ones late
                 spot.x += clamp(moves[i].x, limit);
                 spot.y += clamp(moves[i].y, limit);
+                // Hard buffer: anyone pulled inside CENTER_GAP is put back on it.
+                const distance = Math.hypot(spot.x - center.x, spot.y - center.y);
+                if (distance < CENTER_GAP) {
+                    const angle = distance > 0.01 ? Math.atan2(spot.y - center.y, spot.x - center.x) : random() * Math.PI * 2;
+                    spot.x = center.x + Math.cos(angle) * CENTER_GAP;
+                    spot.y = center.y + Math.sin(angle) * CENTER_GAP;
+                }
             });
         }
 
         const placed = spots.map((spot) => ({ ...spot.node, x: spot.x, y: spot.y }));
-        const at = new Map(placed.map((node) => [node.id, node]));
-        const links = [
-            // A tie to or from a community is a membership; between people, a connection.
-            ...placed.map((node) => ({
-                from: center, to: node, kind: node.isOrg || map.center.isOrg ? "org" : "direct",
-            })),
-            // "Near" ties still shape the layout but aren't drawn as lines.
-            ...ties.filter((tie) => tie.kind !== "near")
-                .map((tie) => ({ from: at.get(tie.a.node.id), to: at.get(tie.b.node.id), kind: tie.kind })),
-        ];
+        // Only the middle's own ties are drawn: one line to each person and
+        // community shown. Ties between the others still shape the layout
+        // (friends sit side by side) but aren't drawn.
+        const links = placed.map((node) => ({ from: center, to: node, kind: "direct" }));
         return {
             center: { ...map.center, ...center },
             orgs: placed.filter((node) => node.isOrg),

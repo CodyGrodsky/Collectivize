@@ -20,6 +20,7 @@
     const SVG = "http://www.w3.org/2000/svg";
     const RADIUS = 210; // half the box's shorter side, in map units (the SVG scales to its box)
     const LABEL_ROOM = 52; // a node this close to the edge would lose its label
+    const EDGE = 12; // breathing room between a node (or its label) and the box's edge
     const KEY_STEP = 70; // one arrow-key press
     const DRAG_START = 6; // pointer travel (px) before a press counts as a drag
     const NODE = { center: 34, org: 27, person: 21 };
@@ -53,7 +54,8 @@
             this.onOpen = onOpen;
             this.onMove = onMove || (() => {});
             this.offset = { x: 0, y: 0 }; // which map point is at the circle's middle
-            this.limit = 0; // how far the offset may go from the middle
+            this.bounds = null; // the area every node and label takes up, in map units
+            this.range = { x: [0, 0], y: [0, 0] }; // where the offset may go, per axis
             this.drag = null;
             this.justDragged = false;
 
@@ -82,20 +84,54 @@
             this.clipRect?.setAttribute("y", -y);
             this.clipRect?.setAttribute("width", x * 2);
             this.clipRect?.setAttribute("height", y * 2);
+            // A new box shape changes how far the view can move.
+            this.updateRange();
+            if (this.world) this.moveTo(this.offset.x, this.offset.y, false);
         }
 
         get canMove() {
-            return this.limit > 0;
+            return this.range.x[0] < this.range.x[1] || this.range.y[0] < this.range.y[1];
         }
 
         clear() {
             this.svg.replaceChildren();
-            this.limit = 0;
+            this.bounds = null;
+            this.range = { x: [0, 0], y: [0, 0] };
+        }
+
+        /** How far the view may move on each axis so that every node, label
+         *  included, can be brought fully into the box, and no further. */
+        updateRange() {
+            const b = this.bounds;
+            const axis = (low, high, half) => {
+                const min = Math.min(0, low + half);
+                const max = Math.max(0, high - half);
+                return [min, max];
+            };
+            this.range = b ? { x: axis(b.left, b.right, this.half.x), y: axis(b.top, b.bottom, this.half.y) }
+                : { x: [0, 0], y: [0, 0] };
+            this.svg.classList.toggle("can-move", this.canMove);
+        }
+
+        /** The box around every node and its (up to two-line) label. */
+        static bounds(layout) {
+            const parts = [
+                { x: layout.center.x, y: layout.center.y, r: NODE.center },
+                ...layout.orgs.map((o) => ({ x: o.x, y: o.y, r: NODE.org })),
+                ...layout.people.map((p) => ({ x: p.x, y: p.y, r: NODE.person })),
+            ];
+            const half = 60; // half a label's width
+            return {
+                left: Math.min(...parts.map((p) => p.x - Math.max(p.r, half))) - EDGE,
+                right: Math.max(...parts.map((p) => p.x + Math.max(p.r, half))) + EDGE,
+                top: Math.min(...parts.map((p) => p.y - p.r)) - EDGE,
+                bottom: Math.max(...parts.map((p) => p.y + p.r + 17 + 15 + 4)) + EDGE, // label below
+            };
         }
 
         draw(layout, { isSelf }) {
             this.isSelf = isSelf;
-            this.limit = layout.reach + LABEL_ROOM > RADIUS ? layout.reach + LABEL_ROOM - RADIUS * 0.6 : 0;
+            this.bounds = NetworkView.bounds(layout);
             this.offset = { x: 0, y: 0 };
 
             // No circle: the map is clipped to its whole box.
@@ -121,7 +157,6 @@
             window_.append(this.world);
             this.svg.replaceChildren(defs, window_);
             this.fit();
-            this.svg.classList.toggle("can-move", this.canMove);
             this.place(false);
         }
 
@@ -129,9 +164,8 @@
 
         /** Move the view so map point (x, y) is at the circle's middle. */
         moveTo(x, y, animate = true) {
-            const distance = Math.hypot(x, y);
-            const scale = distance > this.limit ? this.limit / (distance || 1) : 1; // stay near the network
-            this.offset = { x: x * scale, y: y * scale };
+            const keep = (value, [min, max]) => Math.min(max, Math.max(min, value)); // stay on the network
+            this.offset = { x: keep(x, this.range.x), y: keep(y, this.range.y) };
             this.place(animate);
         }
 
@@ -198,8 +232,9 @@
             if (!node || !this.canMove) return;
             const x = Number(node.dataset.x);
             const y = Number(node.dataset.y);
-            const fromMiddle = Math.hypot(x - this.offset.x, y - this.offset.y);
-            if (fromMiddle > RADIUS - LABEL_ROOM - NODE.org) this.moveTo(x, y);
+            const outX = Math.abs(x - this.offset.x) > this.half.x - LABEL_ROOM;
+            const outY = Math.abs(y - this.offset.y) > this.half.y - LABEL_ROOM - NODE.org;
+            if (outX || outY) this.moveTo(x, y);
         }
 
         // --- nodes ---------------------------------------------------------------
@@ -274,7 +309,8 @@
                 kind: `is-person ${person.isYou ? "is-you" : ""}`, radius, order,
                 shape: svg("circle", { r: radius }, "nw-shape"),
             });
-            const label = person.isYou ? "You. Open your profile"
+            // "You" on someone else's map: back to your own network.
+            const label = person.isYou ? "You. Back to your own network"
                 : `${person.name}, your connection. Open their network`;
             this.pressable(group, label, person.isYou ? "" : person.id);
             return group;
@@ -292,7 +328,6 @@
         ["nw-key is-org", "Your community"],
         ["nw-key", "Your connection"],
         ["nw-key is-line", "Connected"],
-        ["nw-key is-line is-org", "In the community"],
     ];
 
     /** The network as one element: the map, a "Back to the middle" button, and key. */

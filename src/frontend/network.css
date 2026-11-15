@@ -3,15 +3,9 @@
 
    The map fills its box (no circle around it). Inside it: squares are
    communities, circles are people; a bold line joins two people who
-<<<<<<< HEAD
-   accepted a connection, and a line in the accent color joins a community to the
-   middle. When the bubble sits inside someone's profile it takes on their
-   colors (--p-*); elsewhere it uses the house colors. */
-=======
-   accepted a connection, a light dashed line joins two who are only close
-   in the network, and a line in the accent color joins a community to the
-   middle. It uses the house colors (or --p-* when a page sets them). */
->>>>>>> 64e1b550da413ce30626ac874c1bdd768768cbc3
+   accepted a connection. Only the middle's own ties are drawn: a dark line
+   to each person and community shown. It uses the house colors (or --p-*
+   when a page sets them). */
 
 :root {
     --amber: #8a5a12;
@@ -150,14 +144,11 @@ select { font: inherit; color: inherit; }
 .nw-key { width: 11px; height: 11px; border: 1.5px solid var(--b-accent); border-radius: 50%; background: var(--b-bg); }
 .nw-key.is-org { border-radius: 3px; background: color-mix(in srgb, var(--b-accent) 14%, var(--b-bg)); }
 .nw-key.is-line { width: 20px; height: 0; border: 0; border-top: 2.2px solid color-mix(in srgb, var(--b-ink) 70%, var(--b-bg)); border-radius: 0; background: none; }
-.nw-key.is-line.is-org { border-top: 2px solid var(--b-accent); background: none; opacity: .6; }
 
 /* --- inside the bubble --------------------------------------------------- */
 
-/* Bold: a connection both people accepted, whoever is in the middle.
-   No line: not connected. */
+/* One dark line from the middle to each person and community shown. */
 .nw-link { stroke: color-mix(in srgb, var(--b-ink) 70%, var(--b-bg)); stroke-width: 2.2; }
-.nw-link.is-org { stroke: var(--b-accent); stroke-width: 2; opacity: .6; }
 
 .nw-node-inner {
     transform-box: fill-box;
