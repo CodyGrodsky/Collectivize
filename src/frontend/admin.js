@@ -22,7 +22,13 @@
             location.replace("discover.html"); // not for regular users or org admins
             return;
         }
+        Rights.me = me;
         $("admin").hidden = false;
+        $("admin-subtitle").textContent = (me.is_owner ? "You are the owner: you manage accounts and the other admins. "
+            : `Your powers: ${me.powers.map((p) => POWER_NAMES[p] || p).join(", ") || "view the list only"}. `)
+            + "Viewing as someone is read-only, and every change you make here is logged.";
+        $("create").hidden = !Rights.can("create");
+        if (me.is_owner) window.CollectivizeAdminTeam.start(refresh);
         $("user-search").addEventListener("submit", (event) => {
             event.preventDefault();
             search($("user-query").value.trim());
@@ -63,18 +69,24 @@
     }
 
     function userRow(user) {
-        const view = el("button", { className: "button", text: "View as", attrs: { type: "button" } });
+        // Admin accounts are the owner's to manage.
+        const mine = Rights.me.is_owner || !user.is_platform_admin;
+        const view = el("button", { className: "button", text: "View as",
+                                    attrs: { type: "button", hidden: !(mine && Rights.can("view_as")) } });
         view.addEventListener("click", () => viewAs(user.id, (message) => {
             $("users-status").textContent = message;
         }));
-        const manage = el("button", { className: "button button-solid", text: "Manage", attrs: { type: "button" } });
+        const manage = el("button", { className: "button button-solid", text: "Manage",
+                                      attrs: { type: "button", hidden: !(mine && Rights.can("view_info")) } });
         manage.addEventListener("click", () => Manage.open(user.id));
         return el("li", { className: "list-item" }, [
             Ui.avatar(user),
             el("div", { className: "list-main" }, [
                 el("p", { className: "list-title", text: user.name }),
                 el("p", { className: "list-meta",
-                          text: `${user.email || "no email"} · ${user.connections} connections · ${user.orgs} orgs` }),
+                          text: [user.is_platform_admin ? "platform admin" : null, user.email,
+                                 `${user.connections} connections`, `${user.orgs} orgs`]
+                              .filter(Boolean).join(" · ") }),
             ]),
             manage,
             view,
@@ -87,6 +99,21 @@
             location.href = "discover.html";
         } catch (error) {
             onError(error.message);
+        }
+    }
+
+    const POWER_NAMES = {
+        view_info: "view all info", view_as: "view as", edit: "edit", create: "create accounts",
+        sign_out: "sign people out", delete: "delete accounts",
+    };
+
+    /** What the signed-in admin may do (from /api/me). The server checks
+        every action again; this only hides buttons that would be refused. */
+    class Rights {
+        static me = null;
+
+        static can(power) {
+            return Rights.me.powers.includes(power);
         }
     }
 
@@ -106,6 +133,17 @@
             $("delete-form").addEventListener("submit", (event) => {
                 event.preventDefault();
                 Manage.remove();
+            });
+            $("m-make-admin").addEventListener("click", async () => {
+                try {
+                    await Api.post("/api/admin/admins", { person_id: Manage.account.id, is_admin: true });
+                    await Manage.open(Manage.account.id);
+                    Manage.say("They are now a platform admin with no powers yet. Tick their powers below.", false);
+                    window.CollectivizeAdminTeam.load();
+                    refresh();
+                } catch (error) {
+                    Manage.say(error.message);
+                }
             });
         }
 
@@ -144,7 +182,16 @@
             $("m-profile-visibility").value = settings.profile_visibility;
             $("m-rsvp-visibility").value = settings.rsvp_visibility;
             $("m-hide-connections").checked = settings.hide_connections;
-            $("m-admin").checked = account.is_platform_admin;
+            const editable = Rights.can("edit");
+            for (const id of ["m-name", "m-bio", "m-profile-visibility", "m-rsvp-visibility", "m-hide-connections"]) {
+                $(id).disabled = !editable;
+            }
+            $("m-email").disabled = !Rights.me.is_owner; // a new sign-in email is the owner's call
+            $("m-save").hidden = !editable;
+            $("m-view").hidden = !Rights.can("view_as");
+            $("m-signout").hidden = !Rights.can("sign_out");
+            $("delete-form").hidden = !Rights.can("delete") || account.id === Rights.me.id;
+            $("m-make-admin").hidden = !Rights.me.is_owner || account.is_platform_admin;
             $("m-confirm").value = "";
         }
 
@@ -158,14 +205,12 @@
                 profile_visibility: $("m-profile-visibility").value,
                 rsvp_visibility: $("m-rsvp-visibility").value,
                 hide_connections: $("m-hide-connections").checked,
-                is_platform_admin: $("m-admin").checked,
             };
             const before = {
                 display_name: account.name, email: account.email || "", bio: account.profile.bio,
                 profile_visibility: account.settings.profile_visibility,
                 rsvp_visibility: account.settings.rsvp_visibility,
                 hide_connections: account.settings.hide_connections,
-                is_platform_admin: account.is_platform_admin,
             };
             return Object.fromEntries(Object.entries(now).filter(([key, value]) => value !== before[key]));
         }
@@ -233,6 +278,8 @@
     const ACTIONS = {
         "view-as start": "Started viewing as", "view-as stop": "Stopped viewing as",
         update: "Edited", create: "Created", delete: "Deleted", "sign-out": "Signed out",
+        "make admin": "Made admin:", "remove admin": "Removed admin:", powers: "Changed powers of",
+        "sign-in": "Admin signed in:", "sign-in failed": "Failed admin sign-in",
     };
 
     async function loadAudit() {

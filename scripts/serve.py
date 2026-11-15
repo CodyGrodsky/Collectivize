@@ -76,7 +76,8 @@ def main(argv: list[str] | None = None) -> int:
         log.error("%s", error)
         return 1
     sessions = SessionStore(audit_path=DATA_DIR / "view_as.log")
-    accounts = AccountsApi(graphs, sessions, audit=AuditLog(DATA_DIR / "admin_audit.log"))
+    accounts = AccountsApi(graphs, sessions, audit=AuditLog(DATA_DIR / "admin_audit.log"),
+                           owners=admin_auth.owner_emails, logins=admin_auth.emails)
     try:
         server = serve(DiscoverApi(graphs), args.port, app=AppApi(graphs, reader=reader),
                        sessions=sessions, accounts=accounts, admin_auth=admin_auth,
@@ -88,6 +89,9 @@ def main(argv: list[str] | None = None) -> int:
              args.port)
     if admin_auth.is_set_up:
         log.info("Admin sign-in: http://127.0.0.1:%d/admin (username and password)", args.port)
+        if not admin_auth.owner_emails:
+            log.warning("No admin login is the owner, so nobody can manage admins or their powers. "
+                        "Run: uv run python scripts/set_admin_password.py --make-owner <username>")
     else:
         log.warning("Admin sign-in isn't set up, so nobody can open /admin. "
                     "Run: uv run python scripts/set_admin_password.py")

@@ -35,6 +35,14 @@ password (admin_auth.py; POST /api/admin/signin). When the server is given
 an AdminAuth, platform-admin accounts can sign in only that way: the email
 form and the development auto-login both refuse them.
 
+What each admin may do is set by the owner (admin_policy.py). An admin
+sign-in lasts eight hours.
+
+Sent home: when an account is deleted, or signed out everywhere, each of
+its browsers gets 401 (pages: a redirect to the landing page) on its next
+request, its cookie is cleared, and it is not signed in again
+automatically. Pages also check every few seconds (shared.js).
+
 Platform admins can "view as" someone from /admin: read-only (every change
 is refused), with a banner on every page, and logged (see sessions.py).
 
@@ -96,6 +104,7 @@ PUBLIC_PAGES = frozenset({LANDING_PAGE, INVITE_PAGE, ADMIN_LOGIN_PAGE})
 MAX_BODY_BYTES = 4096
 # A full profile edit is bigger: 1000 characters of emoji is about 4 KB alone.
 BODY_LIMITS = {"/api/profile": 8192, "/api/admin/account": 8192}
+ADMIN_SESSION_SECONDS = 8 * 60 * 60  # an admin sign-in ends by itself
 READ_ONLY_ALLOWED = frozenset({"/api/signout", "/api/admin/view-as"})
 
 __all__ = ["PER_PAGE", "ApiError", "DemoServer", "DiscoverApi", "RequestHandler",
@@ -125,7 +134,11 @@ class DemoServer(ThreadingHTTPServer):
         self.admin_auth = admin_auth
         self.app = app or AppApi(api.graphs)
         self.sessions = sessions or SessionStore()
-        self.accounts = accounts or AccountsApi(api.graphs, self.sessions)
+        self.accounts = accounts or AccountsApi(
+            api.graphs, self.sessions,
+            owners=admin_auth.owner_emails if admin_auth else None,
+            logins=admin_auth.emails if admin_auth else frozenset(),
+        )
         # Development only (`serve.py --no-login`): visitors without a session
         # are signed in as this account. None (the default) means login is on.
         # Checked before the port opens, so a bad account fails cleanly.
@@ -182,7 +195,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.OK, {"signed_out": True}, cookie="")
             return
         if session is None:
-            self._json(HTTPStatus.UNAUTHORIZED, {"error": "sign in first", "signed_out": True})
+            self._signed_out()
             return
         if session.read_only and path not in READ_ONLY_ALLOWED:
             self._json(HTTPStatus.FORBIDDEN, {
@@ -202,11 +215,13 @@ class RequestHandler(BaseHTTPRequestHandler):
         # The landing page's quiet check never auto-signs-in, so with
         # --no-login the sign-in form still works for switching accounts.
         session = self._session(auto=path != "/api/session")
-        if path == "/api/session":  # public: lets the landing page check quietly
-            self._json(HTTPStatus.OK, {"signed_in": session is not None})
+        if path == "/api/session":  # public: lets pages check quietly
+            reason = None if session else self._ended_reason()
+            self._json(HTTPStatus.OK, {"signed_in": session is not None,
+                                       **({"reason": reason} if reason else {})})
             return
         if session is None:
-            self._json(HTTPStatus.UNAUTHORIZED, {"error": "sign in first", "signed_out": True})
+            self._signed_out()
             return
         self._api(self._get_routes(session, params).get(path))
 
@@ -217,7 +232,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         accounts = self.server.accounts
         own = {**params, "viewer": viewer, "near": "0"}  # no on/off-campus switch any more
         return {
-            "/api/me": lambda: app.me(session.person_id, session.view_as),
+            "/api/me": lambda: self._me(session),
             "/api/tags": lambda: api.tags(),
             "/api/discover": lambda: api.discover(own),
             "/api/calendar": lambda: api.calendar(own),
@@ -227,7 +242,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             "/api/requests": lambda: app.requests(viewer),
             "/api/my-events": lambda: app.my_events(viewer),
             "/api/my-calendar": lambda: app.my_calendar(viewer, params),
-            "/api/admin/users": lambda: app.admin_users(session.person_id, params),
+            "/api/admin/users": lambda: accounts.admin_users(session.person_id, params),
+            "/api/admin/admins": lambda: accounts.admins(session.person_id),
             "/api/admin/audit": lambda: self._audit(session),
             "/api/account": lambda: accounts.my_account(session.person_id),
             "/api/admin/account": lambda: accounts.admin_account(session.person_id, params),
@@ -259,6 +275,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             "/api/admin/account/create": lambda body: accounts.admin_create(me, body),
             "/api/admin/account/signout": lambda body: accounts.admin_sign_out(me, body),
             "/api/admin/account/delete": lambda body: accounts.admin_delete(me, body),
+            "/api/admin/admins": lambda body: accounts.set_admin(me, body),
         }
 
     # --- sessions ----------------------------------------------------------------
@@ -284,11 +301,17 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _session(self, *, auto: bool = True) -> Session | None:
         session = self.server.sessions.get(self._cookie())
         if session is None:
+            if self._ended_reason():
+                # Deleted or signed out by someone else: back to the home
+                # page, and never straight into another account.
+                self._clear_cookie = True
+                return None
             return self._auto_login() if auto else None
         # A deleted account (or a deleted view-as target) ends the session.
         with self.server.api.graphs() as graph:
             if not graph.store.has_node(session.person_id):
-                self.server.sessions.end(self._cookie())
+                self.server.sessions.end_all(session.person_id, "deleted")
+                self._clear_cookie = True
                 return None
             if session.view_as and not graph.store.has_node(session.view_as):
                 return self.server.sessions.view_as(self._cookie() or "", None, utc_now())
@@ -304,11 +327,26 @@ class RequestHandler(BaseHTTPRequestHandler):
         self._pending_cookie = token
         return self.server.sessions.get(token)
 
+    def _ended_reason(self) -> str | None:
+        return self.server.sessions.ended_reason(self._cookie())
+
+    def _signed_out(self) -> None:
+        self._json(HTTPStatus.UNAUTHORIZED, {
+            "error": "sign in first", "signed_out": True, "reason": self._ended_reason(),
+        })
+
+    def _me(self, session: Session) -> dict[str, Any]:
+        return {**self.server.app.me(session.person_id, session.view_as),
+                **self.server.accounts.rights(session.person_id)}
+
     def end_headers(self) -> None:
         token = getattr(self, "_pending_cookie", None)
         if token:
             self.send_header("Set-Cookie", f"{COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Lax")
             self._pending_cookie = None
+        elif getattr(self, "_clear_cookie", False):
+            self.send_header("Set-Cookie", f"{COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0")
+        self._clear_cookie = False
         super().end_headers()
 
     def _is_platform_admin(self, session: Session | None) -> bool:
@@ -333,10 +371,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
         self._start_session(person_id)
 
-    def _start_session(self, person_id: str) -> None:
+    def _start_session(self, person_id: str, ttl: float | None = None) -> None:
         self.server.sessions.end(self._cookie())
-        token = self.server.sessions.create(person_id)
-        self._json(HTTPStatus.OK, self.server.app.me(person_id, None), cookie=token)
+        token = self.server.sessions.create(person_id, ttl)
+        session = self.server.sessions.get(token)
+        self._json(HTTPStatus.OK, self._me(session), cookie=token)
 
     def _admin_sign_in(self) -> None:
         """POST /api/admin/signin {"username", "password"}. Every failure
@@ -372,12 +411,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.UNAUTHORIZED, refused)
             return
         self.server.accounts.audit.record(person_id, "sign-in", person_id, now)
-        self._start_session(person_id)
+        self._start_session(person_id, ADMIN_SESSION_SECONDS)
 
     def _view_as(self, session: Session, body: dict[str, Any]) -> dict[str, Any]:
-        target = self.server.app.check_view_as_target(session.person_id, body.get("person_id"))
+        target = self.server.accounts.check_view_as(session.person_id, body.get("person_id"))
         updated = self.server.sessions.view_as(self._cookie() or "", target, utc_now())
-        return self.server.app.me(updated.person_id, updated.view_as)
+        return self._me(updated)
 
     def _audit(self, session: Session) -> dict[str, Any]:
         self.server.app.require_platform_admin(session.person_id)
@@ -462,7 +501,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             public = urlsplit(url_path).path in PUBLIC_PAGES
             session = None if public else self._session()
             if not public and session is None:
-                self._redirect(LANDING_PAGE + "?" + urlencode({"next": url_path}))
+                reason = self._ended_reason()  # e.g. "deleted": say so, don't bounce back
+                query = {"notice": reason} if reason else {"next": url_path}
+                self._redirect(LANDING_PAGE + "?" + urlencode(query))
                 return
             if url_path == ADMIN_PAGE and not self._is_platform_admin(session):
                 self._redirect(SIGNED_IN_HOME)  # /admin is for platform admins only
