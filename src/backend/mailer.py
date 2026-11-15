@@ -38,6 +38,8 @@ class MailError(Exception):
 class Mailer(Protocol):
     def send_code(self, to: str, code: str, minutes: int) -> None: ...
 
+    def send_notice(self, to: str, subject: str, text: str) -> None: ...
+
 
 def is_demo_address(address: str) -> bool:
     return address.partition("@")[0].endswith(DEMO_SUFFIX)
@@ -49,6 +51,9 @@ class ConsoleMailer:
     def send_code(self, to: str, code: str, minutes: int) -> None:
         log.warning("SIGN-IN CODE for %s: %s  (valid %d minutes; shown here because "
                     "no email was sent)", to, code, minutes)
+
+    def send_notice(self, to: str, subject: str, text: str) -> None:
+        log.warning("NOTICE for %s (not emailed): %s", to, subject)
 
 
 @dataclass(frozen=True)
@@ -69,15 +74,23 @@ class SmtpMailer:
         if is_demo_address(to):
             self._demo.send_code(to, code, minutes)  # no such mailbox
             return
+        self._send(to, f"{code} is your Collectivize code",
+                   f"Your Collectivize code is {code}.\n\n"
+                   f"It works once and for {minutes} minutes. If you didn't ask for it, ignore "
+                   "this email: nothing happens without the code.\n")
+
+    def send_notice(self, to: str, subject: str, text: str) -> None:
+        if is_demo_address(to):
+            self._demo.send_notice(to, subject, text)
+            return
+        self._send(to, subject, text)
+
+    def _send(self, to: str, subject: str, text: str) -> None:
         message = EmailMessage()
-        message["Subject"] = f"{code} is your Collectivize sign-in code"
+        message["Subject"] = subject
         message["From"] = self._settings.sender
         message["To"] = to
-        message.set_content(
-            f"Your Collectivize sign-in code is {code}.\n\n"
-            f"It works once and for {minutes} minutes. If you didn't ask for it, ignore "
-            "this email: nobody can sign in without the code.\n"
-        )
+        message.set_content(text)
         settings = self._settings
         try:
             context = ssl.create_default_context()
@@ -93,7 +106,7 @@ class SmtpMailer:
                     server.login(settings.username, settings.password)
                 server.send_message(message)
         except (OSError, smtplib.SMTPException) as error:
-            log.warning("couldn't send a sign-in code: %s", type(error).__name__)
+            log.warning("couldn't send an email: %s", type(error).__name__)
             raise MailError("the email couldn't be sent") from None
 
 

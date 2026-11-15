@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from backend.config import PROJECT_ROOT
+from backend.totp import matching_step
 
 CREDENTIALS_PATH = PROJECT_ROOT / "config" / "admin.local.json"
 MIN_PASSWORD = 12
@@ -58,6 +59,7 @@ class AdminCredential:
     password_hash: str
     role: str = "admin"  # or "owner"
     duo_username: str = ""  # their name in Duo, when it isn't the username
+    totp_secret: str = ""  # authenticator-app key (totp.py); empty = not set up
 
 
 def hash_password(password: str, salt: bytes | None = None) -> str:
@@ -93,7 +95,10 @@ class AdminAuth:
         credentials: tuple[AdminCredential, ...] = (),
         *,
         clock: Callable[[], float] = time.monotonic,
+        wall_clock: Callable[[], float] = time.time,
     ) -> None:
+        self._wall_clock = wall_clock  # authenticator codes follow real time
+        self._used_steps: dict[str, int] = {}  # login -> last code step accepted
         self._by_name = {c.username.casefold(): c for c in credentials}
         self._clock = clock
         self._lock = threading.Lock()
@@ -117,7 +122,7 @@ class AdminAuth:
             return cls(tuple(
                 AdminCredential(str(e["username"]), str(e["email"]).lower(),
                                 str(e["password_hash"]), _role(e.get("role", "admin")),
-                                str(e.get("duo_username", "")))
+                                str(e.get("duo_username", "")), str(e.get("totp_secret", "")))
                 for e in entries
             ))
         except (KeyError, TypeError, ValueError) as error:
@@ -135,6 +140,34 @@ class AdminAuth:
 
     def credential(self, username: str) -> AdminCredential | None:
         return self._by_name.get(username.strip().casefold())
+
+    def shared_accounts(self) -> dict[str, list[str]]:
+        """Account emails that more than one login opens (each admin should
+        have their own account, so the log says who did what)."""
+        by_email: dict[str, list[str]] = {}
+        for credential in self._by_name.values():
+            by_email.setdefault(credential.email, []).append(credential.username)
+        return {email: names for email, names in by_email.items() if len(names) > 1}
+
+    def usernames_for(self, email: str) -> list[str]:
+        return [c.username for c in self._by_name.values() if c.email == email]
+
+    def without_second_step(self) -> list[str]:
+        """Logins with no authenticator app set up."""
+        return [c.username for c in self._by_name.values() if not c.totp_secret]
+
+    def check_code(self, credential: AdminCredential, code: str) -> bool:
+        """Whether `code` is this login's current authenticator code. Each
+        code works once; a wrong one counts towards the lock-out."""
+        name = credential.username.casefold()
+        step = matching_step(credential.totp_secret, code, self._wall_clock())
+        with self._lock:
+            if step is None or step <= self._used_steps.get(name, -1):
+                self._failures.setdefault(name, []).append(self._clock())
+                return False
+            self._used_steps[name] = step
+            self._failures.pop(name, None)
+            return True
 
     def knows(self, identifier: str) -> bool:
         """Whether this is an admin's username or their account's email."""
@@ -161,8 +194,11 @@ class AdminAuth:
         with self._lock:
             if matched is not None:
                 # Several logins can share one account email: a right password
-                # for one of them is not a wrong guess at the others.
-                self._failures.pop(matched.username.casefold(), None)
+                # for one of them is not a wrong guess at the others. With an
+                # authenticator the count is only cleared by a right code too,
+                # or wrong codes could be guessed at for ever.
+                if not matched.totp_secret:
+                    self._failures.pop(matched.username.casefold(), None)
             else:
                 for credential in tried:
                     self._failures.setdefault(credential.username.casefold(), []).append(self._clock())
@@ -195,7 +231,7 @@ def save_credential(credential: AdminCredential, path: Path = CREDENTIALS_PATH) 
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"admins": [
         {"username": c.username, "email": c.email, "password_hash": c.password_hash,
-         "role": c.role, "duo_username": c.duo_username}
+         "role": c.role, "duo_username": c.duo_username, "totp_secret": c.totp_secret}
         for c in existing.values()
     ]}
     path.touch(mode=0o600, exist_ok=True)

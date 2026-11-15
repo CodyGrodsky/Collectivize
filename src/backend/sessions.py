@@ -46,6 +46,7 @@ class Session:
     view_as: str | None = None  # set only for platform admins
     expires: float | None = None  # on the store's clock; None = until restart
     renew_ttl: float | None = None  # set: each day of use starts this lifetime again
+    login: str = ""  # the admin username this session signed in with, if any
 
     @property
     def viewer_id(self) -> str:
@@ -83,7 +84,9 @@ class SessionStore:
         self.audit: list[dict[str, str]] = []  # view-as log, newest last
         self._load()
 
-    def create(self, person_id: str, ttl: float | None = None, *, renew: bool = False) -> str:
+    def create(
+        self, person_id: str, ttl: float | None = None, *, renew: bool = False, login: str = ""
+    ) -> str:
         """`ttl`: seconds until the session ends by itself. With one, the
         session is remembered across restarts. `renew`: using the session
         extends it (see `refresh`)."""
@@ -93,7 +96,7 @@ class SessionStore:
             if len(self._sessions) >= MAX_SESSIONS:
                 self._sessions.pop(next(iter(self._sessions)))
             self._sessions[_key(token)] = Session(
-                person_id, expires=expires, renew_ttl=ttl if renew else None
+                person_id, expires=expires, renew_ttl=ttl if renew else None, login=login
             )
             if expires is not None:
                 self._save()
@@ -151,13 +154,14 @@ class SessionStore:
             if session is not None and session.expires is not None:
                 self._save()
 
-    def end_all(self, person_id: str, reason: str = "signed_out") -> int:
+    def end_all(self, person_id: str, reason: str = "signed_out", *, keep: str | None = None) -> int:
         """Sign this person out everywhere (`reason`: "deleted", or
-        "signed_out" by themselves or a platform admin). Each of their
-        browsers is sent back to the home page on its next request.
-        Returns how many sessions ended."""
+        "signed_out" by themselves or a platform admin), except the session
+        with token `keep`. Each of their browsers is sent back to the home
+        page on its next request. Returns how many sessions ended."""
+        kept = _key(keep) if keep else None
         with self._lock:
-            keys = [k for k, s in self._sessions.items() if s.person_id == person_id]
+            keys = [k for k, s in self._sessions.items() if s.person_id == person_id and k != kept]
             for key in keys:
                 del self._sessions[key]
                 self._remember(key, reason)
@@ -200,7 +204,7 @@ class SessionStore:
                     renew = entry.get("renew_ttl")
                     self._sessions[key] = Session(
                         str(entry["person_id"]), expires=expires,
-                        renew_ttl=float(renew) if renew else None,
+                        renew_ttl=float(renew) if renew else None, login=str(entry.get("login", "")),
                     )
         except (OSError, KeyError, TypeError, ValueError, AttributeError):
             # An unreadable file only means everyone signs in again.
@@ -213,7 +217,8 @@ class SessionStore:
         if self._path is None:
             return
         payload = {"sessions": {
-            key: {"person_id": s.person_id, "expires": s.expires, "renew_ttl": s.renew_ttl}
+            key: {"person_id": s.person_id, "expires": s.expires, "renew_ttl": s.renew_ttl,
+                  "login": s.login}
             for key, s in self._sessions.items() if s.expires is not None
         }}
         temporary = self._path.with_suffix(".tmp")

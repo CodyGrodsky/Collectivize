@@ -60,6 +60,16 @@
                 const chosen = [...powers.querySelectorAll("input:checked")].map((b) => b.dataset.power);
                 AdminTeam.save(admin, { powers: chosen }, `Saved ${Ui.cleanName(admin.name)}'s powers.`);
             });
+            // A staff account students can't find in search or the network.
+            const hide = el("input", { attrs: { type: "checkbox" } });
+            hide.checked = admin.hidden;
+            hide.addEventListener("change", () => {
+                AdminTeam.save(admin, { hidden: hide.checked }, hide.checked
+                    ? `${Ui.cleanName(admin.name)} is hidden from search and the network.`
+                    : `${Ui.cleanName(admin.name)} can be found again.`);
+            });
+            const hidden = el("label", { className: "team-hidden" },
+                [hide, document.createTextNode("Hidden from search and the network (staff-only account)")]);
             const remove = el("button", { className: "button button-danger", text: "Remove admin",
                                           attrs: { type: "button", hidden: fixed } });
             remove.addEventListener("click", () => {
@@ -73,6 +83,7 @@
                     el("p", { className: "list-title", text: admin.name }),
                     el("p", { className: "list-meta", text: notes }),
                     powers,
+                    hidden,
                 ]),
                 remove,
             ]);

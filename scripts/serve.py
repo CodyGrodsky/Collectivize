@@ -98,11 +98,19 @@ def main(argv: list[str] | None = None) -> int:
              args.port)
     if admin_auth.is_set_up:
         log.info("Admin sign-in: type your admin username on the sign-in screen (or open /admin)")
-        if duo is None:
-            log.warning("Duo isn't set up, so admin sign-in is PASSWORD ONLY. "
-                        "To add the second step run: uv run python scripts/set_duo.py")
-        else:
+        if duo is not None:
             log.info("Admin sign-ins also need Duo approval.")
+        elif admin_auth.without_second_step():
+            log.warning("These admin logins are PASSWORD ONLY (no second step): %s. Add an "
+                        "authenticator app to each: uv run python scripts/set_admin_password.py "
+                        "--add-authenticator <username>", ", ".join(admin_auth.without_second_step()))
+        else:
+            log.info("Admin sign-ins also need an authenticator code.")
+        for email, names in admin_auth.shared_accounts().items():
+            log.warning("%d admin logins open the same account (%s): %s. The admin log names the "
+                        "login, but each admin should have their own account: "
+                        "set_admin_password.py --email <their own address>",
+                        len(names), email, ", ".join(names))
         if not admin_auth.owner_emails:
             log.warning("No admin login is the owner, so nobody can manage admins or their powers. "
                         "Run: uv run python scripts/set_admin_password.py --make-owner <username>")

@@ -168,6 +168,7 @@ class DemoServer(ThreadingHTTPServer):
         if self.auto_login_id and admin_auth and self.is_platform_admin(self.auto_login_id):
             raise ApiError(HTTPStatus.FORBIDDEN,
                            "that is a platform admin: admins sign in at /admin, not automatically")
+        self.accounts.verifier = verifier  # for the notices it sends
         super().__init__(address, RequestHandler)
 
     def is_platform_admin(self, person_id: str) -> bool:
@@ -278,7 +279,7 @@ class RequestHandler(AuthHandlerMixin, AnswerMixin, BaseHTTPRequestHandler):
 
     def _post_routes(self, session: Session) -> dict[str, Callable[[dict[str, Any]], dict[str, Any]]]:
         api, app, viewer = self.server.api, self.server.app, session.viewer_id
-        accounts, me = self.server.accounts, session.person_id
+        accounts, me, verifier = self.server.accounts, session.person_id, self.server.verifier
 
         def own(handler: Callable[[dict[str, Any]], dict[str, Any]]):
             return lambda body: handler({**body, "viewer": viewer, "near": False})
@@ -298,6 +299,9 @@ class RequestHandler(AuthHandlerMixin, AnswerMixin, BaseHTTPRequestHandler):
             "/api/account": lambda body: accounts.update_my_settings(me, body),
             "/api/account/signout-all": lambda body: accounts.sign_out_everywhere(me),
             "/api/account/delete": lambda body: accounts.delete_my_account(me, body),
+            "/api/account/email": lambda body: accounts.start_email_change(me, body, verifier),
+            "/api/account/email/verify": lambda body: accounts.finish_email_change(
+                me, body, verifier, self._cookie()),
             "/api/admin/account": lambda body: accounts.admin_update(me, body),
             "/api/admin/account/create": lambda body: accounts.admin_create(me, body),
             "/api/admin/account/signout": lambda body: accounts.admin_sign_out(me, body),

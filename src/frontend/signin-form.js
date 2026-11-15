@@ -53,8 +53,9 @@
                 }),
                 this.resend,
             ]);
-            this.duoBox = el("div", { attrs: { hidden: true } }, field("signin-passcode", "Duo passcode", {
-                inputmode: "numeric", autocomplete: "one-time-code", maxlength: "20", placeholder: "from the Duo Mobile app",
+            this.duoBox = el("div", { attrs: { hidden: true } }, field("signin-passcode", "Verification code", {
+                inputmode: "numeric", autocomplete: "one-time-code", maxlength: "20",
+                placeholder: "6 digits from your authenticator app",
             }));
             this.adminBox = el("div", { className: "signin-extra", attrs: { hidden: true } }, [
                 ...field("signin-password", "Admin password", {
@@ -156,7 +157,7 @@
                 return;
             }
             const passcode = $("signin-passcode").value.trim();
-            this.say("Checking… If Duo is on, approve the request on your phone.", { info: true });
+            this.say("Checking…", { info: true });
             await Api.post("/api/admin/signin", { username: this.typed, password, ...(passcode ? { passcode } : {}) },
                            { redirectOnSignOut: false });
             this.adminDone();

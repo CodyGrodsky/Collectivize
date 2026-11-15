@@ -26,6 +26,55 @@
                 event.preventDefault();
                 this.remove();
             });
+            $("email-form").addEventListener("submit", (event) => {
+                event.preventDefault();
+                this.changeEmail();
+            });
+            // A different address typed: its code has to be asked for again.
+            $("email-new").addEventListener("input", () => this.emailStep(null));
+        }
+
+        /** `pending`: the new address a code was sent to, or null to start over. */
+        emailStep(pending) {
+            this.pendingEmail = pending;
+            $("email-code-field").hidden = !pending;
+            $("email-button").textContent = pending ? "Confirm new email" : "Send code";
+            if (!pending) $("email-code").value = "";
+        }
+
+        /** Changing your sign-in email: a code goes to the new address, and
+            typing it back makes the change. */
+        async changeEmail() {
+            const status = $("email-status");
+            const email = $("email-new").value.trim();
+            status.classList.remove("is-error");
+            if (!email) {
+                status.textContent = "Enter the new email.";
+                return;
+            }
+            $("email-button").disabled = true;
+            try {
+                if (!this.pendingEmail) {
+                    const answer = await Api.post("/api/account/email", { email });
+                    this.emailStep(answer.email);
+                    status.textContent = answer.emailed
+                        ? `We emailed a code to ${answer.email}. Enter it to confirm the change.`
+                        : "We couldn't email a code to that address. Ask whoever runs this site for the code, then enter it here.";
+                    $("email-code").focus();
+                } else {
+                    const account = await Api.post("/api/account/email/verify",
+                        { email: this.pendingEmail, code: $("email-code").value.trim() });
+                    this.show(account);
+                    this.emailStep(null);
+                    $("email-new").value = "";
+                    status.textContent = "Your sign-in email was changed. Your other browsers were signed out.";
+                }
+            } catch (error) {
+                status.textContent = error.message;
+                status.classList.add("is-error");
+            } finally {
+                $("email-button").disabled = false;
+            }
         }
 
         show(account) {
@@ -33,6 +82,8 @@
             const { settings, counts, profile } = account;
             $("account-summary").textContent =
                 `${account.email || "No email"} · joined ${DAY.format(new Date(account.created_at))}`;
+            $("email-current").textContent = `You sign in with ${account.email || "no email"}.`;
+            $("email-panel").hidden = account.is_platform_admin; // an admin's is set by the owner
             $("ai-history").checked = settings.ai_uses_history;
             $("analytics").checked = settings.analytics_consent;
             $("sessions-text").textContent = account.sessions === 1
