@@ -4,6 +4,13 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Demo calendar filled out (every color shows)
+
+- `src/backend/seed.py`: new `DemoCalendar` gives Drew going / maybe / saved plans on up to 3 events a day for the next 6 weeks (bulk seed only), so the calendar looks full and shows every color.
+- `demo/collectivize-demo.db` reseeded.
+
+---
+
 ## 2026-11-15 — Profiles: background pictures
 
 - **What.** A profile can pick a background picture, shown as a banner across the top of the page (Profile tab, the Network tab's side panel, and the editor's live preview). The editor (both tabs) has a "Background picture" group: None, Sunset, Ocean, Forest, Lavender, Sand, Night sky.

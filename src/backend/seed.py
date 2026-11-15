@@ -29,6 +29,7 @@ from backend.objects import (
     Person,
     Provenance,
     ProvenanceMethod,
+    RsvpStatus,
     Tag,
     VerificationLevel,
 )
@@ -151,7 +152,47 @@ def seed_mock_data(
             tags=result.tags, institution_id=result.orgs["university"],
             ifc_id=result.orgs["ifc"],
         )
+        DemoCalendar(graph, now).fill(result.people["drew"])
         return replace(result, bulk=extra)
+
+
+class DemoCalendar:
+    """Gives the demo student a busy calendar: going / maybe / saved on a
+    spread of upcoming events, so every calendar color shows up."""
+
+    PLANS = ("going", "maybe", "saved", "going", "maybe", "saved", "skip")
+    DAYS_AHEAD = 42
+    PER_DAY = 3
+
+    def __init__(self, graph: CollectivizeGraph, now: datetime) -> None:
+        self.g = graph
+        self.now = now
+
+    def fill(self, person_id: str) -> None:
+        per_day: dict[Any, int] = {}
+        for i, event in enumerate(self._upcoming(person_id)):
+            day = event.starts_at.date()
+            plan = self.PLANS[i % len(self.PLANS)]
+            if plan == "skip" or per_day.get(day, 0) >= self.PER_DAY:
+                continue
+            try:
+                if plan == "saved":
+                    self.g.stars.star(event.id, person_id, self.now)
+                else:
+                    status = RsvpStatus.GOING if plan == "going" else RsvpStatus.INTERESTED
+                    self.g.rsvps.respond(event.id, person_id, status, self.now)
+            except DomainRuleError:
+                continue  # cancelled, full, or otherwise closed: skip it
+            per_day[day] = per_day.get(day, 0) + 1
+
+    def _upcoming(self, person_id: str) -> list[Event]:
+        horizon = self.now + timedelta(days=self.DAYS_AHEAD)
+        events = [
+            e for e in self.g.store.nodes(Event)
+            if e.was_published and e.is_active and self.now < e.starts_at < horizon
+            and self.g.privacy.can_view(person_id, e)
+        ]
+        return sorted(events, key=lambda e: (e.starts_at, e.id))
 
 
 class _MockWorld:
