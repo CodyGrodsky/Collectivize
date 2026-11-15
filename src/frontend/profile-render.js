@@ -151,6 +151,10 @@
     // Draws a profile. Used for the pages and for the editor's live preview.
     // mode: "self" (your own page), "visitor", or "preview" (inert visitor view).
     // slots.onConnection: called after Connect / Accept succeeds, to redraw.
+    // Mock profile pictures (demo): an emoji picked from the name, the same everywhere.
+    const AVATARS = ["🦊", "🐼", "🐸", "🦁", "🐯", "🐨", "🐵", "🦉", "🐙", "🦄", "🐝", "🐢", "🐬", "🦋", "🐧", "🐻"];
+    const avatar = (name) => AVATARS[[...(name || "?")].reduce((sum, ch) => (sum * 31 + ch.codePointAt(0)) >>> 0, 7) % AVATARS.length];
+
     class ProfileRenderer {
         render(view, mode, slots = {}) {
             const surface = el("section", { className: "profile-surface", attrs: { "aria-label": "Profile" } });
@@ -174,6 +178,10 @@
         }
 
         static initials(view) {
+            return avatar(ProfileRenderer.shownName(view));
+        }
+
+        static textInitials(view) {
             const words = ProfileRenderer.shownName(view).trim().split(/\s+/);
             const letters = words.length > 1 ? words[0][0] + words[words.length - 1][0] : Array.from(words[0])[0];
             return (letters || "?").toUpperCase();

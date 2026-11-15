@@ -4,6 +4,12 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Mock profile pictures (emoji)
+
+- Demo stand-in for profile photos: each person gets an animal emoji picked from their name (same on the network map and their profile). Communities keep their initials. `avatar()` in `network-view.js` and `profile-render.js`.
+
+---
+
 ## 2026-11-15 — Network page: the map on the left, the selected page on the right
 
 **Request:** picking someone on the network map took an extra click to see their page.

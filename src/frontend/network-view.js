@@ -29,6 +29,9 @@
 
     const firstName = (name) => name.split(" ")[0];
 
+    // Mock profile pictures (demo): an emoji picked from the name, the same everywhere.
+    const AVATARS = ["🦊", "🐼", "🐸", "🦁", "🐯", "🐨", "🐵", "🦉", "🐙", "🦄", "🐝", "🐢", "🐬", "🦋", "🐧", "🐻"];
+    const avatar = (name) => AVATARS[[...(name || "?")].reduce((sum, ch) => (sum * 31 + ch.codePointAt(0)) >>> 0, 7) % AVATARS.length];
     const initials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2)
         .map((word) => word[0].toUpperCase()).join("");
 
@@ -272,7 +275,7 @@
             const title = svg("title");
             title.textContent = name;
             const mark = svg("text", { y: 1, "aria-hidden": "true" }, "nw-initials");
-            mark.textContent = initials(name);
+            mark.textContent = String(kind).includes("org") ? initials(name) : avatar(name);
             const caption = svg("text", { y: radius + 17 }, "nw-label");
             wrapLabel(label).forEach((line, i) => {
                 const span = svg("tspan", { x: 0, dy: i === 0 ? 0 : 15 });
