@@ -4,6 +4,17 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Network page: the map on the left, the selected page on the right
+
+**Request:** picking someone on the network map took an extra click to see their page.
+
+### What changed
+- The Network page is now two columns: the map on the left, and on the right the page of whoever is in the middle (their full profile, drawn by the same `ProfileRenderer` as the Profile tab, or a community's details and upcoming events). One click on the map now updates both (`network.js`, `network.css`).
+- The right column stays in view while scrolling; under 960px wide it goes under the map.
+- "Open full profile" / "Open community page" under the panel for the full page. The old profile button in the map's header is gone (the panel replaces it).
+
+---
+
 ## 2026-11-15 — Network map: "Mutual connections" switch
 
 ### What changed

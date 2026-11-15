@@ -27,6 +27,8 @@
 
     const TOP = 3; // list entries shown before "More"
 
+    const DATE_FORMAT = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
+
     const plural = (count, word, many = `${word}s`) => `${count} ${count === 1 ? word : many}`;
 
     const possessive = (name) => (name.endsWith("s") ? `${name}'` : `${name}'s`);
@@ -41,6 +43,7 @@
             this.data = null;
             this.request = 0;
             this.colors = new Map(); // id -> outline colour for the map, kept while the page is open
+            this.renderer = new Profile.ProfileRenderer(); // the side panel: the same profile as the Profile tab
             // Clicking yourself ("You"): on your own map it opens your Profile
             // tab; on someone else's it brings you back to your own network.
             // Clicking whoever is in the middle of their own network opens
@@ -158,7 +161,8 @@
                 this.bubble.draw(data);
                 this.paintNodes(data);
             }
-            $("nw-root").replaceChildren(this.stage());
+            // The map on the left; whoever is in the middle, in full, on the right.
+            $("nw-root").replaceChildren(el("div", { className: "nw-split" }, [this.stage(), this.side()]));
             this.drawLists();
             if (data.truncated) this.note("This is a big network, so only part of it is shown.");
         }
@@ -239,17 +243,9 @@
             const title = isSelf ? "My network"
                 : center.isOrg ? `${center.name}: members you know` : `${possessive(center.name)} network`;
             // Your own network needs no heading (the page title says it).
-            // Someone else's says whose it is, with a link to their page.
-            // On a map, their page opens by clicking them in the middle, so
-            // the button is only shown when their network is closed to you
-            // (no map, so nothing to click).
-            const pageButton = networkOpen ? null : center.isOrg
-                ? el("a", { className: "page-button", text: "Open community page", attrs: { href: Ui.orgHref(center.id) } })
-                : el("a", { className: "page-button", text: `${possessive(center.name.split(" ")[0])} profile`,
-                            attrs: { href: Ui.profileHref(center.id) } });
+            // Someone else's says whose it is; their page is beside the map.
             const head = isSelf ? null : el("div", { className: "nw-stage-head" }, [
                 el("h2", { className: "nw-stage-title", text: title }),
-                pageButton,
             ]);
             const body = networkOpen ? this.bubble.element : el("p", {
                 className: "nw-closed",
@@ -258,6 +254,41 @@
                     : `You and ${center.name.split(" ")[0]} aren't connected, so their network isn't shown.`,
             });
             return el("section", { className: "nw-stage", attrs: { "aria-label": title } }, [head, body]);
+        }
+
+        // --- the page of whoever is in the middle, beside the map ---------------------
+
+        /** Their profile (a community: its details), so picking someone on
+         *  the map shows them straight away, with no extra click. */
+        side() {
+            const { center, isSelf, profile } = this.data;
+            const href = center.isOrg ? Ui.orgHref(center.id) : isSelf ? "profile" : Ui.profileHref(center.id);
+            const label = center.isOrg ? "Open community page" : isSelf ? "Open my profile" : "Open full profile";
+            const body = center.isOrg
+                ? this.orgPanel(profile, center)
+                : this.renderer.render(profile, isSelf ? "self" : "visitor", { onConnection: () => this.load() });
+            return el("aside", { className: "nw-side", attrs: { "aria-label": `About ${center.name}` } }, [
+                body,
+                el("a", { className: "page-button nw-side-open", text: label, attrs: { href } }),
+            ]);
+        }
+
+        orgPanel(org, center) {
+            const events = org.upcoming.slice(0, 5);
+            return el("section", { className: "nw-org" }, [
+                el("h2", { className: "nw-org-name", text: center.name }),
+                el("p", { className: "nw-org-kind", text: org.isMember ? `${org.orgKind} · You're a member` : org.orgKind }),
+                org.website ? el("a", { className: "nw-org-site", text: "Website",
+                                        attrs: { href: org.website, target: "_blank", rel: "noopener noreferrer nofollow" } }) : null,
+                el("h3", { className: "nw-org-heading", text: `Coming up (${org.upcomingCount})` }),
+                events.length
+                    ? el("ul", { className: "nw-org-events" }, events.map((event) => el("li", { className: "nw-org-event" }, [
+                        el("span", { className: "nw-org-date", text: DATE_FORMAT.format(new Date(event.starts_at)) }),
+                        el("span", { className: "nw-org-title", text: event.title }),
+                        event.location ? el("span", { className: "nw-org-where", text: event.location }) : null,
+                    ])))
+                    : el("p", { className: "nw-org-empty", text: "Nothing coming up." }),
+            ]);
         }
 
         // --- the lists under the page ------------------------------------------------
