@@ -95,11 +95,13 @@ export async function initLogo3D(options = {}) {
   outer.add(inner);
   scene.add(outer);
 
-  // The room each state needs (width, height in scene units), with a margin so
-  // tilting and swaying never reach the edge. The camera comes
+  // The room each state needs (width, height in scene units). The camera comes
   // in close for the logo and pulls back for the wide wordmark, so the logo
-  // fills the box even where the box is narrow.
-  const FRAME = { logo: [3.5, 3.5], word: [WORD_WIDTH * 1.25, 1.6], network: [3.8, 3.6] };
+  // fills the box even where the box is narrow. The margins are worked out for
+  // the worst case: spun, dragged to the tilt limit, leaning toward the cursor
+  // and swaying, with the near edge enlarged by perspective. The wordmark
+  // needs the most, since tilting swings one end close to the camera.
+  const FRAME = { logo: [3.9, 3.9], word: [WORD_WIDTH * 1.67, 1.6], network: [4.5, 4.5] };
   let framed = 'logo';
   const fitZ = () => {
     const [fw, fh] = FRAME[framed] || FRAME.logo;
