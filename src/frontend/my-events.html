@@ -7,34 +7,122 @@
     <title>My Events · Collectivize</title>
     <link rel="icon" href="../../app/icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="app.css">
+    <link rel="stylesheet" href="calendar.css">
     <link rel="stylesheet" href="event-actions.css">
     <link rel="stylesheet" href="my-events.css">
     <link rel="stylesheet" href="nav.css">
     <script src="nav.js"></script>
     <script src="shared.js" defer></script>
     <script src="add-to-calendar.js" defer></script>
+    <script src="calendar.js" defer></script>
     <script src="my-events.js" defer></script>
 </head>
 <body>
-    <main class="page">
-        <h1 class="page-title">My Events</h1>
-        <p class="page-subtitle">What you're going to, thinking about, and saved for later.</p>
+    <main class="page me-page" id="page" data-view="calendar">
+        <header class="me-header">
+            <h1 class="page-title">My Events</h1>
+            <div class="cal-views" role="group" aria-label="Show as">
+                <button type="button" class="cal-view me-view" data-view="calendar" aria-pressed="true">Calendar</button>
+                <button type="button" class="cal-view me-view" data-view="list" aria-pressed="false">List</button>
+            </div>
+        </header>
 
-        <div class="tabs" role="tablist" aria-label="Your events">
-            <button class="tab" role="tab" id="tab-going" aria-controls="panel" aria-selected="true" data-tab="going">Going <span class="tab-count"></span></button>
-            <button class="tab" role="tab" id="tab-maybe" aria-controls="panel" aria-selected="false" data-tab="maybe">Maybe <span class="tab-count"></span></button>
-            <button class="tab" role="tab" id="tab-saved" aria-controls="panel" aria-selected="false" data-tab="saved">Saved <span class="tab-count"></span></button>
-        </div>
+        <!-- Calendar view (calendar.js) -->
+        <section id="view-calendar" aria-label="Calendar">
+            <div class="cal-header">
+                <h2 class="cal-title" id="cal-title" aria-live="polite">Calendar</h2>
+                <div class="cal-controls">
+                    <button type="button" class="cal-button" id="cal-today">Today</button>
+                    <div class="cal-step">
+                        <button type="button" class="cal-icon-button" id="cal-prev" aria-label="Previous month">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 6-6 6 6 6"/></svg>
+                        </button>
+                        <button type="button" class="cal-icon-button" id="cal-next" aria-label="Next month">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg>
+                        </button>
+                    </div>
+                    <div class="cal-views" role="group" aria-label="Calendar view">
+                        <button type="button" class="cal-view" data-mode="month" aria-pressed="true">Month</button>
+                        <button type="button" class="cal-view" data-mode="week" aria-pressed="false">Week</button>
+                        <button type="button" class="cal-view" data-mode="day" aria-pressed="false">Day</button>
+                    </div>
+                </div>
+            </div>
 
-        <p class="status" id="status" role="status" aria-live="polite"></p>
+            <div class="cal-banner" id="cal-banner" role="alert" hidden>
+                <span id="cal-banner-text"></span>
+                <button type="button" class="cal-button" id="cal-retry">Retry</button>
+            </div>
 
-        <section id="panel" role="tabpanel" aria-labelledby="tab-going">
-            <ul class="list me-list" id="upcoming"></ul>
-            <p class="me-empty" id="upcoming-empty" hidden></p>
-            <details class="me-past" id="past-box" hidden>
-                <summary id="past-summary">Past events</summary>
-                <ul class="list me-list" id="past"></ul>
-            </details>
+            <ul class="cal-legend" aria-label="Key">
+                <li><span class="cal-chip is-going">Going</span></li>
+                <li><span class="cal-chip is-maybe">Maybe</span></li>
+                <li><span class="cal-chip is-saved">Saved</span></li>
+                <li><span class="cal-chip is-my_org">My orgs</span></li>
+                <li><span class="cal-chip is-hosting">Hosting</span></li>
+            </ul>
+
+            <div class="cal-layout">
+                <div class="cal-main">
+                    <section class="cal-month" id="cal-month" aria-labelledby="cal-title">
+                        <div class="cal-weekdays" aria-hidden="true">
+                            <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+                        </div>
+                        <div class="cal-grid" id="cal-grid"></div>
+                    </section>
+
+                    <section class="cal-hours" id="cal-hours" aria-labelledby="cal-title" hidden>
+                        <div class="hours-head" id="hours-head"></div>
+                        <div class="hours-scroll" id="hours-scroll">
+                            <div class="hours-body" id="hours-body"></div>
+                        </div>
+                    </section>
+                </div>
+
+                <aside class="cal-day" aria-labelledby="day-title">
+                    <p class="day-eyebrow" id="day-eyebrow"></p>
+                    <h2 class="day-title" id="day-title"></h2>
+
+                    <p class="day-status" id="day-status" role="status" aria-live="polite"></p>
+
+                    <ul class="day-list" id="day-list"></ul>
+                    <p class="day-empty" id="day-empty">Nothing planned this day.</p>
+
+                    <a class="cal-find" id="day-find" href="discover.html"></a>
+                </aside>
+            </div>
+        </section>
+
+        <!-- List view (my-events.js) -->
+        <section id="view-list" aria-label="List" hidden>
+            <form class="me-search" id="me-search" role="search">
+                <label class="sr-only" for="me-search-input">Search your events</label>
+                <svg class="me-search-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+                </svg>
+                <input type="search" id="me-search-input" maxlength="200" autocomplete="off"
+                       placeholder="Search your events, or describe it: “robotics this week”">
+                <button type="submit" class="me-search-button">Search</button>
+            </form>
+            <p class="me-understood" id="me-understood" hidden></p>
+
+            <div class="tabs" role="tablist" aria-label="Your events">
+                <button class="tab" role="tab" id="tab-going" aria-controls="panel" aria-selected="true" data-tab="going">Going <span class="tab-count"></span></button>
+                <button class="tab" role="tab" id="tab-maybe" aria-controls="panel" aria-selected="false" data-tab="maybe">Maybe <span class="tab-count"></span></button>
+                <button class="tab" role="tab" id="tab-saved" aria-controls="panel" aria-selected="false" data-tab="saved">Saved <span class="tab-count"></span></button>
+                <button class="tab" role="tab" id="tab-hosting" aria-controls="panel" aria-selected="false" data-tab="hosting">Hosting <span class="tab-count"></span></button>
+            </div>
+
+            <p class="status" id="status" role="status" aria-live="polite"></p>
+
+            <section id="panel" role="tabpanel" aria-labelledby="tab-going">
+                <ul class="list me-list" id="upcoming"></ul>
+                <p class="me-empty" id="upcoming-empty" hidden></p>
+                <details class="me-past" id="past-box" hidden>
+                    <summary id="past-summary">Past events</summary>
+                    <ul class="list me-list" id="past"></ul>
+                </details>
+            </section>
         </section>
     </main>
 </body>

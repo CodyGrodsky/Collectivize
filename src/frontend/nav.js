@@ -11,8 +11,7 @@
 (() => {
     const PAGES = [
         { label: "Discover", href: "discover.html", icon: "discover" },
-        { label: "Calendar", href: "calendar.html", icon: "calendar" },
-        { label: "My Events", href: "my-events.html", icon: "bookmark" },
+        { label: "My Events", href: "my-events.html", icon: "calendar" },
         { label: "Network", href: "network.html", icon: "graph" },
         { label: "Profile", href: "profile.html", icon: "profile" },
         { label: "Account", href: "account.html", icon: "gear" },

@@ -6,69 +6,16 @@
     <meta name="theme-color" content="#f5f4f0">
     <title>Calendar · Collectivize</title>
     <link rel="icon" href="../../app/icon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="calendar.css">
-    <link rel="stylesheet" href="event-actions.css">
-    <link rel="stylesheet" href="nav.css">
-    <script src="nav.js"></script>
-    <script src="shared.js" defer></script>
-    <script src="add-to-calendar.js" defer></script>
-    <script src="calendar.js" defer></script>
+    <!-- The calendar is now part of My Events. Old links (and ?date=) still work. -->
+    <script>
+        (() => {
+            const params = new URLSearchParams(location.search);
+            params.set("view", "calendar");
+            location.replace(`my-events.html?${params}`);
+        })();
+    </script>
 </head>
 <body>
-    <main class="calendar-page">
-        <header class="cal-header">
-            <h1 class="cal-title" id="cal-title" aria-live="polite">Calendar</h1>
-            <div class="cal-controls">
-                <button type="button" class="cal-button" id="cal-today">Today</button>
-                <div class="cal-step">
-                    <button type="button" class="cal-icon-button" id="cal-prev" aria-label="Previous month">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 6-6 6 6 6"/></svg>
-                    </button>
-                    <button type="button" class="cal-icon-button" id="cal-next" aria-label="Next month">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg>
-                    </button>
-                </div>
-                <div class="cal-views" role="group" aria-label="Calendar view">
-                    <button type="button" class="cal-view" aria-pressed="true">Month</button>
-                    <button type="button" class="cal-view" disabled title="Coming soon">Week</button>
-                    <button type="button" class="cal-view" disabled title="Coming soon">Day</button>
-                </div>
-            </div>
-        </header>
-
-        <div class="cal-banner" id="cal-banner" role="alert" hidden>
-            <span id="cal-banner-text"></span>
-            <button type="button" class="cal-button" id="cal-retry">Retry</button>
-        </div>
-
-        <ul class="cal-legend" aria-label="Key">
-            <li><span class="cal-chip is-going">Going</span></li>
-            <li><span class="cal-chip is-maybe">Maybe</span></li>
-            <li><span class="cal-chip is-saved">Saved</span></li>
-            <li><span class="cal-chip is-my_org">My orgs</span></li>
-            <li><span class="cal-chip is-hosting">Hosting</span></li>
-        </ul>
-
-        <div class="cal-layout">
-            <section class="cal-month" aria-labelledby="cal-title">
-                <div class="cal-weekdays" aria-hidden="true">
-                    <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
-                </div>
-                <div class="cal-grid" id="cal-grid"></div>
-            </section>
-
-            <aside class="cal-day" aria-labelledby="day-title">
-                <p class="day-eyebrow" id="day-eyebrow"></p>
-                <h2 class="day-title" id="day-title"></h2>
-
-                <p class="day-status" id="day-status" role="status" aria-live="polite"></p>
-
-                <ul class="day-list" id="day-list"></ul>
-                <p class="day-empty" id="day-empty">Nothing planned this day.</p>
-
-                <a class="cal-find" id="day-find" href="discover.html"></a>
-            </aside>
-        </div>
-    </main>
+    <p><a href="my-events.html?view=calendar">The calendar is now in My Events.</a></p>
 </body>
 </html>

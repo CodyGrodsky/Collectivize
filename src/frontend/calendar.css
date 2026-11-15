@@ -1,5 +1,5 @@
-/* Calendar page: a month grid with a day panel beside it (below it on
-   narrower screens). Empty for now; events will sit inside each cell. */
+/* My Events' calendar view: a month grid, or a week or day of hours, with
+   a day panel beside it (below it on narrower screens). */
 
 :root {
     --ink: #202b29;
@@ -11,6 +11,12 @@
     --hover: rgba(32, 43, 41, .05);
     --green: #266956;
     --green-soft: #e8f2ed;
+    /* Status colours, from the logo's gold, blue and red. */
+    --gold: #a8740a;
+    --blue-brand: #3b6ff5;
+    --blue-brand-soft: #e7eefe;
+    --blue-brand-ink: #1f4fcb;
+    --red-brand: #b8321d;
 }
 
 * { box-sizing: border-box; }
@@ -46,7 +52,7 @@ button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 
 .cal-title {
     margin: 0;
-    font-size: 26px;
+    font-size: 20px;
     font-weight: 650;
     letter-spacing: -.01em;
 }
@@ -91,7 +97,7 @@ button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 
 .cal-button:hover,
 .cal-icon-button:hover,
-.cal-view:not(:disabled):hover { background: #fff; }
+.cal-view:not(:disabled):not([aria-pressed="true"]):hover { background: #fff; }
 
 .cal-views {
     display: flex;
@@ -264,11 +270,11 @@ button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 
 .cal-chip.is-maybe { border-color: var(--green); background: var(--green-soft); color: var(--green); }
 
-.cal-chip.is-saved { border-color: #1e3a9e; background: #e6ecfa; color: #1e3a9e; }
+.cal-chip.is-saved { background: var(--gold); color: #fff; }
 
-.cal-chip.is-my_org { border-color: #b9862d; background: #fbf3e2; color: #8a5a12; }
+.cal-chip.is-my_org { border-color: var(--blue-brand); background: var(--blue-brand-soft); color: var(--blue-brand-ink); }
 
-.cal-chip.is-hosting { background: var(--ink); color: #fff; }
+.cal-chip.is-hosting { background: var(--red-brand); color: #fff; }
 
 .cal-chip.is-cancelled { opacity: .55; text-decoration: line-through; }
 
@@ -305,6 +311,125 @@ button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 
 .day-event .ev-action.is-star { width: 28px; padding: 0; }
 
+/* Week and day views: a column of hours per day, scrolled inside its box. */
+
+.cal-hours {
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--card);
+}
+
+.hours-head,
+.hours-body {
+    display: grid;
+    grid-template-columns: 56px repeat(var(--days, 7), minmax(0, 1fr));
+}
+
+.hours-head { border-bottom: 1px solid var(--line); }
+
+.hours-day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 8px 4px;
+    border: 0;
+    border-left: 1px solid var(--line);
+    background: transparent;
+    cursor: pointer;
+}
+
+.hours-day:hover { background: var(--hover); }
+
+.hours-day[aria-pressed="true"] { background: var(--green-soft); }
+
+.hours-day-name {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.hours-day-number {
+    display: grid;
+    place-items: center;
+    min-width: 28px;
+    height: 28px;
+    border-radius: 14px;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.hours-day.is-today .hours-day-number { background: var(--green); color: #fff; }
+
+.hours-scroll { height: min(640px, calc(100vh - 260px)); min-height: 320px; overflow-y: auto; }
+
+.hours-body { position: relative; height: calc(24 * var(--hour, 48px)); }
+
+.hours-gutter { position: relative; }
+
+.hours-gutter span {
+    position: absolute;
+    right: 8px;
+    transform: translateY(-50%);
+    color: var(--muted);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.hours-column {
+    position: relative;
+    border-left: 1px solid var(--line);
+    /* A line every hour. */
+    background-image: linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+    background-size: 100% var(--hour, 48px);
+    cursor: pointer;
+}
+
+.hours-column.is-selected { background-color: rgba(38, 105, 86, .04); }
+
+.hours-now {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 2;
+    height: 2px;
+    background: var(--red-brand);
+    pointer-events: none;
+}
+
+.hours-event {
+    position: absolute;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 3px 6px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: var(--hover);
+    color: var(--ink);
+    font-size: 11.5px;
+    line-height: 1.3;
+    text-align: left;
+    cursor: pointer;
+}
+
+.hours-event:focus-visible { z-index: 3; }
+
+.hours-event-title { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+
+.hours-event-time { overflow: hidden; opacity: .85; text-overflow: ellipsis; white-space: nowrap; }
+
+.hours-event.is-going { background: var(--green); color: #fff; }
+.hours-event.is-maybe { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+.hours-event.is-saved { background: var(--gold); color: #fff; }
+.hours-event.is-my_org { border-color: var(--blue-brand); background: var(--blue-brand-soft); color: var(--blue-brand-ink); }
+.hours-event.is-hosting { background: var(--red-brand); color: #fff; }
+.hours-event.is-cancelled { opacity: .55; text-decoration: line-through; }
+
 /* Narrower screens: the day panel moves below the grid. */
 
 @media (max-width: 960px) {
@@ -320,6 +445,11 @@ button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
     .cal-chips { justify-items: center; }
     .cal-chip { width: 8px; height: 8px; padding: 0; border-radius: 50%; font-size: 0; }
     .cal-more { font-size: 10px; }
+    .hours-head, .hours-body { grid-template-columns: 40px repeat(var(--days, 7), minmax(0, 1fr)); }
+    .hours-gutter span { right: 4px; font-size: 10px; }
+    .hours-day-name { font-size: 10px; letter-spacing: 0; }
+    .hours-event { padding: 2px 3px; font-size: 10px; }
+    .hours-event-time { display: none; }
 }
 
 /* "Find events on …": discovery happens on Discover (v1.1 spec 4.7). */

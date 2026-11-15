@@ -78,6 +78,9 @@ class SearchFilters:
     tag_slugs: tuple[str, ...] = ()
     day: date | None = None
     days: int = 1  # how many days from `day` ("this weekend" is two)
+    # Only these events, and no people or orgs (My Events' search). None
+    # means no limit; an empty set finds nothing.
+    event_ids: frozenset[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -207,7 +210,9 @@ class UnifiedSearchService:
         """Everything that matches: results with every keyword first, then
         best first."""
         types = set(applied.types) or set(TYPES)
-        if not matcher.keywords and not applied.types:
+        if applied.event_ids is not None:
+            types = {"events"}
+        elif not matcher.keywords and not applied.types:
             types = {"events"}  # nothing asked for: Discover's ranked events
         if applied.day is not None or applied.tag_slugs:
             types.discard("people")  # people have no date or public topics
@@ -285,6 +290,8 @@ class UnifiedSearchService:
         now: datetime,
     ) -> list[SearchResult]:
         keywords = matcher.keywords
+        if applied.event_ids is not None and not applied.event_ids:
+            return []  # an empty tuple below would mean every event
         after = before = None
         if applied.day is not None:
             zone = ZoneInfo(CAMPUS_TIMEZONE)
@@ -307,7 +314,8 @@ class UnifiedSearchService:
 
         items = self._discovery.rank_all(
             DiscoveryQuery(viewer_id=viewer_id, tag_ids=tag_ids,
-                           starts_after=after, starts_before=before), now,
+                           starts_after=after, starts_before=before,
+                           event_ids=tuple(sorted(applied.event_ids or ()))), now,
             keep=matches if keywords else None,
         )
         found = []
@@ -341,6 +349,7 @@ def _merge(filters: SearchFilters, read: Extraction, tags: dict[str, Tag]) -> Se
         # A ticked day that is the one the text gave keeps the text's span,
         # so page two of "this weekend" is still both days.
         days=read.days if filters.day in (None, read.day) and read.day else 1,
+        event_ids=filters.event_ids,
     )
 
 

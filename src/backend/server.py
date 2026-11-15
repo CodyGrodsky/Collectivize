@@ -5,7 +5,7 @@
 
 API (JSON; the viewer is always the signed-in person):
     POST /api/signin {"email"}, /api/signout; GET /api/session, /api/me
-    GET  /api/find?q=&types=&tags=&date=&page=   unified search (people, orgs, events)
+    GET  /api/find?q=&types=&tags=&date=&page=&scope=   unified search (people, orgs, events; scope=mine: My Events only)
     GET  /api/network?center=                    a profile and its network map
     POST /api/profile {...changes}               save your own profile and settings
     GET  /api/discover, /api/calendar, /api/my-calendar, /api/my-events, /api/tags

@@ -68,7 +68,9 @@ class AppApi:
     def find(self, viewer: str, params: dict[str, str], *, debug: bool = False) -> dict[str, Any]:
         """People, orgs and events in one ranked list: `q`, `types`
         (comma-separated people,orgs,events), `tags` (topic slugs), `date`
-        (YYYY-MM-DD), `page`. Scores only with `debug` (platform admins)."""
+        (YYYY-MM-DD), `page`, and `scope=mine` to search only the events in
+        the viewer's My Events (hosting, going, maybe, saved). Scores only
+        with `debug` (platform admins)."""
         text = params.get("q", "")
         if len(text) > MAX_QUERY:
             raise ApiError(HTTPStatus.BAD_REQUEST, f"keep searches under {MAX_QUERY} characters")
@@ -77,6 +79,9 @@ class AppApi:
         # ASCII digits only: "²".isdigit() is True but int("²") raises.
         if not (page.isascii() and page.isdigit()) or not 1 <= int(page) <= 1000:
             raise ApiError(HTTPStatus.BAD_REQUEST, "page must be a whole number")
+        scope = params.get("scope", "")
+        if scope not in ("", "mine"):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "scope must be mine or left out")
         day = None
         if params.get("date"):
             try:
@@ -86,11 +91,13 @@ class AppApi:
         with self._graphs() as graph:
             slugs = {t.slug for t in graph.store.nodes(Tag)}
             tags = _csv(params.get("tags"), slugs, "topic")
+            only = frozenset(_plans(graph, viewer)) if scope == "mine" else None
             service = UnifiedSearchService(
                 graph.store, graph.discovery, graph.visibility, graph.privacy, self._reader
             )
             result = service.search(
-                viewer, text, SearchFilters(types=frozenset(types), tag_slugs=tuple(sorted(tags)), day=day),
+                viewer, text, SearchFilters(types=frozenset(types), tag_slugs=tuple(sorted(tags)), day=day,
+                              event_ids=only),
                 self._clock(), int(page),
             )
             starred = graph.stars.starred_event_ids(viewer)
@@ -458,6 +465,7 @@ def _result_json(
         item.pop("distance_km", None)
         event = result.event.event
         data = {"type": "event", **item, "capacity": event.capacity,
+                "is_hosting": graph.events.can_edit(viewer, event.id),
                 "is_full": graph.rsvps.is_full(event.id),
                 "tags": sorted(graph.store.node(t, Tag).label
                                for t in graph.discovery.event_tag_ids(event.id))}
@@ -511,10 +519,31 @@ def _listed(graph: CollectivizeGraph, viewer: str, event_id: str) -> Event | Non
 def _my_events(
     graph: CollectivizeGraph, viewer: str, now: datetime
 ) -> dict[str, list[dict[str, Any]]]:
-    """Every event the viewer is going to, said maybe to, or saved, with
-    `rsvp` (going / maybe / null) and `saved`. Upcoming soonest first; past
-    most recent first."""
+    """Every event the viewer hosts, is going to, said maybe to, or saved,
+    with `hosting`, `rsvp` (going / maybe / null) and `saved`. Upcoming
+    soonest first; past most recent first."""
+    upcoming, past = [], []
+    for event_id, plan in _plans(graph, viewer).items():
+        event = _listed(graph, viewer, event_id)
+        if event is None or not event.is_active:
+            continue
+        entry = _event_json(graph, event, hosting=plan.get("hosting", False),
+                            rsvp=plan.get("rsvp"), saved=plan.get("saved", False),
+                            going_count=graph.rsvps.going_count(event.id), capacity=event.capacity)
+        (past if event.ends_at < now else upcoming).append((event.starts_at, entry))
+    upcoming.sort(key=lambda pair: pair[0])
+    past.sort(key=lambda pair: pair[0], reverse=True)
+    return {"upcoming": [e for _, e in upcoming], "past": [e for _, e in past]}
+
+
+def _plans(graph: CollectivizeGraph, viewer: str) -> dict[str, dict[str, Any]]:
+    """Event id -> the viewer's plans for it: `hosting` (they, or an org they
+    act for, host it), `rsvp` (going / maybe) and `saved`. Only events with
+    at least one plan are listed."""
     plans: dict[str, dict[str, Any]] = {}
+    for event in graph.store.nodes(Event):
+        if graph.events.can_edit(viewer, event.id):
+            plans.setdefault(event.id, {})["hosting"] = True
     for rsvp in graph.store.edges(Rsvp, source_id=viewer):
         if rsvp.status in (RsvpStatus.GOING, RsvpStatus.INTERESTED):
             plans.setdefault(rsvp.target_id, {})["rsvp"] = (
@@ -522,17 +551,7 @@ def _my_events(
             )
     for event_id in graph.stars.starred_event_ids(viewer):
         plans.setdefault(event_id, {})["saved"] = True
-    upcoming, past = [], []
-    for event_id, plan in plans.items():
-        event = _listed(graph, viewer, event_id)
-        if event is None or not event.is_active:
-            continue
-        entry = _event_json(graph, event, rsvp=plan.get("rsvp"), saved=plan.get("saved", False),
-                            going_count=graph.rsvps.going_count(event.id), capacity=event.capacity)
-        (past if event.ends_at < now else upcoming).append((event.starts_at, entry))
-    upcoming.sort(key=lambda pair: pair[0])
-    past.sort(key=lambda pair: pair[0], reverse=True)
-    return {"upcoming": [e for _, e in upcoming], "past": [e for _, e in past]}
+    return plans
 
 
 def _person_by_email(graph: CollectivizeGraph, email: str) -> Person:

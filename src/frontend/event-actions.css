@@ -44,9 +44,10 @@
 
 .ev-action.is-star { width: 32px; padding: 0; justify-content: center; color: #5f6b67; }
 
-.ev-action.is-star[aria-pressed="true"] { border-color: #e2b23a; background: #fbf3dc; color: #a66d00; }
+/* Saved: the calendar's "Saved" gold (calendar.css --gold). */
+.ev-action.is-star[aria-pressed="true"] { border-color: #a8740a; background: #a8740a; color: #fff; }
 
-.ev-action.is-star[aria-pressed="true"] svg { fill: #f2c14e; }
+.ev-action.is-star[aria-pressed="true"] svg { fill: #fff; }
 
 .ev-actions.is-busy { cursor: progress; }
 

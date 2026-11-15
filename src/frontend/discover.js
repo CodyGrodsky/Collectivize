@@ -384,10 +384,6 @@
             return node;
         }
 
-        typeLabel(text, kind) {
-            return el("span", { className: `dc-type is-${kind}`, text });
-        }
-
         personCard(person) {
             const actions = [];
             const state = person.connection;
@@ -412,7 +408,6 @@
             return el("li", { className: "dc-card dc-entity" }, [
                 Ui.avatar(person, "dc-entity-icon is-person"),
                 el("div", { className: "dc-body" }, [
-                    el("div", { className: "dc-badges" }, [this.typeLabel("Person", "person")]),
                     el("h2", { className: "dc-card-title" }, [el("a", { text: cleanName(person.name), attrs: { href: Ui.profileHref(person.id) } })]),
                     person.bio ? el("p", { className: "dc-meta", text: person.bio }) : null,
                     person.top3_title ? el("p", { className: "dc-host", text: person.top3_title }) : null,
@@ -423,12 +418,9 @@
 
         orgCard(org) {
             const meta = [KIND[org.kind] || org.kind, ...org.tags].join(" · ");
-            const badges = [this.typeLabel("Organization", "org")];
-            if (org.is_member) badges.push(el("span", { className: "dc-badge", text: "Your org" }));
             return el("li", { className: "dc-card dc-entity" }, [
                 el("span", { className: "dc-entity-icon is-org", text: cleanName(org.name).charAt(0), attrs: { "aria-hidden": "true" } }),
                 el("div", { className: "dc-body" }, [
-                    el("div", { className: "dc-badges" }, badges),
                     el("h2", { className: "dc-card-title" }, [el("a", { text: cleanName(org.name), attrs: { href: Ui.orgHref(org.id) } })]),
                     el("p", { className: "dc-meta", text: meta }),
                 ]),
@@ -450,11 +442,11 @@
             q(".dc-date-month").textContent = PART({ month: "short" }).format(start);
 
             const reasons = item.reasons[0]?.startsWith("Cancelled") ? item.reasons.slice(1) : item.reasons;
-            const trust = reasons[0];
-            this.badges(q(".dc-badges"), item, trust);
 
             q(".dc-card-title").textContent = item.title;
-            q(".dc-meta").textContent = [`${DATE.format(start)}, ${TIME.format(start)}–${TIME.format(end)}`, item.location]
+            // Cancelled and full are said in words here (no badges above the title).
+            const notes = item.is_cancelled ? ["Cancelled"] : item.is_full ? ["Full"] : [];
+            q(".dc-meta").textContent = [...notes, `${DATE.format(start)}, ${TIME.format(start)}–${TIME.format(end)}`, item.location]
                 .filter(Boolean).join(" · ");
             q(".dc-host").textContent = `Hosted by ${cleanName(item.host.name)}`;
             q(".dc-description").textContent = item.description;
@@ -468,8 +460,14 @@
             return node;
         }
 
-        /** I'm going / Maybe / Save. The card redraws itself from the server's answer. */
+        /** I'm going / Maybe / Save. The card redraws itself from the server's
+         *  answer. An event you host gets only "Add to calendar": you're going. */
         actions(item, node) {
+            if (item.is_hosting) {
+                const box = el("div", { className: "dc-action-row" });
+                if (window.AddToCalendar && !item.is_cancelled) box.append(window.AddToCalendar.menu(item));
+                return box;
+            }
             const controls = new EventActions({
                 eventId: item.id,
                 myRsvp: item.my_rsvp,
@@ -484,9 +482,7 @@
                 },
                 onError: (message) => this.setStatus(message, { error: true }),
             });
-            const box = el("div", { className: "dc-action-row" }, [controls.element]);
-            if (window.AddToCalendar && !item.is_cancelled) box.append(window.AddToCalendar.menu(item));
-            return box;
+            return el("div", { className: "dc-action-row" }, [controls.element]);
         }
 
         static savedText(item) {
@@ -496,18 +492,6 @@
             if (item.starred) parts.push("saved");
             const what = parts.length ? parts.join(" and ") : "removed from your plans";
             return `“${item.title}”: ${what}. Your calendar is updated.`;
-        }
-
-        badges(container, item, trust) {
-            const add = (text, kind = "") => container.append(el("span", { className: `dc-badge ${kind}`.trim(), text }));
-            container.append(this.typeLabel("Event", "event"));
-            if (item.is_cancelled) add("Cancelled", "is-cancelled");
-            if (item.is_full && !item.is_cancelled) add("Full", "is-full");
-            if (item.my_rsvp === "going") add("You're going");
-            else if (item.my_rsvp === "interested") add("Maybe");
-            if (item.reasons.some((r) => r.startsWith("Hosted by your org"))) add("Your org");
-            if (item.host.kind === "person") add("Hosted by a student", "is-person");
-            else if (trust && trust.startsWith("Unclaimed")) add("Unverified listing", "is-unverified");
         }
 
         /** Friends going are shown without names or initials (Cody's change). */

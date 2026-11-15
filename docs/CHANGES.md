@@ -1769,3 +1769,14 @@ All of these are immutable (frozen dataclasses). Changing one returns a new copy
 
 
 Nav header: logo to open, wordmark and toggle when open. In the shared nav (`nav.js`, `nav.css`), the closed rail and phone bar now show the logo, which opens the nav when clicked. Open, the nav shows the wordmark (a link home) with the collapse button at the top right. The home page (`index.html`), opened while signed in with no `?next=`, now hides the sign-in form and makes the wordmark a link to Discover. The tagline under the wordmark ("Find your people on campus…") is removed. The wordmark files in `public/brand/` are replaced with the new black-node versions.
+
+
+My Events and Calendar are now one page, with hosting, working week/day views and new colours.
+
+- **One page:** `my-events.html` has a **Calendar / List** switch. The nav's separate Calendar entry is gone; `calendar.html` now forwards to `my-events.html?view=calendar` (keeping `?date=`). The view, tab, search and calendar mode are kept in the URL (`?view=&tab=&q=&cal=&date=`).
+- **Calendar view:** **Week** and **Day** now work, showing hours down the side, overlapping events side by side and a line for the current time. The arrows step by month, week or day.
+- **List view:** four tabs, **Going, Maybe, Saved, Hosting** (an event you host is listed only under Hosting). The search bar uses Discover's search (`GET /api/find?scope=mine`), so typos, dates ("this week") and the "Searching for:" line work the same way. It searches upcoming events only.
+- **Hosting:** events you host (yourself, or through an org you run) show only **Add to calendar**, on Discover, in the calendar and in the list.
+- **Colours:** Saved is dark gold (the pressed bookmark button matches), My orgs is light blue, Hosting is dark red. Going and Maybe are unchanged.
+- **Discover:** no more bubbles above titles on events, people or orgs. "Cancelled" and "Full" are now plain text at the start of the date line. "Add to calendar" is removed except on events you host. "Hosted by …" is bold.
+- **Backend:** `GET /api/my-events` now includes events you host, with `hosting: true/false`. `GET /api/find` adds `is_hosting` on events and accepts `scope=mine` (anything else is a 400). `SearchFilters.event_ids` limits a search to given events. Tests: `tests/backend/test_my_events_hosting.py` (30 tests).

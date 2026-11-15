@@ -238,10 +238,6 @@ button, input, select { font: inherit; color: inherit; }
 
 .dc-date-day { font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
 
-.dc-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
-
-.dc-badges:empty { display: none; }
-
 .dc-badge {
     padding: 2px 8px;
     border-radius: 999px;
@@ -252,17 +248,14 @@ button, input, select { font: inherit; color: inherit; }
     letter-spacing: .02em;
 }
 
-.dc-badge.is-cancelled { background: var(--red-soft); color: var(--red); }
-
-.dc-badge.is-unverified { background: var(--amber-soft); color: var(--amber); }
-
-.dc-badge.is-person { background: var(--hover); color: var(--muted); }
-
 .dc-card-title { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: -.01em; }
 
 .dc-meta, .dc-host { margin: 3px 0 0; color: var(--muted); }
 
 .dc-host { font-size: 13px; }
+
+/* "Hosted by …" on event cards. */
+.dc-hosted-by { color: var(--ink); font-weight: 700; }
 
 
 .dc-description {
@@ -534,19 +527,6 @@ button, input, select { font: inherit; color: inherit; }
 
 /* --- people and organization results ----------------------------------------- */
 
-.dc-type {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-size: 11.5px;
-    font-weight: 700;
-    letter-spacing: .02em;
-}
-
-.dc-type.is-person { background: var(--green-soft); color: var(--green); }
-.dc-type.is-org { background: var(--amber-soft); color: var(--amber); }
-.dc-type.is-event { background: #e6ecfa; color: #1e3a9e; }
-
 .dc-card-title a { color: inherit; text-decoration: none; }
 .dc-card-title a:hover { text-decoration: underline; }
 
@@ -580,8 +560,6 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 .dc-mini-button:disabled { opacity: .5; }
-
-.dc-badge.is-full { background: var(--red-soft); color: var(--red); }
 
 .dc-action-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
