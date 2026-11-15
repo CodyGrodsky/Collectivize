@@ -71,6 +71,16 @@ class handler(RequestHandler):  # noqa: N801 (Vercel looks for this name)
     def __init__(self, request, client_address, server) -> None:  # type: ignore[no-untyped-def]
         super().__init__(request, client_address, DEMO)
 
+    def _session(self, *, auto: bool = True):  # type: ignore[no-untyped-def]
+        """Always sign the demo account in, even for the quiet /api/session check.
+
+        Sign-ins live in one instance's memory, and Vercel spreads requests over
+        several instances. Without this, an open page's 8-second check that lands
+        on another instance hears "signed out" and bounces the visitor to the
+        sign-in screen, which auto-signs them in again and drops them on Discover.
+        Everyone is the demo account here, so there is no account to switch to."""
+        return super()._session(auto=True)
+
     def parse_request(self) -> bool:
         """vercel.json rewrites every address to /api/index?__path=<original>;
         put the original address back before the app routes it."""

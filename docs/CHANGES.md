@@ -4,6 +4,13 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Network: no more bounces to Discover; full-screen map
+
+- **Bounce fix (Vercel only, `api/index.py`).** Sign-ins live in one function instance's memory, and Vercel spreads requests across instances. An open page checks `/api/session` every 8 seconds; when that check landed on another instance it heard "signed out", sent the visitor to the sign-in screen, and auto-sign-in dropped them on Discover. On the demo, `/api/session` now auto-signs in like every other call (everyone is the demo account, so there's no account switching to protect). `src/backend/` is unchanged, so local and Railway behaviour stay the same.
+- **Full screen (`network-view.js`, `network.css`, `network.js`).** A button at the top right of the map grows it to fill the window, above the nav, with the "Mutual connections" switch still underneath. The whole page goes browser-full-screen where allowed (not the map element, so clicking someone and redrawing keeps you in full screen); on iPhone it fills the window instead. Esc or the same button shrinks it. A closed network (nothing to show) leaves full screen.
+
+---
+
 ## 2026-11-15 — "Hosted by …" opens the host's page
 
 - Wherever an event says "Hosted by X" (Discover cards, the calendar, My Events, event lists on profiles and the Network side panel), X is now a link to the org's page (or the person's profile). One helper: `Ui.hostedBy` in `shared.js`; style `.host-link` in `nav.css`.

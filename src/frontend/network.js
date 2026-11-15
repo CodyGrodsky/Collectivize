@@ -146,6 +146,7 @@
 
         showEmpty(message) {
             this.data = null;
+            this.bubble.setExpanded(false);
             $("nw-root").replaceChildren();
             $("nw-empty").textContent = message;
             $("nw-empty").hidden = false;
@@ -160,6 +161,8 @@
             if (data.networkOpen) {
                 this.bubble.draw(data);
                 this.paintNodes(data);
+            } else {
+                this.bubble.setExpanded(false); // no map to show full screen
             }
             // The map on the left; whoever is in the middle, in full, on the right.
             $("nw-root").replaceChildren(el("div", { className: "nw-split" }, [this.stage(), this.side()]));
