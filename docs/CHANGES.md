@@ -4,6 +4,18 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-14 — "Go Live" opens the home page
+
+**Request:** "make go live open the home page."
+
+### What changed
+- **New `index.html` at the project root:** it forwards straight to `src/frontend/index.html`. VS Code's Live Server opens the project root, which had no page, so Go Live showed a file list instead of the site.
+
+### Decision
+- **Forwarding page, not a Live Server setting:** pointing Live Server's root at `src/frontend` would break the logos, which load from `../../public/`. The forwarding page works for everyone without any VS Code setup. The demo server is unaffected: it already sends `/` to the home page and never serves this file.
+
+---
+
 ## 2026-11-14 — Search lists what's in your network first, above a divider
 
 **Request:** "make it so everything you are connected to is above the top results and there is a clear divider separating the connected part and the top results."
@@ -1636,3 +1648,6 @@ All of these are immutable (frozen dataclasses). Changing one returns a new copy
 - **To view:** `profile.html?u=maya_r` (full), `?u=theo_k` (locked) or `?u=sam_2027` (mostly empty). Add `&as=self` to see your own page with **Edit page** and **View as visitor**.
 - **Connecting it to the backend:** `ProfileDataSource` in `profile.js` is the only place data comes from. It already returns the planned `GET /api/profile` shape, so connecting the real endpoint means changing only that class.
 - **Also:** `collectivize_plan.md` now names Keaton in the team list.
+
+
+Tab icon now matches the sign-in logo. Every page in `src/frontend` (including `main.html`, which had none) now uses `public/brand/logo.svg` as its browser-tab icon instead of the older `app/icon.svg`.
