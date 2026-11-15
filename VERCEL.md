@@ -2,8 +2,10 @@
 
 **Live:** https://collectivize-tau.vercel.app
 
-Until further notice, **all UI and feature work happens on this branch** and ships to the live
-URL above. `main` is parked: it stays the Railway / real-server version and gets this branch
+Until further notice, **all UI and feature work happens on this branch, in the fork
+https://github.com/CodyGrodsky/Collectivize** (where `vercel-demo` is the default branch). Every push
+to `vercel-demo` there deploys to the live URL above in about a minute, and every PR into it gets
+its own preview link. `main` is parked: it stays the Railway / real-server version and gets this branch
 merged back when we switch over (see "Switching back to Railway").
 
 ## What this deploy is
@@ -23,23 +25,27 @@ merged back when we switch over (see "Switching back to Railway").
 
 ## Shipping a change
 
-1. Work on `vercel-demo` (branch from it for anything bigger, then PR back into `vercel-demo`).
+1. One-time setup in your clone of the fork (or add it as a remote to your existing clone):
+
+   ```
+   git remote add fork https://github.com/CodyGrodsky/Collectivize.git
+   git fetch fork
+   git switch -c vercel-demo --track fork/vercel-demo
+   ```
+
+   (Cody adds each of us as a collaborator on the fork, so you can push there.)
 2. Run it locally first, the same way as always:
 
    ```
    uv run python scripts/serve.py --no-login --no-ai
    ```
 
-3. Push to `vercel-demo`, then deploy. Today a deploy is one command run by someone who is
-   logged in to the Vercel project (currently Cody):
+3. Push to `vercel-demo` on the fork (`git push fork vercel-demo`) and it deploys itself.
+   For anything bigger, push a branch and open a PR into `vercel-demo`: Vercel comments a
+   preview link on the PR.
 
-   ```
-   vercel deploy --prod --yes
-   ```
-
-   (On Windows PowerShell with scripts blocked, type `vercel.cmd`.)
-   Auto-deploy on every push is being set up; when it is, this step goes away and this file
-   will say so.
+Manual deploy, if ever needed (Cody's machine, logged in to the Vercel project):
+`vercel deploy --prod --yes` (on Windows with scripts blocked: `vercel.cmd`).
 
 ## Rules that still apply
 
@@ -67,7 +73,7 @@ COLLECTIVIZE_DB_PATH=demo/collectivize-demo.db uv run python scripts/seed_test_d
 
 The backend is untouched, so switching back is a merge, not a migration:
 
-1. Merge `vercel-demo` into `main`.
+1. Open a PR from `CodyGrodsky/Collectivize:vercel-demo` into `JamesKempel/Collectivize:main` and merge it.
 2. Delete `api/`, `vercel.json`, `.vercelignore` and `demo/` (or keep them for preview deploys:
    they don't affect `scripts/serve.py`).
 3. Deploy `main` to Railway with a persistent volume for `data/`.
