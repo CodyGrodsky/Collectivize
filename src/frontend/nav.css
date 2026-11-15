@@ -77,6 +77,38 @@ html[data-nav="open"] .sidebar { width: var(--nav-open); overflow: hidden; }
 
 .sidebar-toggle { width: 40px; justify-content: center; padding: 0; }
 
+/* Header row: logo (closed) or wordmark + toggle (open). */
+.sidebar-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 40px;
+}
+
+.sidebar-opener { width: 40px; justify-content: center; padding: 0; }
+
+.sidebar-opener img { display: block; width: 26px; height: 26px; }
+
+.sidebar-wordmark {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    height: 40px;
+    padding: 0 8px;
+    border-radius: 8px;
+}
+
+.sidebar-wordmark img { display: block; height: 15px; width: auto; }
+
+.sidebar-wordmark:hover { background: var(--nav-hover); }
+
+.sidebar-wordmark:focus-visible { outline: 2px solid var(--nav-focus); outline-offset: 2px; }
+
+html[data-nav="closed"] .sidebar-wordmark,
+html[data-nav="closed"] .sidebar-toggle,
+html[data-nav="open"] .sidebar-opener { display: none; }
+
 .sidebar-toggle:hover,
 .sidebar-link:hover { background: var(--nav-hover); color: var(--nav-ink); }
 
