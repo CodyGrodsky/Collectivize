@@ -12,14 +12,30 @@
     const DATE = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     const KIND = { chapter: "Chapter", national: "National organization", council: "Council", club: "Club", institution: "Institution" };
 
-    const id = new URLSearchParams(location.search).get("id") || "";
+    const TOP = 3; // members shown at first
+    const EXPANDED = 10; // after "Show more"; past that, search
+    const VIEWS = ["list", "calendar"];
+
+    const params = new URLSearchParams(location.search);
+    const id = params.get("id") || "";
     let org = null;
+    let membersOpen = false; // "Show more" pressed
+    let memberQuery = ""; // the members search box
+    let view = VIEWS.includes(params.get("view")) ? params.get("view") : "list";
+
+    // The events calendar (calendar.js, loaded after this file) shows this
+    // org's upcoming events instead of your own plans.
+    let orgLoaded;
+    const orgReady = new Promise((resolve, reject) => { orgLoaded = { resolve, reject }; });
+    window.CalendarSource = async () => ({ entries: (await orgReady).events });
 
     async function load() {
         try {
             org = await Api.get("/api/org", { id });
+            orgLoaded.resolve(org);
             render();
         } catch (error) {
+            orgLoaded.reject(error);
             root.replaceChildren(el("p", { className: "status is-error", text: error.message }));
         }
     }
@@ -39,15 +55,58 @@
         root.replaceChildren(...header, status, members(status), events(), ...(org.can_manage ? [editor(status)] : []));
     }
 
+    /** The top three, "Show more" for up to ten, and a search over everyone
+        you can see, so a 200-person chapter never takes over the page. */
     function members(status) {
         const n = org.member_count;
         const note = org.members_complete ? "" : org.members.length
             ? ` · showing the ${org.members.length} you're connected to`
             : " · you aren't connected to any of them yet";
-        const list = el("ul", { className: "list" }, org.members.map((m) => memberRow(m, status)));
+        const many = org.members.length > TOP;
+        const list = el("ul", { className: "list" });
+        const more = el("button", { className: "link-button org-more", attrs: { type: "button", "aria-controls": "org-members" } });
+        const hint = el("p", { className: "muted org-hint", attrs: { "aria-live": "polite" } });
+        list.id = "org-members";
+
+        const search = el("input", { className: "input org-search", attrs: {
+            type: "search", placeholder: `Search ${org.members.length} members`, maxlength: "100",
+            "aria-label": "Search members", autocomplete: "off", value: memberQuery,
+        } });
+        search.addEventListener("input", () => {
+            memberQuery = search.value;
+            draw();
+        });
+        more.addEventListener("click", () => {
+            membersOpen = !membersOpen;
+            draw();
+        });
+
+        function draw() {
+            const query = memberQuery.trim().toLowerCase();
+            const matches = query
+                ? org.members.filter((m) => cleanName(m.name).toLowerCase().includes(query))
+                : org.members;
+            const limit = query || membersOpen ? EXPANDED : TOP;
+            list.replaceChildren(...matches.slice(0, limit).map((m) => memberRow(m, status)));
+
+            more.hidden = Boolean(query) || !many;
+            more.textContent = membersOpen ? "Show fewer" : `Show ${Math.min(org.members.length, EXPANDED) - TOP} more`;
+            more.setAttribute("aria-expanded", String(membersOpen));
+
+            hint.textContent = query && !matches.length ? `No members match “${memberQuery.trim()}”.`
+                : matches.length > limit
+                    ? `Showing ${limit} of ${matches.length}${query ? " matches" : ""}. ${query ? "Keep typing to narrow it down." : "Search to find anyone else."}`
+                    : "";
+            hint.hidden = !hint.textContent;
+        }
+        draw();
+
         return el("section", { className: "panel", attrs: { "aria-labelledby": "members-title" } }, [
             el("h2", { className: "panel-title", text: `${n} member${n === 1 ? "" : "s"}${note}`, attrs: { id: "members-title" } }),
+            ...(many ? [search] : []),
             list,
+            more,
+            hint,
             ...(org.can_manage ? [addForm(status)] : []),
         ]);
     }
@@ -91,16 +150,44 @@
         }
     }
 
+    /** Upcoming events as a list or a calendar, switched like My Events. */
     function events() {
-        const list = el("ul", { className: "list" }, org.events.map((e) => el("li", { className: "list-item" }, [
-            el("div", { className: "list-main" }, [
-                el("p", { className: "list-title", text: e.title }),
-                el("p", { className: "list-meta", text: [DATE.format(new Date(e.starts_at)), e.location, e.is_cancelled ? "Cancelled" : ""].filter(Boolean).join(" · ") }),
-            ]),
-        ])));
+        const list = org.events.length
+            ? el("ul", { className: "list" }, org.events.map((e) => el("li", { className: "list-item" }, [
+                el("div", { className: "list-main" }, [
+                    el("p", { className: "list-title", text: e.title }),
+                    el("p", { className: "list-meta", text: [DATE.format(new Date(e.starts_at)), e.location, e.is_cancelled ? "Cancelled" : ""].filter(Boolean).join(" · ") }),
+                ]),
+            ])))
+            : el("p", { className: "muted", text: "Nothing coming up." });
+        const calendar = document.getElementById("view-calendar");
+        const body = el("div");
+
+        const buttons = VIEWS.map((name) => {
+            const button = el("button", { className: "cal-view", text: name === "list" ? "List" : "Calendar",
+                                          attrs: { type: "button", "data-view": name } });
+            button.addEventListener("click", () => show(name));
+            return button;
+        });
+
+        function show(name) {
+            const changed = name !== view;
+            view = name;
+            for (const button of buttons) button.setAttribute("aria-pressed", String(button.dataset.view === view));
+            body.replaceChildren(view === "calendar" ? calendar : list);
+            const url = new URL(location.href);
+            url.searchParams.set("view", view);
+            history.replaceState(null, "", url);
+            if (changed && view === "calendar") window.MyCalendar?.render(); // it was drawn while hidden
+        }
+        show(view);
+
         return el("section", { className: "panel" }, [
-            el("h2", { className: "panel-title", text: "Upcoming events" }),
-            org.events.length ? list : el("p", { className: "muted", text: "Nothing coming up." }),
+            el("div", { className: "panel-head" }, [
+                el("h2", { className: "panel-title", text: "Upcoming events" }),
+                el("div", { className: "cal-views", attrs: { role: "group", "aria-label": "Show as" } }, buttons),
+            ]),
+            body,
         ]);
     }
 

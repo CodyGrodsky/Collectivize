@@ -633,8 +633,17 @@ def _org_events(
         DiscoveryQuery(viewer_id=viewer, org_id=org_id, include_related=False, limit=20), now
     )
     items = sorted(page.items, key=lambda i: i.event.starts_at)
+    member = graph.membership.is_member(viewer, org_id)
+
+    def relations(item: Any) -> list[str]:
+        # The same words as /api/my-calendar, so the org page's calendar
+        # (calendar.js) colours and labels these events the same way.
+        rsvp = {"going": "going", "interested": "maybe"}.get(item.my_rsvp.value if item.my_rsvp else "")
+        return [*([rsvp] if rsvp else []), *(["my_org"] if member else [])]
+
     return [
         {"id": i.event.id, "title": i.event.title, "starts_at": i.event.starts_at.isoformat(),
-         "location": i.event.location, "is_cancelled": i.is_cancelled}
+         "ends_at": i.event.ends_at.isoformat(), "location": i.event.location,
+         "is_cancelled": i.is_cancelled, "relations": relations(i)}
         for i in items
     ]

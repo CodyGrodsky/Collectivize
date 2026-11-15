@@ -4,6 +4,14 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Org page: short members list with search; events as list or calendar
+
+- **Members (`org.js`, `app.css`).** The members panel shows the top 3, "Show 7 more" opens it to 10, and a search box (shown once there are more than 3) finds anyone you can see in the org, 10 matches at a time. A 200-person chapter no longer runs down the whole page. Admins still get Remove on each row and the add-by-email form.
+- **Upcoming events (`org.js`, `org.html`, `calendar.js`).** A List / Calendar switch, styled like My Events'. The calendar is My Events' own (`calendar.js`): a page can now set `window.CalendarSource` to feed it other events, and the org page feeds it the org's. The view is kept in the URL (`?view=calendar`).
+- **API (`app_api.py`).** `/api/org` events now include `ends_at` and `relations` (`going` / `maybe` from your RSVP, `my_org` if you're a member), the same words as `/api/my-calendar`, so the calendar colours them and shows the right Going / Maybe state.
+
+---
+
 ## 2026-11-15 — Network: no more bounces to Discover; full-screen map
 
 - **Bounce fix (Vercel only, `api/index.py`).** Sign-ins live in one function instance's memory, and Vercel spreads requests across instances. An open page checks `/api/session` every 8 seconds; when that check landed on another instance it heard "signed out", sent the visitor to the sign-in screen, and auto-sign-in dropped them on Discover. On the demo, `/api/session` now auto-signs in like every other call (everyone is the demo account, so there's no account switching to protect). `src/backend/` is unchanged, so local and Railway behaviour stay the same.

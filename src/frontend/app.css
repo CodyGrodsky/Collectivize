@@ -171,3 +171,20 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .team-powers { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 13px; }
 .team-powers label { display: inline-flex; align-items: center; gap: 5px; }
 .panel > .account-danger:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+
+/* --- org page: members list (org.js) ------------------------------------- */
+
+.org-search { width: 100%; margin: 0 0 8px; }
+.org-more {
+    margin: 8px 0 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--ink);
+    font: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+}
+.org-hint { margin: 8px 0 0; font-size: 13px; }

@@ -185,9 +185,12 @@
             const key = this.rangeKey();
             this.setDayStatus("Loading events…");
             try {
-                const data = await Api.get("/api/my-calendar", {
-                    start: PlanCalendar.iso(start), end: PlanCalendar.iso(end),
-                });
+                // A page can show other events (an org page shows that org's)
+                // by setting window.CalendarSource before this script runs:
+                // (start, end) => Promise of {entries: [...]}, same shape as /api/my-calendar.
+                const data = window.CalendarSource
+                    ? await window.CalendarSource(start, end)
+                    : await Api.get("/api/my-calendar", { start: PlanCalendar.iso(start), end: PlanCalendar.iso(end) });
                 if (id !== this.request) return; // a newer request has started
                 this.byDay = PlanCalendar.index(data, start, end);
                 this.loaded = key;
@@ -558,7 +561,7 @@
         }
     }
 
-    // My Events (my-events.js) reloads it when the calendar view is shown.
+    // My Events (my-events.js) and the org page (org.js) reload it when the calendar view is shown.
     const calendar = new PlanCalendar();
     window.MyCalendar = calendar;
     calendar.start();
