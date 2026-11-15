@@ -517,8 +517,9 @@ def _event_json(graph: CollectivizeGraph, event: Event, **extra: Any) -> dict[st
     try:
         host = graph.events.host_node(graph.events.primary_host_id(event.id))
         host_name = host.name if isinstance(host, Organization) else host.display_name
+        host_id, host_kind = host.id, ("org" if isinstance(host, Organization) else "person")
     except (DomainRuleError, LookupError):
-        host_name = None
+        host_name = host_id = host_kind = None
     return {
         "id": event.id,
         "title": event.title,
@@ -527,6 +528,8 @@ def _event_json(graph: CollectivizeGraph, event: Event, **extra: Any) -> dict[st
         "location": event.location,
         "description": event.description,
         "host": host_name,
+        "host_id": host_id,  # with host_kind: lets the page link "Hosted by …" to their page
+        "host_kind": host_kind,
         "is_cancelled": event.status is EventStatus.CANCELLED,
         **extra,
     }

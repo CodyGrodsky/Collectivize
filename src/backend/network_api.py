@@ -227,6 +227,7 @@ def _event_json(graph: CollectivizeGraph, event: Event) -> dict[str, Any]:
         "host": {
             "name": clean_name(host.name if is_org else host.display_name),
             "kind": "org" if is_org else "person",
+            "id": host.id,  # "Hosted by …" links to their page
         },
         "is_cancelled": event.status is EventStatus.CANCELLED,
     }

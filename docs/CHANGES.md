@@ -4,6 +4,14 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — "Hosted by …" opens the host's page
+
+- Wherever an event says "Hosted by X" (Discover cards, the calendar, My Events, event lists on profiles and the Network side panel), X is now a link to the org's page (or the person's profile). One helper: `Ui.hostedBy` in `shared.js`; style `.host-link` in `nav.css`.
+- The API now sends who the host is, not only their name: `host_id` and `host_kind` on calendar and My Events entries (`demo_api.py`, `app_api.py`), and `host.id` on profile events (`network_api.py`).
+- Discover's small host icon is gone: the name itself is the link.
+
+---
+
 ## 2026-11-15 — "Mutual connections" also links people to their communities
 
 - With the switch on, the map now also draws a line from each person to the communities shown that they belong to (e.g. a chapter), not only lines between people (`network-layout.js`).

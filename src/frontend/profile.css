@@ -500,3 +500,7 @@ select.edit-input { height: 38px; cursor: pointer; }
 
 /* The network has its own tab: a link to it under the profile. */
 .profile-network-link { margin: 16px 0 0; text-align: center; }
+
+/* An event's host (a link to their page) and place, on one line. */
+.p-event-meta .p-event-host { display: inline; margin: 0; }
+.p-event-meta .p-event-host + span::before { content: " · "; }

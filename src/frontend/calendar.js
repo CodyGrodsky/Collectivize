@@ -68,6 +68,8 @@
             end: end > start ? end : start,
             location: typeof raw.location === "string" ? raw.location : "",
             host: cleanName(raw.host),
+            hostId: typeof raw.host_id === "string" ? raw.host_id : null,
+            hostKind: raw.host_kind === "person" ? "person" : "org",
             relations,
             cancelled: raw.is_cancelled === true,
             draft: raw.is_draft === true,
@@ -489,10 +491,7 @@
             title.textContent = entry.title;
             item.append(time, title);
             if (entry.host) {
-                const host = document.createElement("p");
-                host.className = "day-event-host";
-                host.textContent = `Hosted by ${entry.host}`;
-                item.append(host);
+                item.append(window.Collectivize.Ui.hostedBy(entry.host, entry.hostId, entry.hostKind, "day-event-host"));
             }
             const tags = PlanCalendar.tags(entry);
             if (tags.childElementCount) item.append(tags);

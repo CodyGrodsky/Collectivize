@@ -450,7 +450,7 @@
             const notes = item.is_cancelled ? ["Cancelled"] : item.is_full ? ["Full"] : [];
             q(".dc-meta").textContent = [...notes, `${DATE.format(start)}, ${TIME.format(start)}–${TIME.format(end)}`, item.location]
                 .filter(Boolean).join(" · ");
-            q(".dc-host").textContent = `Hosted by ${cleanName(item.host.name)}`;
+            q(".dc-host").replaceWith(Ui.hostedBy(item.host.name, item.host.id, item.host.kind, "dc-host dc-hosted-by"));
             q(".dc-description").textContent = item.description;
             this.expandable(node, item);
 
@@ -463,25 +463,13 @@
             return node;
         }
 
-        /** Clicking an event opens it up: the full description, and a little
-         *  icon by "Hosted by …" that goes to the org's or person's page. */
+        /** Clicking an event opens it up to the full description. (The host's
+         *  name in "Hosted by …" links to their page: Ui.hostedBy.) */
         expandable(node, item) {
             const title = node.querySelector(".dc-card-title");
             const toggle = el("button", { className: "dc-card-toggle", text: item.title,
                                           attrs: { type: "button", "aria-expanded": "false" } });
             title.replaceChildren(toggle);
-            if (item.host.id) {
-                const isOrg = item.host.kind === "org";
-                node.querySelector(".dc-host").append(el("a", {
-                    className: `dc-host-link ${isOrg ? "is-org" : "is-person"}`,
-                    text: cleanName(item.host.name).charAt(0).toUpperCase(),
-                    attrs: {
-                        href: isOrg ? Ui.orgHref(item.host.id) : Ui.profileHref(item.host.id),
-                        "aria-label": `Open ${cleanName(item.host.name)}'s page`,
-                        title: `Open ${cleanName(item.host.name)}'s page`,
-                    },
-                }));
-            }
             const open = (value) => {
                 node.classList.toggle("is-open", value);
                 toggle.setAttribute("aria-expanded", String(value));

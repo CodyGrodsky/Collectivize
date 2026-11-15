@@ -313,7 +313,10 @@
             }, [
                 el("span", { className: "p-event-date", text: DATE_FORMAT.format(new Date(event.starts_at)) }),
                 el("span", { className: "p-event-title", text: event.title }),
-                el("span", { className: "p-event-meta", text: [event.host.name, event.location].filter(Boolean).join(" · ") }),
+                el("span", { className: "p-event-meta" }, [
+                    event.host.name ? window.Collectivize.Ui.hostedBy(event.host.name, event.host.id, event.host.kind, "p-event-host") : null,
+                    event.location ? el("span", { text: event.location }) : null,
+                ]),
                 event.is_cancelled ? el("span", { className: "p-event-tag", text: "Cancelled" }) : null,
             ]))));
             return group;

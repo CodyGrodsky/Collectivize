@@ -279,6 +279,24 @@
         orgHref(id) {
             return `org?${new URLSearchParams({ id })}`;
         },
+
+        /** "Hosted by X", with X a link to the org's (or person's) page when we know who it is. */
+        hostedBy(name, id, kind, className = "") {
+            const shown = Ui.cleanName(name);
+            const line = Ui.el("p", { className, text: "Hosted by " });
+            if (!id) {
+                line.append(shown);
+                return line;
+            }
+            const link = Ui.el("a", {
+                className: "host-link",
+                text: shown,
+                attrs: { href: kind === "person" ? Ui.profileHref(id) : Ui.orgHref(id) },
+            });
+            link.addEventListener("click", (event) => event.stopPropagation()); // don't also open/close the card
+            line.append(link);
+            return line;
+        },
     });
 
     window.Collectivize = Object.freeze({ Api, Session, EventActions, Ui, icon });

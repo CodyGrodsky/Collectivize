@@ -49,7 +49,8 @@
             title: text(raw.title),
             starts_at: raw.starts_at,
             location: text(raw.location),
-            host: { name: text(raw.host?.name), kind: raw.host?.kind === "person" ? "person" : "org" },
+            host: { name: text(raw.host?.name), kind: raw.host?.kind === "person" ? "person" : "org",
+                    id: typeof raw.host?.id === "string" ? raw.host.id : null },
             is_cancelled: raw.is_cancelled === true,
         };
     }
