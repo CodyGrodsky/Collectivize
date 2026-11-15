@@ -4,6 +4,18 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Network map: "Mutual connections" switch
+
+### What changed
+- The network layout now also returns the ties between the people shown on the map (`kind: "mutual"`), not only the middle's own lines (`network-layout.js`).
+- A "Mutual connections" switch under the map draws those lines, lighter and underneath the middle's own lines (`network-view.js`, `network.css`).
+
+### Decisions
+- Off by default, to keep the map quiet. The choice is remembered per browser (`localStorage`); if storage is blocked the switch still works for the visit.
+- The switch is hidden when nobody on the map knows each other.
+
+---
+
 ## 2026-11-15 — Live public demo on Vercel (branch `vercel-demo`)
 
 **Request:** get a public URL up tonight on Vercel, with fake data only, so the team can ship UI and feature changes fast; Railway later.

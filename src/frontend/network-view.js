@@ -152,7 +152,9 @@
             defs.append(clip);
 
             const links = svg("g", {}, "nw-links");
-            for (const link of layout.links) {
+            // Mutual connections first, so they sit under the middle's own lines.
+            const ordered = [...layout.links].sort((a, b) => (a.kind === "mutual" ? 0 : 1) - (b.kind === "mutual" ? 0 : 1));
+            for (const link of ordered) {
                 links.append(svg("line", { x1: link.from.x, y1: link.from.y, x2: link.to.x, y2: link.to.y },
                     `nw-link is-${link.kind}`));
             }
@@ -370,6 +372,8 @@
     }
 
     /** The network as one element: the map and a "Back to the middle" button (no key). */
+    const MUTUAL_KEY = "collectivize.network.mutual";
+
     class NetworkBubble {
         constructor({ onOpen }) {
             const map = document.createElementNS(SVG, "svg");
@@ -386,10 +390,30 @@
             this.empty = el("p", "nw-bubble-empty");
             this.empty.hidden = true;
 
+            // "Mutual connections": also draw the lines between friends on the
+            // map. Off by default to keep the map quiet; remembered per browser.
+            this.mutual = el("input");
+            this.mutual.type = "checkbox";
+            this.mutual.className = "nw-switch-input";
+            this.mutual.checked = NetworkBubble.mutualSaved();
+            const toggle = el("label", "nw-switch");
+            toggle.append(this.mutual, el("span", "nw-switch-track"), el("span", "nw-switch-text", "Mutual connections"));
+            this.options = el("p", "nw-options");
+            this.options.append(toggle);
+            this.mutual.addEventListener("change", () => {
+                this.showMutual(this.mutual.checked);
+                try {
+                    localStorage.setItem(MUTUAL_KEY, this.mutual.checked ? "1" : "0");
+                } catch {
+                    // Storage blocked: the switch still works for this visit.
+                }
+            });
+
             const circle = el("div", "nw-circle");
             circle.append(map);
             this.element = el("div", "nw-bubble");
-            this.element.append(circle, this.empty, this.move);
+            this.element.append(circle, this.empty, this.options, this.move);
+            this.showMutual(this.mutual.checked);
 
             this.view = new NetworkView(map, {
                 onOpen,
@@ -401,10 +425,24 @@
             this.recenter.addEventListener("click", () => this.view.recenter());
         }
 
+        static mutualSaved() {
+            try {
+                return localStorage.getItem(MUTUAL_KEY) === "1";
+            } catch {
+                return false;
+            }
+        }
+
+        showMutual(on) {
+            this.map.classList.toggle("show-mutual", on);
+        }
+
         /** Draw a map as read by the page (center, orgs, people, links, near, isSelf). */
         draw(map) {
             const alone = map.orgs.length === 0 && map.people.length === 0;
             this.empty.hidden = !alone;
+            // The switch only matters when friends on the map know each other.
+            this.options.hidden = !(map.links && map.links.length);
             this.empty.textContent = map.isSelf
                 ? "No connections or communities yet."
                 : "Nothing you both share yet.";

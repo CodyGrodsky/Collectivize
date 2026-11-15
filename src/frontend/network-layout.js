@@ -166,10 +166,15 @@
         }
 
         const placed = spots.map((spot) => ({ ...spot.node, x: spot.x, y: spot.y }));
-        // Only the middle's own ties are drawn: one line to each person and
-        // community shown. Ties between the others still shape the layout
-        // (friends sit side by side) but aren't drawn.
-        const links = placed.map((node) => ({ from: center, to: node, kind: "direct" }));
+        // The middle's own ties: one line to each person and community shown.
+        // Connections between the people shown ("mutual") are returned too;
+        // the page draws them only when "Mutual connections" is switched on.
+        const at = new Map(placed.map((node) => [node.id, node]));
+        const links = [
+            ...placed.map((node) => ({ from: center, to: node, kind: "direct" })),
+            ...ties.filter((tie) => tie.kind === "peer")
+                .map((tie) => ({ from: at.get(tie.a.node.id), to: at.get(tie.b.node.id), kind: "mutual" })),
+        ];
         return {
             center: { ...map.center, ...center },
             orgs: placed.filter((node) => node.isOrg),

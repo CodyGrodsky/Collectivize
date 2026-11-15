@@ -147,6 +147,40 @@ select { font: inherit; color: inherit; }
 /* One dark line from the middle to each person and community shown. */
 .nw-link { stroke: color-mix(in srgb, var(--b-ink) 70%, var(--b-bg)); stroke-width: 2.2; }
 
+/* Lines between friends on the map: hidden unless "Mutual connections" is on,
+   and lighter than the middle's own lines so those still stand out. */
+.nw-link.is-mutual { display: none; stroke: color-mix(in srgb, var(--b-ink) 32%, var(--b-bg)); stroke-width: 1.4; }
+.nw-map.show-mutual .nw-link.is-mutual { display: inline; }
+
+/* The "Mutual connections" switch under the map. */
+.nw-options { display: flex; justify-content: center; margin: 10px 0 0; }
+.nw-switch { position: relative; display: inline-flex; align-items: center; gap: 8px; color: var(--b-muted); font-size: 12.5px; cursor: pointer; user-select: none; }
+.nw-switch-input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.nw-switch-track {
+    position: relative;
+    width: 30px;
+    height: 17px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--b-ink) 18%, var(--b-bg));
+    transition: background var(--duration-fast);
+}
+.nw-switch-track::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
+    transition: transform var(--duration-fast);
+}
+.nw-switch-input:checked + .nw-switch-track { background: var(--b-accent); }
+.nw-switch-input:checked + .nw-switch-track::after { transform: translateX(13px); }
+.nw-switch-input:focus-visible + .nw-switch-track { outline: 2px solid var(--b-accent); outline-offset: 2px; }
+.nw-switch-input:checked ~ .nw-switch-text { color: var(--b-ink); }
+
 .nw-node-inner {
     transform-box: fill-box;
     transform-origin: center;
