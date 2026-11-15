@@ -439,6 +439,70 @@ button, input, select { font: inherit; color: inherit; }
 .dc-topic-boxes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 10px; }
 .dc-date-field input { height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
 
+/* --- date picker: calendar button right of the funnel ------------------------ */
+
+.dc-datepick { position: relative; flex: none; }
+
+.dc-datepick .dc-filter-button svg { stroke-linecap: round; }
+.dc-filter-button.is-active { border-color: var(--green); background: var(--green-soft); }
+.dc-filter-button.is-active svg { stroke: var(--green); }
+
+.dc-cal-panel {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: -6px;
+    z-index: 20;
+    width: 272px;
+    padding: 12px 12px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #fff;
+    box-shadow: 0 10px 30px rgba(32, 43, 41, .14);
+    transform-origin: top left;
+    animation: dc-cal-in .14s ease-out;
+}
+
+@keyframes dc-cal-in { from { opacity: 0; transform: scale(.94) translateY(-4px); } }
+
+.dc-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.dc-cal-month { margin: 0; font-weight: 650; }
+
+.dc-cal-nav {
+    width: 30px;
+    height: 30px;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.dc-cal-nav:hover { background: var(--hover); }
+
+.dc-cal-weekdays, .dc-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.dc-cal-weekdays span { color: var(--faint); font-size: 11px; font-weight: 650; line-height: 24px; text-align: center; }
+
+.dc-cal-day {
+    height: 34px;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.dc-cal-day:hover { background: var(--hover); }
+.dc-cal-day.is-past { color: var(--faint); }
+.dc-cal-day.is-today { box-shadow: inset 0 0 0 1px var(--green); color: var(--green); font-weight: 650; }
+.dc-cal-day[aria-selected="true"] { background: var(--green); color: #fff; font-weight: 650; }
+
+.dc-cal-foot { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+
+@media (max-width: 420px) {
+    .dc-cal-panel { left: -52px; }
+}
+
 .dc-filter-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .dc-filter-actions .dc-search-button { height: 34px; padding: 0 16px; }
 

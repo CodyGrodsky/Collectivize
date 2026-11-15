@@ -42,13 +42,33 @@
                         <legend>Topics</legend>
                         <div class="dc-topic-boxes" id="topic-boxes"></div>
                     </fieldset>
-                    <fieldset class="dc-fieldset">
-                        <legend>Date</legend>
-                        <label class="dc-date-field"><span class="dc-sr">Events on</span><input type="date" id="filter-date"></label>
-                    </fieldset>
                     <div class="dc-filter-actions">
                         <button type="button" class="dc-link-button" id="filter-clear">Clear</button>
                         <button type="button" class="dc-search-button" id="filter-done">Done</button>
+                    </div>
+                </div>
+            </div>
+            <div class="dc-datepick">
+                <button type="button" class="dc-filter-button" id="date-button"
+                        aria-haspopup="dialog" aria-expanded="false" aria-controls="date-panel">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <rect x="4" y="5.5" width="16" height="14.5" rx="2.5"/>
+                        <path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>
+                    </svg>
+                    <span class="dc-sr" id="date-button-label">Date</span>
+                    <span class="dc-filter-count" id="date-badge" hidden></span>
+                </button>
+                <div class="dc-cal-panel" id="date-panel" hidden role="dialog" aria-label="Choose a date">
+                    <div class="dc-cal-head">
+                        <button type="button" class="dc-cal-nav" id="cal-prev" aria-label="Previous month">&lsaquo;</button>
+                        <p class="dc-cal-month" id="cal-month" aria-live="polite"></p>
+                        <button type="button" class="dc-cal-nav" id="cal-next" aria-label="Next month">&rsaquo;</button>
+                    </div>
+                    <div class="dc-cal-weekdays" id="cal-weekdays" aria-hidden="true"></div>
+                    <div class="dc-cal-grid" id="cal-grid" role="grid"></div>
+                    <div class="dc-cal-foot">
+                        <button type="button" class="dc-link-button" id="cal-clear">Any date</button>
+                        <button type="button" class="dc-link-button" id="cal-today">Today</button>
                     </div>
                 </div>
             </div>

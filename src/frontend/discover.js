@@ -4,8 +4,10 @@
 // - Type keywords ("surf club") or a sentence ("people into pottery on
 //   saturday"); the server reads either and says how it understood it.
 // - Filters live in a dropdown behind the funnel button, left of the
-//   search box: types, topics and a date, as checkboxes. Nothing ticked
-//   means everything. Clear resets them. A badge counts active filters.
+//   search box: types and topics, as checkboxes. Nothing ticked means
+//   everything. Clear resets them. A badge counts active filters.
+// - The calendar button next to it opens a small month view; picking a
+//   day limits results to events on that day.
 // - Ranked by relevance, ten to a page, no infinite scroll. Match scores
 //   are never shown (platform admins can turn them on from /admin).
 // - Everything lives in the URL (?q=&types=&tags=&date=&page=), so the
@@ -41,6 +43,7 @@
             this.filtersFromText = false; // were the filters read from the last query?
             this.request = 0; // ignore answers to requests that were superseded
             this.template = $("card-template");
+            this.calMonth = null; // first of the month the calendar shows
         }
 
         async start() {
@@ -88,28 +91,141 @@
             $("search-form").addEventListener("submit", (event) => {
                 event.preventDefault();
                 this.closeFilters();
+                this.closeCalendar();
                 // Filters read from the previous sentence don't carry over to a new one.
                 const reset = this.filtersFromText ? { types: [], tags: [], date: "" } : {};
                 this.filtersFromText = false;
                 this.update({ ...reset, q: $("search-input").value.trim(), page: 1 });
             });
-            $("filter-button").addEventListener("click", () => (this.filtersOpen() ? this.closeFilters() : this.openFilters()));
+            $("filter-button").addEventListener("click", () => {
+                this.closeCalendar();
+                if (this.filtersOpen()) this.closeFilters();
+                else this.openFilters();
+            });
             $("filter-done").addEventListener("click", () => this.closeFilters(true));
             $("filter-clear").addEventListener("click", () => {
                 this.filtersFromText = false;
-                this.update({ types: [], tags: [], date: "", page: 1 });
+                this.update({ types: [], tags: [], page: 1 });
             });
             $("filter-panel").addEventListener("change", () => {
                 this.filtersFromText = false; // ticked by hand now: keep them
                 this.update({ ...this.readControls(), page: 1 });
             });
-            // The dropdown closes on a tap anywhere else, or Escape.
+            this.bindCalendar();
+            // The dropdowns close on a tap anywhere else, or Escape.
             document.addEventListener("pointerdown", (event) => {
                 if (this.filtersOpen() && !event.target.closest(".dc-filter")) this.closeFilters();
+                if (this.calendarOpen() && !event.target.closest(".dc-datepick")) this.closeCalendar();
             });
             document.addEventListener("keydown", (event) => {
-                if (event.key === "Escape" && this.filtersOpen()) this.closeFilters(true);
+                if (event.key !== "Escape") return;
+                if (this.filtersOpen()) this.closeFilters(true);
+                if (this.calendarOpen()) this.closeCalendar(true);
             });
+        }
+
+        // --- date picker ------------------------------------------------------------
+
+        bindCalendar() {
+            // Weekday initials, Sunday first (Feb 1, 2026 is a Sunday).
+            $("cal-weekdays").replaceChildren(...Array.from({ length: 7 }, (_, i) =>
+                el("span", { text: PART({ weekday: "narrow" }).format(new Date(2026, 1, 1 + i)) })));
+            $("date-button").addEventListener("click", () => {
+                this.closeFilters();
+                if (this.calendarOpen()) this.closeCalendar();
+                else this.openCalendar();
+            });
+            $("cal-prev").addEventListener("click", () => this.shiftMonth(-1));
+            $("cal-next").addEventListener("click", () => this.shiftMonth(1));
+            $("cal-today").addEventListener("click", () => this.pickDate(DiscoverPage.iso(new Date())));
+            $("cal-clear").addEventListener("click", () => this.pickDate(""));
+            $("cal-grid").addEventListener("click", (event) => {
+                const day = event.target.closest(".dc-cal-day");
+                if (day) this.pickDate(day.dataset.date === this.state.date ? "" : day.dataset.date);
+            });
+            // Arrow keys move a day or a week, across months if needed.
+            $("cal-grid").addEventListener("keydown", (event) => {
+                const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[event.key];
+                const day = event.target.closest(".dc-cal-day");
+                if (!step || !day) return;
+                event.preventDefault();
+                const next = DiscoverPage.parse(day.dataset.date);
+                next.setDate(next.getDate() + step);
+                this.calMonth = new Date(next.getFullYear(), next.getMonth(), 1);
+                this.renderCalendar(DiscoverPage.iso(next));
+            });
+        }
+
+        calendarOpen() {
+            return !$("date-panel").hidden;
+        }
+
+        openCalendar() {
+            const shown = this.state.date ? DiscoverPage.parse(this.state.date) : new Date();
+            this.calMonth = new Date(shown.getFullYear(), shown.getMonth(), 1);
+            $("date-panel").hidden = false;
+            $("date-button").setAttribute("aria-expanded", "true");
+            this.renderCalendar(this.state.date || DiscoverPage.iso(new Date()));
+        }
+
+        closeCalendar(focusButton = false) {
+            $("date-panel").hidden = true;
+            $("date-button").setAttribute("aria-expanded", "false");
+            if (focusButton) $("date-button").focus();
+        }
+
+        shiftMonth(by) {
+            this.calMonth = new Date(this.calMonth.getFullYear(), this.calMonth.getMonth() + by, 1);
+            this.renderCalendar();
+        }
+
+        pickDate(date) {
+            this.closeCalendar(true);
+            this.filtersFromText = false; // chosen by hand now: keep it
+            this.update({ date, page: 1 });
+        }
+
+        /** Month grid; `focus` (YYYY-MM-DD) gets keyboard focus if given. */
+        renderCalendar(focus = null) {
+            const year = this.calMonth.getFullYear();
+            const month = this.calMonth.getMonth();
+            $("cal-month").textContent = PART({ month: "long", year: "numeric" }).format(this.calMonth);
+            const today = DiscoverPage.iso(new Date());
+            const monthPrefix = DiscoverPage.iso(this.calMonth).slice(0, 8);
+            const tabTarget = focus || (this.state.date.startsWith(monthPrefix) ? this.state.date : `${monthPrefix}01`);
+            const days = new Date(year, month + 1, 0).getDate();
+            const cells = Array.from({ length: this.calMonth.getDay() }, () => el("span", { attrs: { "aria-hidden": "true" } }));
+            for (let d = 1; d <= days; d += 1) {
+                const date = new Date(year, month, d);
+                const iso = DiscoverPage.iso(date);
+                const cell = el("button", {
+                    className: "dc-cal-day",
+                    text: String(d),
+                    attrs: {
+                        type: "button",
+                        role: "gridcell",
+                        tabindex: iso === tabTarget ? "0" : "-1",
+                        "aria-label": PART({ weekday: "long", month: "long", day: "numeric" }).format(date),
+                        "aria-selected": iso === this.state.date ? "true" : "false",
+                    },
+                });
+                cell.dataset.date = iso;
+                cell.classList.toggle("is-today", iso === today);
+                cell.classList.toggle("is-past", iso < today);
+                cells.push(cell);
+            }
+            $("cal-grid").replaceChildren(...cells);
+            if (focus) $("cal-grid").querySelector(`[data-date="${focus}"]`)?.focus();
+        }
+
+        static iso(date) {
+            const pad = (n) => String(n).padStart(2, "0");
+            return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+        }
+
+        static parse(iso) {
+            const [y, m, d] = iso.split("-").map(Number);
+            return new Date(y, m - 1, d);
         }
 
         filtersOpen() {
@@ -137,19 +253,25 @@
 
         readControls() {
             const checked = (name) => [...document.querySelectorAll(`input[name="${name}"]:checked`)].map((i) => i.value);
-            return { types: checked("type"), tags: checked("tag"), date: $("filter-date").value };
+            return { types: checked("type"), tags: checked("tag") };
         }
 
         syncControls() {
             $("search-input").value = this.state.q;
             for (const box of document.querySelectorAll('input[name="type"]')) box.checked = this.state.types.includes(box.value);
             for (const box of document.querySelectorAll('input[name="tag"]')) box.checked = this.state.tags.includes(box.value);
-            $("filter-date").value = this.state.date;
-            const active = this.state.types.length + this.state.tags.length + (this.state.date ? 1 : 0);
+            const active = this.state.types.length + this.state.tags.length;
             const badge = $("filter-count");
             badge.hidden = active === 0;
             badge.textContent = String(active);
             $("filter-button").setAttribute("aria-label", active ? `Filters (${active} on)` : "Filters");
+            const date = this.state.date ? DiscoverPage.parse(this.state.date) : null;
+            const dateBadge = $("date-badge");
+            dateBadge.hidden = !date;
+            dateBadge.textContent = date ? String(date.getDate()) : "";
+            $("date-button").classList.toggle("is-active", Boolean(date));
+            $("date-button").setAttribute("aria-label", date ? `Date: ${DATE.format(date)}` : "Date: any");
+            if (this.calendarOpen()) this.renderCalendar();
         }
 
         update(changes) {
