@@ -1,12 +1,12 @@
-# Vercel demo (branch `vercel-demo`)
+# Vercel demo (`main` of the fork CodyGrodsky/Collectivize)
 
 **Live:** https://collectivize-tau.vercel.app
 
-Until further notice, **all UI and feature work happens on this branch, in the fork
-https://github.com/CodyGrodsky/Collectivize** (where `vercel-demo` is the default branch). Every push
-to `vercel-demo` there deploys to the live URL above in about a minute, and every PR into it gets
-its own preview link. `main` is parked: it stays the Railway / real-server version and gets this branch
-merged back when we switch over (see "Switching back to Railway").
+Until further notice, **all UI and feature work happens on `main` of the fork
+https://github.com/CodyGrodsky/Collectivize**. Every push to the fork's `main` deploys to the live
+URL above in about 20 seconds, and every PR into it gets its own preview link. The original repo
+(`JamesKempel/Collectivize`) is parked: its `main` stays the Railway / real-server version and gets
+the fork's `main` merged back when we switch over (see "Switching back to Railway").
 
 ## What this deploy is
 
@@ -25,23 +25,24 @@ merged back when we switch over (see "Switching back to Railway").
 
 ## Shipping a change
 
-1. One-time setup in your clone of the fork (or add it as a remote to your existing clone):
+1. One-time setup: clone the fork (Cody adds you as a collaborator so you can push):
 
    ```
-   git remote add fork https://github.com/CodyGrodsky/Collectivize.git
-   git fetch fork
-   git switch -c vercel-demo --track fork/vercel-demo
+   git clone https://github.com/CodyGrodsky/Collectivize.git collectivize-vercel
    ```
 
-   (Cody adds each of us as a collaborator on the fork, so you can push there.)
+   Or, in your existing clone, point `origin` at the fork:
+   `git remote set-url origin https://github.com/CodyGrodsky/Collectivize.git`, then
+   `git fetch origin` and `git reset --hard origin/main` (commit or stash your work first).
+
 2. Run it locally first, the same way as always:
 
    ```
    uv run python scripts/serve.py --no-login --no-ai
    ```
 
-3. Push to `vercel-demo` on the fork (`git push fork vercel-demo`) and it deploys itself.
-   For anything bigger, push a branch and open a PR into `vercel-demo`: Vercel comments a
+3. Push to `main` on the fork (`git push`) and it deploys itself.
+   For anything bigger, push a branch and open a PR into `main`: Vercel comments a
    preview link on the PR.
 
 Manual deploy, if ever needed (Cody's machine, logged in to the Vercel project):
@@ -73,8 +74,8 @@ COLLECTIVIZE_DB_PATH=demo/collectivize-demo.db uv run python scripts/seed_test_d
 
 The backend is untouched, so switching back is a merge, not a migration:
 
-1. Open a PR from `CodyGrodsky/Collectivize:vercel-demo` into `JamesKempel/Collectivize:main` and merge it.
+1. Open a PR from `CodyGrodsky/Collectivize:main` into `JamesKempel/Collectivize:main` and merge it.
 2. Delete `api/`, `vercel.json`, `.vercelignore` and `demo/` (or keep them for preview deploys:
    they don't affect `scripts/serve.py`).
 3. Deploy `main` to Railway with a persistent volume for `data/`.
-4. Delete the "work on vercel-demo" notes from `CLAUDE.md` and `AGENTS.md` on `main`.
+4. Delete the "work on the fork" notes from `CLAUDE.md`, `AGENTS.md` and `HANDOFF.md`.

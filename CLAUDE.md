@@ -2,9 +2,9 @@
 
 ## Where to work right now
 
-**All work happens on the `vercel-demo` branch of the fork https://github.com/CodyGrodsky/Collectivize.**
+**All work happens on `main` of the fork https://github.com/CodyGrodsky/Collectivize.**
 Pushes there deploy themselves to https://collectivize-tau.vercel.app.
-Read `VERCEL.md` before changing anything about how the app is served. `main` is parked (it is
+Read `VERCEL.md` before changing anything about how the app is served. The original repo `JamesKempel/Collectivize` is parked (its `main` is
 the Railway / real-server version); don't build features there until `VERCEL.md` says we've
 switched back.
 
