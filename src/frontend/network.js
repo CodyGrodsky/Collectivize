@@ -148,13 +148,14 @@
             const { center, isSelf, networkOpen } = this.data;
             const title = isSelf ? "My network"
                 : center.isOrg ? `${center.name}: members you know` : `${possessive(center.name)} network`;
-            const link = center.isOrg
-                ? el("a", { className: "page-button", text: "Open community page", attrs: { href: Ui.orgHref(center.id) } })
-                : el("a", { className: "page-button", text: isSelf ? "My profile" : `${possessive(center.name.split(" ")[0])} profile`,
-                            attrs: { href: isSelf ? "profile.html" : Ui.profileHref(center.id) } });
-            const head = el("div", { className: "nw-stage-head" }, [
+            // Your own network needs no heading (the page title says it).
+            // Someone else's says whose it is, with a link to their page.
+            const head = isSelf ? null : el("div", { className: "nw-stage-head" }, [
                 el("h2", { className: "nw-stage-title", text: title }),
-                link,
+                center.isOrg
+                    ? el("a", { className: "page-button", text: "Open community page", attrs: { href: Ui.orgHref(center.id) } })
+                    : el("a", { className: "page-button", text: `${possessive(center.name.split(" ")[0])} profile`,
+                                attrs: { href: Ui.profileHref(center.id) } }),
             ]);
             const body = networkOpen ? this.bubble.element : el("p", {
                 className: "nw-closed",

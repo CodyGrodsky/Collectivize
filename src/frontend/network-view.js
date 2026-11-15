@@ -248,11 +248,14 @@
 
         centerNode(center) {
             const radius = NODE.center;
-            return this.node({
+            const group = this.node({
                 ...center, label: this.isSelf ? "You" : center.name,
                 kind: `is-center ${center.isOrg ? "is-org" : "is-person"}`, radius, order: 0,
                 shape: center.isOrg ? NetworkView.square(radius) : svg("circle", { r: radius }, "nw-shape"),
             });
+            // You, in the middle of your own network: back to it, re-centred.
+            if (this.isSelf) this.pressable(group, "You. Back to your network", "");
+            return group;
         }
 
         orgNode(org, order) {
@@ -271,8 +274,8 @@
                 kind: `is-person ${person.isYou ? "is-you" : ""}`, radius, order,
                 shape: svg("circle", { r: radius }, "nw-shape"),
             });
-            const label = person.isYou ? "You. Back to your profile"
-                : `${person.name}, your connection. Open their profile`;
+            const label = person.isYou ? "You. Back to your network"
+                : `${person.name}, your connection. Open their network`;
             this.pressable(group, label, person.isYou ? "" : person.id);
             return group;
         }
