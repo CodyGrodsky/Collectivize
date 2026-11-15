@@ -1,11 +1,17 @@
-/* The network bubble and the Network page around it. Loaded after
-   profile.css on both the Network and Profile pages.
+/* The network map and the Network page around it. Loaded after
+   profile.css on the Network and Profile pages.
 
-   The bubble is a small fixed-size circle. Inside it: squares are
+   The map fills its box (no circle around it). Inside it: squares are
    communities, circles are people; a bold line joins two people who
+<<<<<<< HEAD
    accepted a connection, and a line in the accent color joins a community to the
    middle. When the bubble sits inside someone's profile it takes on their
    colors (--p-*); elsewhere it uses the house colors. */
+=======
+   accepted a connection, a light dashed line joins two who are only close
+   in the network, and a line in the accent color joins a community to the
+   middle. It uses the house colors (or --p-* when a page sets them). */
+>>>>>>> 64e1b550da413ce30626ac874c1bdd768768cbc3
 
 :root {
     --amber: #8a5a12;
@@ -14,7 +20,7 @@
     --red-soft: #f6e4e1;
     --green-soft: #e8f2ed;
     --shadow: 0 1px 2px rgba(32, 43, 41, .05), 0 6px 18px rgba(32, 43, 41, .05);
-    --bubble: 400px; /* the circle's size; it shrinks on narrow screens */
+    --bubble: 400px; /* the map's height */
     --duration-fast: 150ms;
     --duration-normal: 320ms;
     --ease-out: cubic-bezier(.16, 1, .3, 1);
@@ -91,23 +97,20 @@ select { font: inherit; color: inherit; }
     justify-items: center;
 }
 
-.nw-circle { width: min(100%, var(--bubble)); aspect-ratio: 1; border-radius: 50%; }
+/* The map fills its box: no circle, no rim. */
+.nw-circle { width: 100%; height: var(--bubble); border-radius: 12px; overflow: hidden; }
 
-.nw-map { display: block; width: 100%; height: 100%; border-radius: 50%; }
+.nw-map { display: block; width: 100%; height: 100%; }
 
 .nw-map:focus { outline: none; }
-.nw-map:focus-visible .nw-rim { stroke: var(--b-accent); stroke-width: 3; }
+.nw-circle:has(.nw-map:focus-visible) { outline: 2px solid var(--b-accent); outline-offset: 2px; }
 
 /* A network bigger than the bubble can be dragged around. */
 .nw-map.can-move { cursor: grab; touch-action: none; }
 .nw-map.is-dragging { cursor: grabbing; }
 
-.nw-backdrop { fill: var(--b-bg); }
 
-.nw-rim { fill: none; stroke: color-mix(in srgb, var(--b-ink) 22%, transparent); stroke-width: 1.5; pointer-events: none; }
 
-.nw-rim-fade { pointer-events: none; }
-.nw-fade-stop { stop-color: var(--b-bg); }
 
 .nw-world.is-gliding { transition: transform var(--duration-normal) var(--ease-out); }
 
@@ -356,7 +359,7 @@ select { font: inherit; color: inherit; }
 /* --- the Network page: the bubble fills the page --------------------------- */
 
 .nw-stage {
-    --bubble: min(calc(100dvh - 260px), 900px);
+    --bubble: max(min(calc(100dvh - 240px), 760px), 360px);
     display: grid;
     gap: 14px;
     padding: 18px;
@@ -365,7 +368,6 @@ select { font: inherit; color: inherit; }
     background: var(--card);
 }
 
-.nw-stage .nw-circle { width: min(100%, max(var(--bubble), 320px)); }
 
 .nw-stage-head {
     display: flex;
@@ -381,5 +383,8 @@ select { font: inherit; color: inherit; }
 
 @media (max-width: 640px) {
     .nw-stage { padding: 12px; }
-    .nw-stage .nw-circle { width: 100%; }
+    .nw-stage { --bubble: min(110vw, 520px); }
 }
+
+/* "More" / "Less" under a list that shows its top three. */
+.nw-more { display: block; margin: 8px 0 0 auto; }

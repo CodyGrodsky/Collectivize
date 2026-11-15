@@ -23,6 +23,8 @@
 
     const $ = (id) => document.getElementById(id);
 
+    const TOP = 3; // list entries shown before "More"
+
     const plural = (count, word, many = `${word}s`) => `${count} ${count === 1 ? word : many}`;
 
     const possessive = (name) => (name.endsWith("s") ? `${name}'` : `${name}'s`);
@@ -36,7 +38,11 @@
             this.centerId = NetworkPage.centerFromUrl();
             this.data = null;
             this.request = 0;
-            this.bubble = new NetworkBubble({ onOpen: (id) => this.open(id) });
+            // Clicking yourself ("You") opens your Profile tab; anyone or
+            // anything else is put in the middle of the map.
+            this.bubble = new NetworkBubble({
+                onOpen: (id) => (!id || id === this.viewer ? window.location.assign("profile.html") : this.open(id)),
+            });
 
             $("nw-home").addEventListener("click", () => this.open(""));
             $("nw-retry").addEventListener("click", () => this.load());
@@ -133,7 +139,7 @@
             const { data } = this;
             $("nw-empty").hidden = true;
             $("nw-home").hidden = data.isSelf;
-            document.title = `${data.isSelf ? "Your network" : data.center.name} · Collectivize`;
+            document.title = `${data.isSelf ? "My network" : data.center.name} · Collectivize`;
             if (data.networkOpen) this.bubble.draw(data);
             $("nw-root").replaceChildren(this.stage());
             this.drawLists();
@@ -143,23 +149,17 @@
         // --- the network, filling the page --------------------------------------------
 
         stage() {
-            const { center, isSelf, networkOpen, people } = this.data;
-            const title = isSelf ? "Your network"
+            const { center, isSelf, networkOpen } = this.data;
+            const title = isSelf ? "My network"
                 : center.isOrg ? `${center.name}: members you know` : `${possessive(center.name)} network`;
-            const others = people.filter((p) => !p.isYou).length;
-            const facts = networkOpen
-                ? `${plural(others, center.isOrg ? "member" : "connection")} · ${plural(this.data.orgs.length, "community", "communities")}`
-                : "";
-            const link = center.isOrg
-                ? el("a", { className: "page-button", text: "Open community page", attrs: { href: Ui.orgHref(center.id) } })
-                : el("a", { className: "page-button", text: isSelf ? "Your profile" : `${possessive(center.name.split(" ")[0])} profile`,
-                            attrs: { href: isSelf ? "profile.html" : Ui.profileHref(center.id) } });
-            const head = el("div", { className: "nw-stage-head" }, [
-                el("div", {}, [
-                    el("h2", { className: "nw-stage-title", text: title }),
-                    facts ? el("p", { className: "nw-stage-meta", text: facts }) : null,
-                ]),
-                link,
+            // Your own network needs no heading (the page title says it).
+            // Someone else's says whose it is, with a link to their page.
+            const head = isSelf ? null : el("div", { className: "nw-stage-head" }, [
+                el("h2", { className: "nw-stage-title", text: title }),
+                center.isOrg
+                    ? el("a", { className: "page-button", text: "Open community page", attrs: { href: Ui.orgHref(center.id) } })
+                    : el("a", { className: "page-button", text: `${possessive(center.name.split(" ")[0])} profile`,
+                                attrs: { href: Ui.profileHref(center.id) } }),
             ]);
             const body = networkOpen ? this.bubble.element : el("p", {
                 className: "nw-closed",
@@ -176,21 +176,47 @@
             const { data } = this;
             const others = data.people.filter((p) => !p.isYou);
 
-            $("nw-shared-title").textContent = data.isSelf ? "Your communities" : "Communities you share";
-            $("nw-shared-list").replaceChildren(...data.orgs.map((org) => this.row(
-                "nw-badge", org, "You're a member", `Open the page of ${org.name}`)));
+            $("nw-shared-title").textContent = data.isSelf ? "My communities" : "Communities you share";
+            this.topThree("nw-shared-list", NetworkPage.closestFirst(data.orgs), (org) => this.row(
+                "nw-badge", org, "You're a member", `Open the page of ${org.name}`));
             $("nw-shared").hidden = data.orgs.length === 0;
 
-            $("nw-people-title").textContent = data.isSelf ? "Your connections"
+            $("nw-people-title").textContent = data.isSelf ? "My connections"
                 : data.center.isOrg ? "Members you're connected to" : "Connections you share";
-            $("nw-people-list").replaceChildren(...others.map((person) => {
+            this.topThree("nw-people-list", NetworkPage.closestFirst(others), (person) => {
                 const linked = data.links.filter((pair) => pair.includes(person.id)).length;
                 return this.row("nw-avatar", person,
                     linked ? `Connected to ${plural(linked, "other")} here` : "Your connection",
                     `Open ${possessive(person.name)} page`);
-            }));
+            });
             $("nw-people").hidden = others.length === 0;
             $("nw-lists").hidden = data.orgs.length === 0 && others.length === 0;
+        }
+
+        /** The top three, then "More" to show the rest (and "Less" to fold them again). */
+        topThree(listId, items, toRow) {
+            const list = $(listId);
+            const rows = items.map(toRow);
+            rows.slice(TOP).forEach((row) => { row.hidden = true; });
+            list.replaceChildren(...rows);
+            list.parentElement.querySelector(".nw-more")?.remove();
+            if (rows.length <= TOP) return;
+            const more = el("button", { className: "nw-link-button nw-more", text: "More",
+                                        attrs: { type: "button", "aria-expanded": "false", "aria-controls": listId } });
+            more.addEventListener("click", () => {
+                const open = more.getAttribute("aria-expanded") !== "true";
+                rows.slice(TOP).forEach((row) => { row.hidden = !open; });
+                more.setAttribute("aria-expanded", String(open));
+                more.textContent = open ? "Less" : "More";
+            });
+            list.after(more);
+        }
+
+        /** Closest first (the map's own closeness score), keeping the server's order on ties. */
+        static closestFirst(items) {
+            return items.map((item, index) => ({ item, index }))
+                .sort((a, b) => (b.item.closeness ?? 0) - (a.item.closeness ?? 0) || a.index - b.index)
+                .map(({ item }) => item);
         }
 
         row(markClass, node, about, label) {
