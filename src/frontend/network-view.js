@@ -444,8 +444,9 @@
         draw(map) {
             const alone = map.orgs.length === 0 && map.people.length === 0;
             this.empty.hidden = !alone;
-            // The switch only matters when friends on the map know each other.
-            this.options.hidden = !(map.links && map.links.length);
+            // The switch only matters when people on the map know each other
+            // or belong to a community shown.
+            this.options.hidden = !(map.links?.length || map.memberships?.length);
             this.empty.textContent = map.isSelf
                 ? "No connections or communities yet."
                 : "Nothing you both share yet.";

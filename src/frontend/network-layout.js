@@ -167,12 +167,13 @@
 
         const placed = spots.map((spot) => ({ ...spot.node, x: spot.x, y: spot.y }));
         // The middle's own ties: one line to each person and community shown.
-        // Connections between the people shown ("mutual") are returned too;
+        // Connections between the people shown, and each person's line to the
+        // communities shown that they belong to ("mutual"), are returned too;
         // the page draws them only when "Mutual connections" is switched on.
         const at = new Map(placed.map((node) => [node.id, node]));
         const links = [
             ...placed.map((node) => ({ from: center, to: node, kind: "direct" })),
-            ...ties.filter((tie) => tie.kind === "peer")
+            ...ties.filter((tie) => tie.kind === "peer" || tie.kind === "org")
                 .map((tie) => ({ from: at.get(tie.a.node.id), to: at.get(tie.b.node.id), kind: "mutual" })),
         ];
         return {

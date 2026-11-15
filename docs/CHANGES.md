@@ -4,6 +4,13 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — "Mutual connections" also links people to their communities
+
+- With the switch on, the map now also draws a line from each person to the communities shown that they belong to (e.g. a chapter), not only lines between people (`network-layout.js`).
+- The switch shows whenever there's something for it to draw: people who know each other, or people in a community shown (`network-view.js`).
+
+---
+
 ## 2026-11-15 — Team on the fork: collaborators and push rules
 
 - `jameszupa` and `caumartin-maker` invited to `CodyGrodsky/Collectivize` with write access.
