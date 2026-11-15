@@ -20,6 +20,8 @@
 (() => {
     const { Session, NetworkData, NetworkBubble, Profile, Ui } = window.Collectivize;
     const { el } = Profile;
+    const DEFAULT_BACKGROUND = "#F5F4F0"; // a profile nobody has recoloured (network-data.js)
+    const OUTLINE_CONTRAST = 2; // how clearly a node's coloured outline must stand out on the map
 
     const $ = (id) => document.getElementById(id);
 
@@ -38,12 +40,19 @@
             this.centerId = NetworkPage.centerFromUrl();
             this.data = null;
             this.request = 0;
+            this.colors = new Map(); // id -> outline colour for the map, kept while the page is open
             // Clicking yourself ("You"): on your own map it opens your Profile
             // tab; on someone else's it brings you back to your own network.
+            // Clicking whoever is in the middle of their own network opens
+            // their profile (a community: its page), just as clicking yourself
+            // in the middle of yours opens your Profile tab.
             // Anyone or anything else is put in the middle of the map.
             this.bubble = new NetworkBubble({
                 onOpen: (id) => {
-                    if (id && id !== this.viewer) this.open(id);
+                    const center = this.data?.center;
+                    if (id && center && id === center.id && !this.data.isSelf) {
+                        window.location.assign(center.isOrg ? Ui.orgHref(id) : Ui.profileHref(id));
+                    } else if (id && id !== this.viewer) this.open(id);
                     else if (this.data && !this.data.isSelf) this.open("");
                     else window.location.assign("profile.html");
                 },
@@ -145,10 +154,82 @@
             $("nw-empty").hidden = true;
             $("nw-home").hidden = data.isSelf;
             document.title = `${data.isSelf ? "My network" : data.center.name} · Collectivize`;
-            if (data.networkOpen) this.bubble.draw(data);
+            if (data.networkOpen) {
+                this.bubble.draw(data);
+                this.paintNodes(data);
+            }
             $("nw-root").replaceChildren(this.stage());
             this.drawLists();
             if (data.truncated) this.note("This is a big network, so only part of it is shown.");
+        }
+
+        // --- node colours -------------------------------------------------------------
+
+        /** A profile's background colour as a map outline. "" for the default
+         *  background (nothing picked: the node keeps the house colour). A
+         *  pale colour is darkened, same hue, just enough to show as a line
+         *  on the map. */
+        static outlineFrom(background) {
+            const hex = /^#[0-9a-f]{6}$/i;
+            if (!hex.test(background || "") || background.toUpperCase() === DEFAULT_BACKGROUND) return "";
+            const css = getComputedStyle(document.body).getPropertyValue("--card").trim();
+            const mapBg = hex.test(css) ? css : "#FBFAF7";
+            // Lower the lightness only (hue and saturation stay), so a pale
+            // mint becomes a clear mint green rather than a grey.
+            const [h, s, l] = NetworkPage.toHsl(background);
+            let color = background.toUpperCase();
+            for (let light = l - 0.04; light > 0.1 && Profile.ProfileTheme.contrast(color, mapBg) < OUTLINE_CONTRAST; light -= 0.04) {
+                color = NetworkPage.fromHsl(h, Math.max(s, 0.35), light);
+            }
+            return color;
+        }
+
+        static toHsl(hex) {
+            const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+            const max = Math.max(r, g, b);
+            const min = Math.min(r, g, b);
+            const l = (max + min) / 2;
+            if (max === min) return [0, 0, l];
+            const d = max - min;
+            const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            const h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+            return [h / 6, s, l];
+        }
+
+        static fromHsl(h, s, l) {
+            const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+            const p = 2 * l - q;
+            const channel = (t) => {
+                const u = (t + 1) % 1;
+                if (u < 1 / 6) return p + (q - p) * 6 * u;
+                if (u < 1 / 2) return q;
+                if (u < 2 / 3) return p + (q - p) * (2 / 3 - u) * 6;
+                return p;
+            };
+            return `#${[h + 1 / 3, h, h - 1 / 3].map((t) => Math.round(channel(t) * 255).toString(16).padStart(2, "0")).join("")}`.toUpperCase();
+        }
+
+        /** Each person and community on the map, outlined in the background
+         *  colour of their own profile. The middle's colours come with the
+         *  page; everyone else's are loaded (once each) from their profile.
+         *  Communities have no colour of their own yet, so they keep the
+         *  default until one exists. */
+        async paintNodes(data) {
+            const request = this.request;
+            const center = data.profile?.colors?.background;
+            if (center && !this.colors.has(data.center.id)) this.colors.set(data.center.id, NetworkPage.outlineFrom(center));
+            const missing = data.people.map((p) => p.id)
+                .filter((id) => !this.colors.has(id));
+            this.bubble.paint(this.colors); // what's known already, straight away
+            await Promise.all(missing.map(async (id) => {
+                try {
+                    const page = await NetworkData.fetch(this.viewer, id === this.viewer ? "" : id);
+                    this.colors.set(id, NetworkPage.outlineFrom(page.profile?.colors?.background));
+                } catch {
+                    this.colors.set(id, ""); // can't read it: keep the default look
+                }
+            }));
+            if (request === this.request) this.bubble.paint(this.colors);
         }
 
         // --- the network, filling the page --------------------------------------------
@@ -159,12 +240,16 @@
                 : center.isOrg ? `${center.name}: members you know` : `${possessive(center.name)} network`;
             // Your own network needs no heading (the page title says it).
             // Someone else's says whose it is, with a link to their page.
+            // On a map, their page opens by clicking them in the middle, so
+            // the button is only shown when their network is closed to you
+            // (no map, so nothing to click).
+            const pageButton = networkOpen ? null : center.isOrg
+                ? el("a", { className: "page-button", text: "Open community page", attrs: { href: Ui.orgHref(center.id) } })
+                : el("a", { className: "page-button", text: `${possessive(center.name.split(" ")[0])} profile`,
+                            attrs: { href: Ui.profileHref(center.id) } });
             const head = isSelf ? null : el("div", { className: "nw-stage-head" }, [
                 el("h2", { className: "nw-stage-title", text: title }),
-                center.isOrg
-                    ? el("a", { className: "page-button", text: "Open community page", attrs: { href: Ui.orgHref(center.id) } })
-                    : el("a", { className: "page-button", text: `${possessive(center.name.split(" ")[0])} profile`,
-                                attrs: { href: Ui.profileHref(center.id) } }),
+                pageButton,
             ]);
             const body = networkOpen ? this.bubble.element : el("p", {
                 className: "nw-closed",
