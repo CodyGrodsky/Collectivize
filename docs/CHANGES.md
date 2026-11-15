@@ -4,6 +4,18 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Network map: "Mutual connections" switch
+
+### What changed
+- The network layout now also returns the ties between the people shown on the map (`kind: "mutual"`), not only the middle's own lines (`network-layout.js`).
+- A "Mutual connections" switch under the map draws those lines, lighter and underneath the middle's own lines (`network-view.js`, `network.css`).
+
+### Decisions
+- Off by default, to keep the map quiet. The choice is remembered per browser (`localStorage`); if storage is blocked the switch still works for the visit.
+- The switch is hidden when nobody on the map knows each other.
+
+---
+
 ## 2026-11-14 — Connection requests are limited; remembered sign-ins renew with use; Secure cookie over https
 
 **Request:** "fix 12 and 13" (from the run-through of how the app differs from a normal application).
