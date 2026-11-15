@@ -35,6 +35,11 @@
 
     };
 
+    // Brand art, relative to the pages in src/frontend.
+    const LOGO = "../../public/brand/logo.svg";
+    const WORDMARK = "../../public/brand/wordmark-on-paper.svg";
+    const HOME_PAGE = "index.html";
+
     const STORAGE_KEY = "collectivize.nav.open";
     const PHONE = window.matchMedia("(max-width: 640px)");
 
@@ -52,9 +57,10 @@
 
         setOpen(open, { save = true } = {}) {
             this.root.dataset.nav = open ? "open" : "closed";
-            if (this.toggle) {
+            // Closed, the logo opens the nav; open, the toggle closes it.
+            if (this.opener) {
+                this.opener.setAttribute("aria-expanded", String(open));
                 this.toggle.setAttribute("aria-expanded", String(open));
-                this.toggle.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
             }
             if (save && !PHONE.matches) Sidebar.saveOpen(open);
         }
@@ -64,12 +70,38 @@
             nav.className = "sidebar";
             nav.setAttribute("aria-label", "Main");
 
+            // Header: the logo while closed; the wordmark (a home link) and
+            // the toggle while open. CSS shows the right one for each state.
+            this.opener = document.createElement("button");
+            this.opener.type = "button";
+            this.opener.className = "sidebar-link sidebar-opener";
+            this.opener.setAttribute("aria-controls", "sidebar-links");
+            this.opener.innerHTML = `<img src="${LOGO}" alt="">`
+                + '<span class="sidebar-label">Open navigation</span>';
+            this.opener.addEventListener("click", () => {
+                this.setOpen(true);
+                this.toggle.focus();
+            });
+
+            const wordmark = document.createElement("a");
+            wordmark.className = "sidebar-wordmark";
+            wordmark.href = HOME_PAGE;
+            wordmark.innerHTML = `<img src="${WORDMARK}" alt="Collectivize home">`;
+
             this.toggle = document.createElement("button");
             this.toggle.type = "button";
             this.toggle.className = "sidebar-toggle";
             this.toggle.setAttribute("aria-controls", "sidebar-links");
+            this.toggle.setAttribute("aria-label", "Close navigation");
             this.toggle.innerHTML = Sidebar.icon("sidebar");
-            this.toggle.addEventListener("click", () => this.setOpen(!this.isOpen));
+            this.toggle.addEventListener("click", () => {
+                this.setOpen(false);
+                this.opener.focus();
+            });
+
+            const head = document.createElement("div");
+            head.className = "sidebar-head";
+            head.append(this.opener, wordmark, this.toggle);
 
             const list = document.createElement("ul");
             list.className = "sidebar-links";
@@ -91,7 +123,7 @@
             signOut.append(signOutLabel);
             signOut.addEventListener("click", () => window.Collectivize?.Session.signOut());
 
-            nav.append(this.toggle, list, signOut);
+            nav.append(head, list, signOut);
             document.body.prepend(nav, scrim);
             this.showAccount();
             this.setOpen(this.isOpen, { save: false });
@@ -99,7 +131,7 @@
             document.addEventListener("keydown", (event) => {
                 if (event.key === "Escape" && PHONE.matches && this.isOpen) {
                     this.setOpen(false);
-                    this.toggle.focus();
+                    this.opener.focus();
                 }
             });
             PHONE.addEventListener("change", () => {

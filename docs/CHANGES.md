@@ -1725,3 +1725,6 @@ All of these are immutable (frozen dataclasses). Changing one returns a new copy
 - **To view:** `profile.html?u=maya_r` (full), `?u=theo_k` (locked) or `?u=sam_2027` (mostly empty). Add `&as=self` to see your own page with **Edit page** and **View as visitor**.
 - **Connecting it to the backend:** `ProfileDataSource` in `profile.js` is the only place data comes from. It already returns the planned `GET /api/profile` shape, so connecting the real endpoint means changing only that class.
 - **Also:** `collectivize_plan.md` now names Keaton in the team list.
+
+
+Nav header: logo to open, wordmark and toggle when open. In the shared nav (`nav.js`, `nav.css`), the closed rail and phone bar now show the logo, which opens the nav when clicked. Open, the nav shows the wordmark (a link home) with the collapse button at the top right. The home page (`index.html`), opened while signed in with no `?next=`, now hides the sign-in form and makes the wordmark a link to Discover. The tagline under the wordmark ("Find your people on campus…") is removed. The wordmark files in `public/brand/` are replaced with the new black-node versions.
