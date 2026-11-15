@@ -24,6 +24,7 @@ switched back.
 - Python 3.13 backend (standard library HTTP server + SQLite) in `src/backend/`, plain HTML/JS/CSS
   frontend in `src/frontend/`. Dependencies through `uv`.
 - Run locally: `uv run python scripts/serve.py --no-login --no-ai` (http://127.0.0.1:3000).
+- New machine? `SETUP.md` is the step-by-step setup (tools, GitHub sign-in, invite, clone).
 - Tests: `uv run pytest`.
 - Deeper references: `docs/BACKEND_REFERENCE.md`, `docs/collectivize-v1.1-spec.md`.
 
