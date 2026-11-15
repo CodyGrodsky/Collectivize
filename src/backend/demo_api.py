@@ -361,6 +361,7 @@ def _item_json(item: DiscoveryItem, starred: set[str] = frozenset()) -> dict[str
         "ends_at": event.ends_at.isoformat(),
         "location": event.location,
         "host": {
+            "id": item.host.id,
             "name": item.host.name if host_is_org else item.host.display_name,
             "kind": "org" if host_is_org else "person",
         },

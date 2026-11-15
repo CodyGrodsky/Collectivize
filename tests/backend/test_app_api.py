@@ -207,3 +207,18 @@ def test_a_bad_invite_never_blocks_sign_in(fresh):
     assert graph.connections.connections_of(person) == []
     with pytest.raises(ApiError):
         app.sign_in({"email": "someone@gmail.com", "invite": "x"})
+
+
+# --- search results -------------------------------------------------------------
+
+
+def test_event_results_name_their_host_by_id_so_the_page_can_link_to_it(shared):
+    app, graph, r = shared
+    events = app.find(r.people["alice"], {"types": "events"})["items"]
+    assert events
+    kinds = set()
+    for item in events:
+        host = graph.events.host_node(graph.events.primary_host_id(item["id"]))
+        assert item["host"]["id"] == host.id
+        kinds.add(item["host"]["kind"])
+    assert kinds == {"org", "person"}

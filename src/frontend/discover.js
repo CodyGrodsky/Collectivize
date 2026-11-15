@@ -43,6 +43,7 @@
             this.filtersFromText = false; // were the filters read from the last query?
             this.request = 0; // ignore answers to requests that were superseded
             this.template = $("card-template");
+            this.opened = new Set(); // events opened up, kept open when a card redraws
             this.calMonth = null; // first of the month the calendar shows
         }
 
@@ -451,6 +452,7 @@
                 .filter(Boolean).join(" · ");
             q(".dc-host").textContent = `Hosted by ${cleanName(item.host.name)}`;
             q(".dc-description").textContent = item.description;
+            this.expandable(node, item);
 
             const shown = reasons.slice(1).filter(
                 (r) => !/friends? going$|away\)?$|^Fits what you asked for|^Not much like|^Hosted by your org/.test(r),
@@ -459,6 +461,39 @@
             this.friends(q(".dc-friends"), item.friends_going);
             q(".dc-actions-slot").replaceWith(this.actions(item, node));
             return node;
+        }
+
+        /** Clicking an event opens it up: the full description, and a little
+         *  icon by "Hosted by …" that goes to the org's or person's page. */
+        expandable(node, item) {
+            const title = node.querySelector(".dc-card-title");
+            const toggle = el("button", { className: "dc-card-toggle", text: item.title,
+                                          attrs: { type: "button", "aria-expanded": "false" } });
+            title.replaceChildren(toggle);
+            if (item.host.id) {
+                const isOrg = item.host.kind === "org";
+                node.querySelector(".dc-host").append(el("a", {
+                    className: `dc-host-link ${isOrg ? "is-org" : "is-person"}`,
+                    text: cleanName(item.host.name).charAt(0).toUpperCase(),
+                    attrs: {
+                        href: isOrg ? Ui.orgHref(item.host.id) : Ui.profileHref(item.host.id),
+                        "aria-label": `Open ${cleanName(item.host.name)}'s page`,
+                        title: `Open ${cleanName(item.host.name)}'s page`,
+                    },
+                }));
+            }
+            const open = (value) => {
+                node.classList.toggle("is-open", value);
+                toggle.setAttribute("aria-expanded", String(value));
+                if (value) this.opened.add(item.id); else this.opened.delete(item.id);
+            };
+            open(this.opened.has(item.id));
+            node.addEventListener("click", (event) => {
+                // Buttons, links and menus inside the card keep their own clicks.
+                if (event.target !== toggle && event.target.closest("a, button, input, select, label, [role=menu]")) return;
+                if (window.getSelection()?.toString()) return; // selecting text isn't a click
+                open(!node.classList.contains("is-open"));
+            });
         }
 
         /** I'm going / Maybe / Save. The card redraws itself from the server's
