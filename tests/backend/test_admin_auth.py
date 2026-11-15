@@ -131,11 +131,13 @@ def test_admin_signs_in_with_username_and_password_only():
 
 def test_an_admin_account_cannot_sign_in_by_email_once_admin_sign_in_exists():
     with running(auth()) as (base, _, _):
-        status, headers, _ = call(f"{base}/api/signin", {"email": PAT})
-        assert status == 403 and "Set-Cookie" not in headers
+        status, headers, body = call(f"{base}/api/signin", {"email": PAT})
+        # No session: the page is told to ask for the admin password instead.
+        assert status == 200 and "Set-Cookie" not in headers and json.loads(body) == {"admin": True}
         sign_in(base, "drew.demo@northeastern.edu")  # everyone else is unaffected
     with running(AdminAuth()) as (base, _, _):  # not set up yet: still closed, no way in
-        assert call(f"{base}/api/signin", {"email": PAT})[0] == 403
+        status, headers, _ = call(f"{base}/api/signin", {"email": PAT})
+        assert status == 200 and "Set-Cookie" not in headers
         assert admin_sign_in(base, "boss", PASSWORD)[0] == 401
 
 
@@ -144,8 +146,7 @@ def test_the_admin_entrance_shows_the_sign_in_until_you_are_an_admin():
         student, _ = sign_in(base, "drew.demo@northeastern.edu")
         for token in (None, student):
             status, headers, _ = call(f"{base}/admin", token=token)
-            assert status == 302 and headers["Location"].endswith("admin-login.html")
-        assert call(f"{base}/src/frontend/admin-login.html")[0] == 200  # public page
+            assert status == 302 and headers["Location"].endswith("index.html?admin=1")
         _, _, admin = admin_sign_in(base, "boss", PASSWORD)
         assert call(f"{base}/admin", token=admin)[1]["Location"].endswith("admin.html")
 

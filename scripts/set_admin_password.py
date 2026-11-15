@@ -45,6 +45,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--generate", action="store_true", help="make a strong password and show it once")
     parser.add_argument("--owner", action="store_true",
                         help="this login is the owner: it manages the other admins and their powers")
+    parser.add_argument("--duo-username", default="",
+                        help="their username in Duo, if it differs from the admin username")
     parser.add_argument("--make-owner", metavar="USERNAME",
                         help="make an existing login the owner (its password stays the same)")
     args = parser.parse_args(argv)
@@ -64,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     try:
         credential = AdminCredential(username, args.email.strip().lower(), hash_password(password),
-                                     "owner" if args.owner else "admin")
+                                     "owner" if args.owner else "admin", args.duo_username.strip())
         save_credential(credential)
     except AdminAuthError as error:
         sys.stderr.write(f"{error}\n")
@@ -72,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     sys.stdout.write(f"Saved admin '{username}' to {CREDENTIALS_PATH}.\n")
     if args.generate:
         sys.stdout.write(f"Password (shown once, save it in your password manager): {password}\n")
-    sys.stdout.write("Restart the server, then sign in at http://127.0.0.1:8000/admin\n")
+    sys.stdout.write("Restart the server, then sign in at http://127.0.0.1:3000/admin\n")
     return 0
 
 
