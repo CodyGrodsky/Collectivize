@@ -4,6 +4,12 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-15 — Demo calendar: mostly your orgs, fewer "going", two you host
+
+- `DemoCalendar` (`src/backend/seed.py`) now joins Drew to up to 4 busy orgs (blue), hosts 2 events as Drew (red), then tops days up with maybe / saved and only a few going, about 2 events a day. Demo DB reseeded.
+
+---
+
 ## 2026-11-15 — Demo calendar filled out (every color shows)
 
 - `src/backend/seed.py`: new `DemoCalendar` gives Drew going / maybe / saved plans on up to 3 events a day for the next 6 weeks (bulk seed only), so the calendar looks full and shows every color.
