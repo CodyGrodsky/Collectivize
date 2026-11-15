@@ -16,7 +16,10 @@
     --blue-brand: #3b6ff5;
     --blue-brand-soft: #e7eefe;
     --blue-brand-ink: #1f4fcb;
+    --gold-soft: #fbf3dc;
+    --gold-ink: #8a5a00;
     --red-brand: #b8321d;
+    --red-brand-soft: #fbe7e3;
 }
 
 * { box-sizing: border-box; }
@@ -270,11 +273,11 @@ button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 
 .cal-chip.is-maybe { border-color: var(--green); background: var(--green-soft); color: var(--green); }
 
-.cal-chip.is-saved { background: var(--gold); color: #fff; }
+.cal-chip.is-saved { border-color: var(--gold); background: var(--gold-soft); color: var(--gold-ink); }
 
 .cal-chip.is-my_org { border-color: var(--blue-brand); background: var(--blue-brand-soft); color: var(--blue-brand-ink); }
 
-.cal-chip.is-hosting { background: var(--red-brand); color: #fff; }
+.cal-chip.is-hosting { border-color: var(--red-brand); background: var(--red-brand-soft); color: var(--red-brand); }
 
 .cal-chip.is-cancelled { opacity: .55; text-decoration: line-through; }
 
@@ -302,6 +305,8 @@ button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .day-event-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 
 .day-tag { padding: 1px 7px; border-radius: 999px; background: var(--green-soft); color: var(--green); font-size: 11px; font-weight: 600; }
+
+.day-tag.is-hosting { background: var(--red-brand-soft); color: var(--red-brand); }
 
 .day-tag.is-muted { background: var(--hover); color: var(--muted); }
 
@@ -425,9 +430,9 @@ button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 
 .hours-event.is-going { background: var(--green); color: #fff; }
 .hours-event.is-maybe { border-color: var(--green); background: var(--green-soft); color: var(--green); }
-.hours-event.is-saved { background: var(--gold); color: #fff; }
+.hours-event.is-saved { border-color: var(--gold); background: var(--gold-soft); color: var(--gold-ink); }
 .hours-event.is-my_org { border-color: var(--blue-brand); background: var(--blue-brand-soft); color: var(--blue-brand-ink); }
-.hours-event.is-hosting { background: var(--red-brand); color: #fff; }
+.hours-event.is-hosting { border-color: var(--red-brand); background: var(--red-brand-soft); color: var(--red-brand); }
 .hours-event.is-cancelled { opacity: .55; text-decoration: line-through; }
 
 /* Narrower screens: the day panel moves below the grid. */
