@@ -103,9 +103,6 @@ select { font: inherit; color: inherit; }
 .nw-map.can-move { cursor: grab; touch-action: none; }
 .nw-map.is-dragging { cursor: grabbing; }
 
-
-
-
 .nw-world.is-gliding { transition: transform var(--duration-normal) var(--ease-out); }
 
 /* In the bubble's place when someone's network is closed to you. */

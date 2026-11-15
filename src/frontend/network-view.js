@@ -5,14 +5,13 @@
 //   bubble.element          put this on the page (the Network tab)
 //   bubble.draw(map)        lay out and draw the server's map (network-layout.js)
 //
-// NetworkBubble is the map plus its "Back to the middle" button and key;
+// NetworkBubble is the map plus its "Back to the middle" button;
 // NetworkView is the map alone.
 //
 // Whatever fits inside the box is shown; the rest is cut off at its edge.
-// When the network is bigger than the box you can move around it by
-// dragging (mouse or touch) or with the arrow keys, and tabbing to a node
-// that is out of sight brings it into view. A network that fits doesn't
-// move.
+// Every network (yours or a friend's) can be moved around by dragging
+// (mouse or touch) or with the arrow keys, and tabbing to a node that is
+// out of sight brings it into view.
 //
 // Server text is only ever inserted as text.
 
@@ -22,6 +21,7 @@
     const LABEL_ROOM = 52; // a node this close to the edge would lose its label
     const EDGE = 12; // breathing room between a node (or its label) and the box's edge
     const KEY_STEP = 70; // one arrow-key press
+    const MIN_PAN = RADIUS * 0.6; // how far any network can be dragged from the middle
     const DRAG_START = 6; // pointer travel (px) before a press counts as a drag
     const NODE = { center: 34, org: 27, person: 21 };
     const LABEL_LINE = 18; // characters per line of a label
@@ -40,6 +40,16 @@
     }
 
     /** Up to two short lines for a label under a node. */
+    let measureContext = null;
+
+    /** Width of a line of label text, in map units (label font sizes are map units). */
+    function textWidth(text, size, weight) {
+        measureContext ||= document.createElement("canvas").getContext("2d");
+        const family = getComputedStyle(document.body).fontFamily || "sans-serif";
+        measureContext.font = `${weight} ${size}px ${family}`;
+        return measureContext.measureText(text).width;
+    }
+
     function wrapLabel(text) {
         if (text.length <= LABEL_LINE) return [text];
         const cut = text.lastIndexOf(" ", LABEL_LINE);
@@ -131,7 +141,10 @@
 
         draw(layout, { isSelf }) {
             this.isSelf = isSelf;
-            this.bounds = NetworkView.bounds(layout);
+            // Every network can be dragged around, even one that fits the box
+            // (a friend's small network moves just like your own big one).
+            const beyond = layout.reach + LABEL_ROOM - RADIUS * 0.6;
+            this.limit = Math.max(beyond, MIN_PAN);
             this.offset = { x: 0, y: 0 };
 
             // No circle: the map is clipped to its whole box.
@@ -260,6 +273,27 @@
             return group;
         }
 
+        /**
+         * The room a node needs on the map: its shape plus the name under it
+         * (the same text, sizes and line breaks `node()` draws), so the layout
+         * can keep every name clear of other nodes and names.
+         */
+        static footprint(node, isCenter, isSelf) {
+            const radius = isCenter ? NODE.center : node.isOrg ? NODE.org : NODE.person;
+            const label = isCenter ? (isSelf ? "You" : node.name)
+                : node.isOrg ? node.name : node.isYou ? "You" : firstName(node.name);
+            const size = isCenter ? 14.5 : 13; // as in network.css
+            const weight = isCenter ? 650 : node.isOrg || node.isYou ? 600 : 400;
+            const lines = wrapLabel(label);
+            const halo = 4; // the label's background stroke
+            const width = Math.max(...lines.map((line) => textWidth(line, size, weight))) + halo;
+            return {
+                half: Math.max(radius, width / 2),
+                up: radius,
+                down: radius + 17 + (lines.length - 1) * 15 + 5 + halo / 2,
+            };
+        }
+
         /** Make a node act as a button for mouse, touch and keyboard. */
         pressable(group, label, id) {
             const press = () => {
@@ -324,13 +358,7 @@
         return node;
     }
 
-    const KEY = [
-        ["nw-key is-org", "Your community"],
-        ["nw-key", "Your connection"],
-        ["nw-key is-line", "Connected"],
-    ];
-
-    /** The network as one element: the map, a "Back to the middle" button, and key. */
+    /** The network as one element: the map and a "Back to the middle" button (no key). */
     class NetworkBubble {
         constructor({ onOpen }) {
             const map = document.createElementNS(SVG, "svg");
@@ -349,15 +377,8 @@
 
             const circle = el("div", "nw-circle");
             circle.append(map);
-            const key = el("ul", "nw-legend");
-            key.setAttribute("aria-label", "Key");
-            for (const [className, label] of KEY) {
-                const item = el("li");
-                item.append(el("span", className), label);
-                key.append(item);
-            }
             this.element = el("div", "nw-bubble");
-            this.element.append(circle, this.empty, this.move, key);
+            this.element.append(circle, this.empty, this.move);
 
             this.view = new NetworkView(map, {
                 onOpen,
@@ -379,7 +400,8 @@
             this.map.setAttribute("aria-label", map.isSelf
                 ? "Map of your connections and communities"
                 : `Map of your connections and communities linked to ${map.center.name}`);
-            this.view.draw(window.Collectivize.NetworkLayout.arrange(map), { isSelf: map.isSelf });
+            const footprint = (node, isCenter) => NetworkView.footprint(node, isCenter, map.isSelf);
+            this.view.draw(window.Collectivize.NetworkLayout.arrange(map, Math.random, footprint), { isSelf: map.isSelf });
         }
     }
 
