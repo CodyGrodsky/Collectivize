@@ -239,10 +239,9 @@
                                    attrs: { "aria-hidden": "true" } });
         },
 
-        /** Someone's page: the network page with them in the middle (it
-         *  falls back to your own page if you may not open theirs). */
+        /** Someone's profile page (as far as they let you see it). */
         profileHref(id) {
-            return `network.html?${new URLSearchParams({ center: id })}`;
+            return `profile.html?${new URLSearchParams({ id })}`;
         },
 
         orgHref(id) {

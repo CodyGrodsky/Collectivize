@@ -357,7 +357,17 @@
                     : "Nothing matches these filters." }));
                 return;
             }
-            list.replaceChildren(...items.map((item) => this.card(item)));
+            // What's already in your network comes first (the server sorts it
+            // that way), under its own heading, with a divider before the rest.
+            const mine = items.filter((item) => item.in_network === true);
+            const rest = items.filter((item) => item.in_network !== true);
+            const heading = (text, extra = "") => el("li", { className: `dc-divider ${extra}`.trim() },
+                [el("h2", { className: "dc-divider-label", text })]);
+            list.replaceChildren(
+                ...(mine.length ? [heading("In your network"), ...mine.map((item) => this.card(item))] : []),
+                ...(mine.length && rest.length ? [heading("Top results", "is-rule")] : []),
+                ...rest.map((item) => this.card(item)),
+            );
         }
 
         card(item) {
@@ -450,7 +460,6 @@
             );
             q(".dc-reasons").replaceChildren(...shown.slice(0, 3).map((reason) => el("li", { text: reason })));
             this.friends(q(".dc-friends"), item.friends_going);
-            this.going(q(".dc-going"), item);
             q(".dc-actions-slot").replaceWith(this.actions(item, node));
             return node;
         }
@@ -502,16 +511,6 @@
             if (!names.length) return;
             container.hidden = false;
             container.querySelector(".dc-friends-text").textContent = "Friends are attending";
-        }
-
-        going(element, item) {
-            element.replaceChildren();
-            if (item.going_count == null) {
-                element.textContent = item.is_cancelled ? "" : "Be one of the first";
-                return;
-            }
-            element.append(el("strong", { text: String(item.going_count) }),
-                           document.createTextNode(item.capacity ? ` of ${item.capacity} going` : " going"));
         }
 
         renderPages(data) {

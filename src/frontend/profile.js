@@ -1,19 +1,19 @@
 "use strict";
 
-// Profile page: your own page (the person chosen in "Viewing as"), with
-// your network bubble in it, and an edit mode for everything about it:
-// name and text, Top 3, website, colors, layout (which sections show and
-// in what order) and who can see what.
+// Profile page: everything about a person except their network (that has
+// the Network tab to itself). URL: profile.html (you) or ?id=<person>.
 //
-// The page is drawn by ProfileRenderer (profile-render.js), the same code
-// the Network tab uses for other people's pages, so what you see under
-// "View as visitor" is what they get. Data comes from the demo server
+// - Your own page: the card, About, Top 3, orgs and events, with an edit
+//   mode for everything on it: name and text, Top 3, website, colors,
+//   layout (which sections show and in what order) and who can see what.
+// - Someone else's page, as far as they let you see it, with Connect.
+//
+// The page is drawn by ProfileRenderer (profile-render.js), so what you see
+// under "View as visitor" is what they get. Data comes from the demo server
 // (network-data.js); edits are saved there, not in the browser.
-//
-// Clicking someone or a community in your bubble opens them on the Network tab.
 
 (() => {
-    const { Session, NetworkData, NetworkBubble, ProfileEditor, Profile } = window.Collectivize;
+    const { Session, NetworkData, ProfileEditor, Profile } = window.Collectivize;
     const { el, ProfileRenderer } = Profile;
 
     const $ = (id) => document.getElementById(id);
@@ -26,15 +26,12 @@
             this.asVisitor = false;
             this.request = 0;
             this.renderer = new ProfileRenderer();
-            this.bubble = new NetworkBubble({ onOpen: (id) => ProfilePage.openOnNetwork(id) });
+            const id = new URLSearchParams(window.location.search).get("id") || "";
+            this.subjectId = /^[\w-]{1,64}$/.test(id) ? id : ""; // "" = you
 
             this.root.addEventListener("click", (event) => this.onClick(event));
             $("profile-retry").addEventListener("click", () => this.load());
             this.start();
-        }
-
-        static openOnNetwork(id) {
-            if (id) window.location.href = `network.html?center=${encodeURIComponent(id)}`;
         }
 
         async start() {
@@ -60,8 +57,13 @@
                 return;
             }
             try {
-                const data = await NetworkData.fetch(this.viewer, "");
+                const center = this.subjectId === this.viewer ? "" : this.subjectId;
+                const data = await NetworkData.fetch(this.viewer, center);
                 if (request !== this.request) return; // a newer request took over
+                if (data.center.isOrg) { // an organization has its own page
+                    window.location.replace(`org.html?${new URLSearchParams({ id: data.center.id })}`);
+                    return;
+                }
                 this.data = data;
                 this.show();
             } catch (error) {
@@ -77,16 +79,29 @@
         show() {
             const { profile } = this.data;
             document.title = `${ProfileRenderer.shownName(profile)} · Collectivize`;
-            this.bubble.draw(this.data);
+            if (!this.data.isSelf) { // someone else's page
+                const surface = this.renderer.render(profile, "visitor", { onConnection: () => this.load() });
+                this.root.replaceChildren(surface, this.networkLink());
+                return;
+            }
             // "View as visitor" is the same page without the owner's hints.
             const mode = this.asVisitor ? "preview" : "self";
             const view = this.asVisitor ? { ...profile, is_self: false, connection: "none" } : profile;
-            const surface = this.renderer.render(view, mode, { network: this.bubble.element });
-            this.root.replaceChildren(this.ownerBar(), surface);
+            const surface = this.renderer.render(view, mode);
+            this.root.replaceChildren(this.ownerBar(), surface, this.networkLink());
+        }
+
+        /** The network has its own tab; point there (when it's open to you). */
+        networkLink() {
+            const { isSelf, center, networkOpen } = this.data;
+            if (!isSelf && !networkOpen) return document.createTextNode("");
+            const href = isSelf ? "network.html" : `network.html?${new URLSearchParams({ center: center.id })}`;
+            return el("p", { className: "profile-network-link" }, [
+                el("a", { className: "page-button", text: isSelf ? "See your network" : `See ${center.name.split(" ")[0]}'s network`, attrs: { href } }),
+            ]);
         }
 
         ownerBar() {
-            const hidden = !this.data.profile.sections.includes("network");
             const audience = {
                 network: "Everyone signed in can see your page.",
                 connections: "Only your connections can see your page.",
@@ -94,7 +109,7 @@
             }[this.data.profile.settings?.profile_visibility] || "";
             const note = this.asVisitor
                 ? "You're seeing your page the way visitors do."
-                : `This is your page. ${audience}${hidden ? " Your network bubble is hidden from it." : ""}`;
+                : `This is your page. ${audience}`;
             return el("div", { className: "owner-bar" }, [
                 el("p", { className: "owner-note", text: note }),
                 el("div", { className: "owner-actions" }, [

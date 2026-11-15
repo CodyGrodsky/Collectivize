@@ -4,9 +4,9 @@
 //   new Collectivize.ProfileEditor({ view, renderer, save, onSaved, onCancel }).mount(container)
 //
 // One form covers everything about your page: your name and text, Top 3,
-// website, colors, the layout (which sections show and in what order,
-// including where the network bubble goes) and who can see what (your
-// profile, the events you're going to, your connections). The right-hand
+// website, colors, the layout (which sections show and in what order)
+// and who can see what (your profile, the events you're going to, your
+// connections). The right-hand
 // side is a live preview drawn by the same renderer as the real page.
 
 (() => {

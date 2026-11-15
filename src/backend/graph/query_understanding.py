@@ -69,7 +69,11 @@ FILLER = STOPWORDS | REQUEST_WORDS | {"going", "go", "do", "doing", "things", "t
                                       "fun", "cool", "good", "nice", "around", "campus",
                                       "show", "see", "meet", "join", "lol", "please", "pls",
                                       "really", "kind", "sort", "maybe", "could", "should",
-                                      "also", "just", "up", "out", "there", "here", "are"}
+                                      "also", "just", "up", "out", "there", "here", "are",
+                                      # praise that names no topic ("something rad")
+                                      "rad", "awesome", "great", "amazing", "interesting",
+                                      "exciting", "neat", "sweet", "sick", "dope", "epic",
+                                      "lit", "best", "whatever", "random"}
 
 
 @dataclass(frozen=True)

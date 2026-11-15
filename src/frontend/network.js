@@ -2,31 +2,24 @@
 
 // Network page (network_plan.md, "How the network view works").
 //
-// The page shows one person or community at a time: their profile page,
-// with their network as a small bubble inside it. You start on yourself.
-// Clicking a connection in the bubble opens their profile and bubble;
-// clicking a community opens its page (what it is, what it has coming up)
-// and its bubble of members. Only nodes you can open are ever in a bubble
-// (you, your connections, your communities); the server leaves the rest out.
+// The network has this page to itself; profiles live on the Profile tab.
+// The bubble fills the page, centred on one person or community at a time.
+// You start on yourself. Clicking a connection in the bubble puts their
+// network in the middle; clicking a community shows its members. Only
+// nodes you can open are ever in a bubble (you, your connections, your
+// communities); the server leaves the rest out.
 //
-// Search can bring you to someone you aren't connected to, or a community
-// you aren't in. You see their page as far as they allow, but not their
-// network: a short note takes the bubble's place.
-//
-// A person's page is drawn by the same renderer as the Profile tab, in the
-// colors and layout they chose. If they left the network section out of
-// their layout, the bubble still shows here, under their page.
+// A slim header names who is in the middle and links to their profile (or
+// the community's page). Someone you aren't connected to, or a community
+// you aren't in: their network stays closed, and a short note says so.
 //
 // Built to keep working when things go wrong: an answer to an old request
 // is ignored, broken entries are skipped, a page you may not open falls
 // back to your own with a note, and server text is only inserted as text.
 
 (() => {
-    const { Session, NetworkData, NetworkBubble, Profile } = window.Collectivize;
-    const { el, ProfileRenderer } = Profile;
-
-    const DAY_FORMAT = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" });
-    const TIME_FORMAT = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" });
+    const { Session, NetworkData, NetworkBubble, Profile, Ui } = window.Collectivize;
+    const { el } = Profile;
 
     const $ = (id) => document.getElementById(id);
 
@@ -43,7 +36,6 @@
             this.centerId = NetworkPage.centerFromUrl();
             this.data = null;
             this.request = 0;
-            this.renderer = new ProfileRenderer();
             this.bubble = new NetworkBubble({ onOpen: (id) => this.open(id) });
 
             $("nw-home").addEventListener("click", () => this.open(""));
@@ -134,89 +126,48 @@
             $("nw-root").replaceChildren();
             $("nw-empty").textContent = message;
             $("nw-empty").hidden = false;
-            for (const id of ["nw-lists", "nw-home", "nw-edit"]) $(id).hidden = true;
+            for (const id of ["nw-lists", "nw-home"]) $(id).hidden = true;
         }
 
         render() {
             const { data } = this;
             $("nw-empty").hidden = true;
             $("nw-home").hidden = data.isSelf;
-            $("nw-edit").hidden = !data.isSelf;
             document.title = `${data.isSelf ? "Your network" : data.center.name} · Collectivize`;
             if (data.networkOpen) this.bubble.draw(data);
-            const page = data.center.isOrg ? this.orgPage() : this.personPage();
-            $("nw-root").replaceChildren(...page);
+            $("nw-root").replaceChildren(this.stage());
             this.drawLists();
             if (data.truncated) this.note("This is a big network, so only part of it is shown.");
         }
 
-        // --- a person's page ---------------------------------------------------------
+        // --- the network, filling the page --------------------------------------------
 
-        personPage() {
-            const { profile, isSelf, networkOpen } = this.data;
-            const network = this.networkBlock();
-            const surface = this.renderer.render(profile, isSelf ? "self" : "visitor", {
-                network,
-                onConnection: () => this.load(), // redraw with "Request sent" or "Connected"
-            });
-            if (surface.contains(network) || !networkOpen) return [surface];
-            // They left the network out of their layout: show it under their page.
-            return [surface, this.box("Network", network)];
-        }
-
-        /** The bubble, or a note in its place when this network is closed to you. */
-        networkBlock() {
-            const { networkOpen, center } = this.data;
-            if (networkOpen) return this.bubble.element;
-            return el("p", {
+        stage() {
+            const { center, isSelf, networkOpen, people } = this.data;
+            const title = isSelf ? "Your network"
+                : center.isOrg ? `${center.name}: members you know` : `${possessive(center.name)} network`;
+            const others = people.filter((p) => !p.isYou).length;
+            const facts = networkOpen
+                ? `${plural(others, center.isOrg ? "member" : "connection")} · ${plural(this.data.orgs.length, "community", "communities")}`
+                : "";
+            const link = center.isOrg
+                ? el("a", { className: "page-button", text: "Open community page", attrs: { href: Ui.orgHref(center.id) } })
+                : el("a", { className: "page-button", text: isSelf ? "Your profile" : `${possessive(center.name.split(" ")[0])} profile`,
+                            attrs: { href: isSelf ? "profile.html" : Ui.profileHref(center.id) } });
+            const head = el("div", { className: "nw-stage-head" }, [
+                el("div", {}, [
+                    el("h2", { className: "nw-stage-title", text: title }),
+                    facts ? el("p", { className: "nw-stage-meta", text: facts }) : null,
+                ]),
+                link,
+            ]);
+            const body = networkOpen ? this.bubble.element : el("p", {
                 className: "nw-closed",
                 text: center.isOrg
                     ? "You aren't a member, so its network of members isn't shown."
                     : `You and ${center.name.split(" ")[0]} aren't connected, so their network isn't shown.`,
             });
-        }
-
-        box(title, body) {
-            return el("section", { className: "nw-box" }, [el("h2", { className: "nw-box-title", text: title }), body]);
-        }
-
-        // --- a community's page ------------------------------------------------------
-
-        orgPage() {
-            const { profile, center, people } = this.data;
-            const members = people.filter((person) => !person.isYou).length;
-            const facts = [
-                profile.isMember ? `${plural(members, "member")} you're connected to` : null,
-                profile.upcomingCount ? plural(profile.upcomingCount, "upcoming event") : "No upcoming events",
-            ].filter(Boolean);
-            const card = el("section", { className: "nw-org", attrs: { "aria-label": "Community" } }, [
-                el("div", { className: "nw-org-mark", text: initials(center.name), attrs: { "aria-hidden": "true" } }),
-                el("div", { className: "nw-org-body" }, [
-                    el("p", { className: "nw-eyebrow", text: profile.isMember ? "Your community" : "Community" }),
-                    el("h2", { className: "nw-name", text: center.name }),
-                    el("p", { className: "nw-meta", text: profile.isMember ? `${profile.orgKind} · You're a member` : profile.orgKind }),
-                    el("ul", { className: "nw-facts" }, facts.map((fact) => el("li", { className: "nw-fact", text: fact }))),
-                ]),
-                profile.website ? el("a", {
-                    className: "page-button", text: "Website",
-                    attrs: { href: profile.website, target: "_blank", rel: "noopener noreferrer" },
-                }) : null,
-            ]);
-            const upcoming = profile.upcoming.length
-                ? this.box("Coming up", el("ul", { className: "nw-upcoming-list" }, profile.upcoming.map(NetworkPage.eventItem)))
-                : null;
-            return [card, el("div", { className: "nw-org-grid" }, [upcoming, this.box("Network", this.networkBlock())])];
-        }
-
-        static eventItem(event) {
-            const day = new Date(event.starts_at);
-            const pad = (n) => String(n).padStart(2, "0");
-            const date = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
-            return el("li", {}, [el("a", { className: "nw-event-link", attrs: { href: `calendar.html?date=${date}` } }, [
-                el("span", { className: "nw-event-when", text: `${DAY_FORMAT.format(day)} · ${TIME_FORMAT.format(day)}` }),
-                el("span", { className: "nw-event-title", text: event.title }),
-                event.location ? el("span", { className: "nw-event-where", text: event.location }) : null,
-            ])]);
+            return el("section", { className: "nw-stage", attrs: { "aria-label": title } }, [head, body]);
         }
 
         // --- the lists under the page ------------------------------------------------

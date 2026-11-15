@@ -355,3 +355,34 @@ select { font: inherit; color: inherit; }
 .cp-name { font-weight: 600; }
 .cp-meta { color: #5f6b67; font-size: 13px; }
 .cp-link { flex: 1; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid #e6e5df; border-radius: 8px; font: inherit; }
+
+/* --- the Network page: the bubble fills the page --------------------------- */
+
+.nw-stage {
+    --bubble: min(calc(100dvh - 260px), 900px);
+    display: grid;
+    gap: 14px;
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--card);
+}
+
+.nw-stage .nw-circle { width: min(100%, max(var(--bubble), 320px)); }
+
+.nw-stage-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+}
+
+.nw-stage-title { margin: 0; font-size: 20px; font-weight: 650; }
+
+.nw-stage-meta { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+
+@media (max-width: 640px) {
+    .nw-stage { padding: 12px; }
+    .nw-stage .nw-circle { width: 100%; }
+}
