@@ -109,15 +109,12 @@
             this.range = { x: [0, 0], y: [0, 0] };
         }
 
-        /** How far the view may move on each axis so that every node, label
-         *  included, can be brought fully into the box, and no further. */
+        /** How far the view may move on each axis: at least MIN_PAN either
+         *  way, and further if needed to bring every node and label fully
+         *  into the box. */
         updateRange() {
             const b = this.bounds;
-            const axis = (low, high, half) => {
-                const min = Math.min(0, low + half);
-                const max = Math.max(0, high - half);
-                return [min, max];
-            };
+            const axis = (low, high, half) => [Math.min(-MIN_PAN, low + half), Math.max(MIN_PAN, high - half)];
             this.range = b ? { x: axis(b.left, b.right, this.half.x), y: axis(b.top, b.bottom, this.half.y) }
                 : { x: [0, 0], y: [0, 0] };
             this.svg.classList.toggle("can-move", this.canMove);
@@ -142,9 +139,9 @@
         draw(layout, { isSelf }) {
             this.isSelf = isSelf;
             // Every network can be dragged around, even one that fits the box
-            // (a friend's small network moves just like your own big one).
-            const beyond = layout.reach + LABEL_ROOM - RADIUS * 0.6;
-            this.limit = Math.max(beyond, MIN_PAN);
+            // (a friend's small network moves just like your own big one);
+            // a big one can be dragged until every node and label is in view.
+            this.bounds = NetworkView.bounds(layout);
             this.offset = { x: 0, y: 0 };
 
             // No circle: the map is clipped to its whole box.
