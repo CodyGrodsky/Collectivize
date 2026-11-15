@@ -29,6 +29,10 @@ DEFAULT_OUTLINE = "#202B29"
 PROFILE_SECTIONS = ("about", "top3", "network", "orgs", "events")
 # Who may read a profile: any logged-in user, connections only, or only you.
 PROFILE_AUDIENCES = (Visibility.NETWORK, Visibility.CONNECTIONS, Visibility.PRIVATE)
+# What a platform admin can be allowed to do (granted one by one by the
+# owner; see backend/admin_policy.py). With none, an admin can only look
+# at the list of accounts and the admin log.
+ADMIN_POWERS = ("view_info", "view_as", "edit", "create", "sign_out", "delete")
 
 
 class VerificationLevel(Enum):
@@ -84,11 +88,18 @@ class Person(GraphRecord):
     profile_sections: tuple[str, ...] = PROFILE_SECTIONS
     # Collectivize staff or moderator (not an org officer): can open /admin.
     is_platform_admin: bool = False
+    # Which of ADMIN_POWERS this admin has been given. Empty = view only.
+    admin_powers: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.display_name.strip():
             raise DomainRuleError("display_name is required")
         self._check_profile()
+        powers = self.admin_powers
+        if len(set(powers)) != len(powers) or not set(powers) <= set(ADMIN_POWERS):
+            raise DomainRuleError(f"admin powers must be chosen from {list(ADMIN_POWERS)}")
+        if powers and not self.is_platform_admin:
+            raise DomainRuleError("only a platform admin can hold admin powers")
         if self.travel_samples < 0:
             raise DomainRuleError("travel_samples cannot be negative")
         has_average = self.travel_log_km is not None

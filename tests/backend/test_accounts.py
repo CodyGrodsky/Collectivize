@@ -25,7 +25,7 @@ from .test_access import call, sign_in
 PAT = "pat.demo@northeastern.edu"
 DREW = "drew.demo@northeastern.edu"
 CASEY = "casey.demo@northeastern.edu"
-ADMIN_POSTS = ["/api/admin/account", "/api/admin/account/create",
+ADMIN_POSTS = ["/api/admin/account", "/api/admin/account/create", "/api/admin/admins",
                "/api/admin/account/signout", "/api/admin/account/delete"]
 
 
@@ -145,6 +145,7 @@ def test_a_student_cannot_make_themselves_an_admin(world):
     token, _ = sign_in(base, CASEY)
     casey = result.people["casey"]
     assert post(base, "/api/admin/account", {"person_id": casey, "is_platform_admin": True}, token)[0] == 403
+    assert post(base, "/api/admin/admins", {"person_id": casey, "is_admin": True}, token)[0] == 403
     assert post(base, "/api/profile", {"is_platform_admin": True}, token)[0] == 200  # ignored
     assert not graph.store.node(casey, Person).is_platform_admin
 
@@ -178,7 +179,7 @@ def test_admin_reads_and_edits_an_account_and_it_is_logged(world, tmp_path):
     ({"email": "not an email"}, 400),
     ({"email": CASEY}, 409),  # someone else's
     ({"email": 7}, 400),
-    ({"is_platform_admin": "yes"}, 400),
+    ({"is_platform_admin": True}, 400),  # the owner's tool, not an account field
     ({"analytics_consent": True}, 400),  # consent is the person's alone
     ({"ai_uses_history": False}, 400),
     ({"id": "other"}, 400),
@@ -222,16 +223,18 @@ def test_admin_role_changes_have_guard_rails(world):
     base, graph, result, _, audit = world
     admin, _ = sign_in(base, PAT)
     pat, drew = result.people["pat"], result.people["drew"]
-    status, data = post(base, "/api/admin/account", {"person_id": pat, "is_platform_admin": False}, admin)
+    status, data = post(base, "/api/admin/admins", {"person_id": pat, "is_admin": False}, admin)
     assert status == 400 and "your own admin role" in data["error"]
-    assert post(base, "/api/admin/account", {"person_id": drew, "is_platform_admin": True}, admin)[0] == 200
+    # The role is not an ordinary account field any more.
+    assert post(base, "/api/admin/account", {"person_id": drew, "is_platform_admin": True}, admin)[0] == 400
+    assert post(base, "/api/admin/admins", {"person_id": drew, "is_admin": True}, admin)[0] == 200
     assert graph.store.node(drew, Person).is_platform_admin
     drew_token, me = sign_in(base, DREW)
     assert me["is_platform_admin"]
     # Removing the role signs the ex-admin out, so no old admin session lingers.
-    assert post(base, "/api/admin/account", {"person_id": drew, "is_platform_admin": False}, admin)[0] == 200
+    assert post(base, "/api/admin/admins", {"person_id": drew, "is_admin": False}, admin)[0] == 200
     assert get(base, "/api/me", drew_token)[0] == 401
-    assert [e["detail"] for e in audit.entries()] == ["is_platform_admin", "is_platform_admin"]
+    assert [e["action"] for e in audit.entries()] == ["make admin", "remove admin"]
 
 
 def test_admin_signs_someone_out(world):

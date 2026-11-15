@@ -5,22 +5,25 @@ Two sides, kept apart on purpose:
 - **Your own account** (`my_*`, `update_my_settings`, `sign_out_everywhere`,
   `delete_my_account`): the acting person is always the signed-in session's
   person, passed in by the server, never read from the request.
-- **Platform admins** (`admin_*`): Collectivize staff managing any account:
-  read it in full, edit it, create one, sign it out, delete it, and grant
-  or remove the platform-admin role.
+- **Platform admins** (`admin_*`): Collectivize staff managing accounts:
+  read one in full, edit it, create one, sign it out, delete it. Each of
+  those needs its own power, given by the owner (admin_policy.py).
+- **The owner** (`admins`, `set_admin`): makes and removes admins and
+  chooses each admin's powers.
 
 Rules every admin method follows:
 
-1. The admin check runs first, inside the method, against the stored
-   account (never a flag from the request), so it can't be skipped by
-   calling the method another way.
+1. The admin check (is an admin, and has the power for this) runs first,
+   inside the method, against the stored account (never a flag from the
+   request), so it can't be skipped by calling the method another way.
 2. Every input is validated before anything is written, and each change
    is all-or-nothing.
 3. Every change is written to the audit log: who, what, which account and
    which *fields*, never the values.
 4. Guard rails: deleting needs the account's email typed back; admins use
    their own account page to delete themselves; nobody changes their own
-   admin role; the last platform admin can't be removed.
+   admin role; the last platform admin can't be removed; only the owner
+   touches another admin's account or changes a sign-in email.
 5. Admins can't switch on someone's consent settings (`ai_uses_history`,
    `analytics_consent`): those belong to the person alone.
 """
@@ -33,6 +36,15 @@ from datetime import datetime
 from http import HTTPStatus
 from typing import Any
 
+from backend.admin_policy import (
+    CREATE,
+    DELETE,
+    EDIT,
+    SIGN_OUT,
+    VIEW_AS,
+    VIEW_INFO,
+    AdminPolicy,
+)
 from backend.app_api import (
     EMAIL_SHAPE,
     MAX_EMAIL_LENGTH,
@@ -55,14 +67,15 @@ from backend.objects import (
     VerificationLevel,
 )
 from backend.objects.base import utc_now
-from backend.objects.person import MAX_DISPLAY_NAME
+from backend.objects.person import ADMIN_POWERS, MAX_DISPLAY_NAME
 from backend.sessions import SessionStore
 
 PROFILE_KEYS = frozenset({
     "display_name", "bio", "about", "website", "top3", "colors", "sections",
     "profile_visibility", "rsvp_visibility", "hide_connections",
 })
-ADMIN_KEYS = PROFILE_KEYS | {"person_id", "email", "is_platform_admin"}
+ADMIN_KEYS = PROFILE_KEYS | {"person_id", "email"}
+USER_LIST_LIMIT = 20
 CONSENT_KEYS = ("ai_uses_history", "analytics_consent")
 
 
@@ -74,10 +87,17 @@ class AccountsApi:
         *,
         audit: AuditLog | None = None,
         clock: Callable[[], datetime] = utc_now,
+        owners: frozenset[str] | None = None,
+        logins: frozenset[str] = frozenset(),
     ) -> None:
+        """`owners`: the owners' sign-in emails (None: every admin counts
+        as one, see AdminPolicy). `logins`: emails that have an admin
+        username and password, shown to the owner."""
         self._graphs = graphs
         self._sessions = sessions
         self._clock = clock
+        self._logins = logins
+        self.policy = AdminPolicy(owners)
         self.audit = audit or AuditLog()
 
     # --- your own account ----------------------------------------------------------
@@ -111,26 +131,74 @@ class AccountsApi:
         `confirm` must be your sign-in email. Not undoable."""
         with self._graphs() as graph:
             person = _person(graph, person_id)
+            if self.policy.is_owner(person) and self.policy.owners_are_set:
+                raise ApiError(HTTPStatus.BAD_REQUEST,
+                               "the owner account can't be deleted from the app")
             _require_confirmation(person, body.get("confirm"))
             self._keep_an_admin(graph, person)
             graph.privacy.erase_person(person.id)
-        self._sessions.end_all(person_id)
+        self._sessions.end_all(person_id, "deleted")
         return {"deleted": True}
 
     # --- platform admins -----------------------------------------------------------
 
-    def admin_account(self, admin_id: str, params: dict[str, str]) -> dict[str, Any]:
-        """One account in full, for platform admins."""
+    def rights(self, person_id: str) -> dict[str, Any]:
+        """What this person may do as an admin (for /api/me, so the page
+        shows only the buttons that will work)."""
         with self._graphs() as graph:
-            _require_admin(graph, admin_id)
+            person = _person(graph, person_id)
+            return {"is_owner": self.policy.is_owner(person),
+                    "powers": sorted(self.policy.powers(person))}
+
+    def admin_users(self, admin_id: str, params: dict[str, str]) -> dict[str, Any]:
+        """Search every account by name (and by email, with `view_info`).
+        Any platform admin; emails only with `view_info`."""
+        needle = params.get("q", "").strip().casefold()[:100]
+        with self._graphs() as graph:
+            admin = self.policy.admin(graph, admin_id)
+            full = VIEW_INFO in self.policy.powers(admin)
+            people = [
+                p for p in graph.store.nodes(Person)
+                if not needle or needle in p.display_name.casefold()
+                or (full and needle in (p.email or ""))
+            ]
+            people.sort(key=lambda p: p.display_name.casefold())
+            return {
+                "total": len(people),
+                "users": [
+                    {"id": p.id, "name": p.display_name, "email": p.email if full else None,
+                     "is_platform_admin": p.is_platform_admin,
+                     "connections": len(graph.connections.connections_of(p.id)),
+                     "orgs": len(graph.visibility.org_ids_of(p.id))}
+                    for p in people[:USER_LIST_LIMIT]
+                ],
+            }
+
+    def admin_account(self, admin_id: str, params: dict[str, str]) -> dict[str, Any]:
+        """One account in full (needs `view_info`)."""
+        with self._graphs() as graph:
+            admin = self.policy.require(graph, admin_id, VIEW_INFO)
             person = _person(graph, _id(params.get("id"), "person"))
+            self.policy.check_target(admin, person)
             return self._account_json(graph, person)
 
-    def admin_update(self, admin_id: str, body: dict[str, Any]) -> dict[str, Any]:
-        """Edit an account: `person_id` plus any profile field (as
-        POST /api/profile), `email`, or `is_platform_admin`."""
+    def check_view_as(self, admin_id: str, target: Any) -> str | None:
+        """The person to view as (needs `view_as`), or None to stop."""
         with self._graphs() as graph:
-            _require_admin(graph, admin_id)
+            if target is None:
+                self.policy.admin(graph, admin_id)
+                return None
+            admin = self.policy.require(graph, admin_id, VIEW_AS)
+            person = _person(graph, _id(target, "person"))
+            self.policy.check_target(admin, person)
+            return person.id
+
+    def admin_update(self, admin_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Edit an account (needs `edit`): `person_id` plus any profile field
+        (as POST /api/profile). `email` can be changed by the owner only: a
+        new sign-in email is a new way into the account."""
+        with self._graphs() as graph:
+            admin = self.policy.require(graph, admin_id, EDIT)
             unknown = sorted(set(body) - ADMIN_KEYS)
             if unknown:
                 raise ApiError(HTTPStatus.BAD_REQUEST, f"cannot change: {', '.join(unknown)[:200]}")
@@ -139,14 +207,13 @@ class AccountsApi:
             except ValueError as error:
                 raise ApiError(HTTPStatus.BAD_REQUEST, str(error)) from None
             person = _person(graph, _id(body.get("person_id"), "person"))
+            self.policy.check_target(admin, person)
             account: dict[str, Any] = {}
             if "email" in body:
-                account["email"] = _new_email(graph, body["email"], keep=person.id)
-            if "is_platform_admin" in body:
-                account["is_platform_admin"] = self._new_role(
-                    graph, admin_id, person, body["is_platform_admin"]
-                )
-            account = {k: v for k, v in account.items() if getattr(person, k) != v}
+                email = _new_email(graph, body["email"], keep=person.id)
+                if email != person.email:
+                    self.policy.require_owner(graph, admin_id)
+                    account["email"] = email
             if not changes and not account:
                 return self._account_json(graph, person)
             with graph.store.transaction():
@@ -156,14 +223,13 @@ class AccountsApi:
                     person = graph.store.save_node(replace(person, **account))
             self.audit.record(admin_id, "update", person.id, self._clock(),
                               ", ".join(sorted({*changes, *account})))
-            if account.get("is_platform_admin") is False:
-                self._sessions.end_all(person.id)  # an ex-admin starts over
             return self._account_json(graph, person)
 
     def admin_create(self, admin_id: str, body: dict[str, Any]) -> dict[str, Any]:
-        """Create an account for `email` (optionally with `display_name`)."""
+        """Create an account for `email`, optionally with `display_name`
+        (needs `create`)."""
         with self._graphs() as graph:
-            _require_admin(graph, admin_id)
+            self.policy.require(graph, admin_id, CREATE)
             name = body.get("display_name")
             if name is not None and (
                 not isinstance(name, str) or not 0 < len(name.strip()) <= MAX_DISPLAY_NAME
@@ -183,43 +249,92 @@ class AccountsApi:
             return self._account_json(graph, person)
 
     def admin_sign_out(self, admin_id: str, body: dict[str, Any]) -> dict[str, Any]:
-        """End every session of an account (e.g. after a report)."""
+        """End every session of an account (needs `sign_out`)."""
         with self._graphs() as graph:
-            _require_admin(graph, admin_id)
+            admin = self.policy.require(graph, admin_id, SIGN_OUT)
             person = _person(graph, _id(body.get("person_id"), "person"))
+            self.policy.check_target(admin, person)
         ended = self._sessions.end_all(person.id)
         self.audit.record(admin_id, "sign-out", person.id, self._clock())
         return {"person_id": person.id, "sessions_ended": ended}
 
     def admin_delete(self, admin_id: str, body: dict[str, Any]) -> dict[str, Any]:
-        """True erasure of someone's account. `confirm` must be that
-        account's sign-in email. Not undoable."""
+        """True erasure of someone's account (needs `delete`). `confirm`
+        must be that account's sign-in email. Not undoable."""
         with self._graphs() as graph:
-            _require_admin(graph, admin_id)
+            admin = self.policy.require(graph, admin_id, DELETE)
             person = _person(graph, _id(body.get("person_id"), "person"))
             if person.id == admin_id:
                 raise ApiError(HTTPStatus.BAD_REQUEST,
                                "delete your own account from your Account page")
+            self.policy.check_target(admin, person)
+            if self.policy.is_owner(person) and self.policy.owners_are_set:
+                raise ApiError(HTTPStatus.BAD_REQUEST, "an owner account can't be deleted here")
             _require_confirmation(person, body.get("confirm"))
             self._keep_an_admin(graph, person)
             graph.privacy.erase_person(person.id)
-        self._sessions.end_all(person.id)
+        self._sessions.end_all(person.id, "deleted")
         self.audit.record(admin_id, "delete", person.id, self._clock())
         return {"deleted": True, "person_id": person.id}
 
-    # --- internals -----------------------------------------------------------------
+    # --- the owner: managing admins ------------------------------------------------
 
-    def _new_role(
-        self, graph: CollectivizeGraph, admin_id: str, person: Person, value: Any
-    ) -> bool:
-        if not isinstance(value, bool):
-            raise ApiError(HTTPStatus.BAD_REQUEST, "is_platform_admin must be true or false")
-        if value != person.is_platform_admin:
-            if person.id == admin_id:
+    def admins(self, owner_id: str) -> dict[str, Any]:
+        """Every platform admin and what they may do (owner only)."""
+        with self._graphs() as graph:
+            self.policy.require_owner(graph, owner_id)
+            people = sorted((p for p in graph.store.nodes(Person) if p.is_platform_admin),
+                            key=lambda p: p.display_name.casefold())
+            return {"all_powers": list(ADMIN_POWERS),
+                    "admins": [self._admin_json(p, owner_id) for p in people]}
+
+    def set_admin(self, owner_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Owner only: make `person_id` an admin or not (`is_admin`), and
+        choose their `powers` (a list from ADMIN_POWERS; empty = view only)."""
+        with self._graphs() as graph:
+            self.policy.require_owner(graph, owner_id)
+            if set(body) - {"person_id", "is_admin", "powers"}:
+                raise ApiError(HTTPStatus.BAD_REQUEST, "send person_id, is_admin and/or powers")
+            person = _person(graph, _id(body.get("person_id"), "person"))
+            is_admin = body.get("is_admin", person.is_platform_admin)
+            powers = body.get("powers", list(person.admin_powers))
+            if not isinstance(is_admin, bool):
+                raise ApiError(HTTPStatus.BAD_REQUEST, "is_admin must be true or false")
+            if (not isinstance(powers, list) or not all(isinstance(p, str) for p in powers)
+                    or len(set(powers)) != len(powers) or not set(powers) <= set(ADMIN_POWERS)):
+                raise ApiError(HTTPStatus.BAD_REQUEST,
+                               f"powers must be chosen from: {', '.join(ADMIN_POWERS)}")
+            if person.id == owner_id:
                 raise ApiError(HTTPStatus.BAD_REQUEST, "you can't change your own admin role")
-            if not value:
+            if self.policy.is_owner(person) and self.policy.owners_are_set:
+                raise ApiError(HTTPStatus.BAD_REQUEST,
+                               "an owner is set in the credentials file, not here")
+            if not is_admin:
                 self._keep_an_admin(graph, person)
-        return value
+            ordered = tuple(p for p in ADMIN_POWERS if p in powers) if is_admin else ()
+            if (is_admin, ordered) == (person.is_platform_admin, person.admin_powers):
+                return self._admin_json(person, owner_id)
+            was_admin = person.is_platform_admin
+            person = graph.store.save_node(
+                replace(person, is_platform_admin=is_admin, admin_powers=ordered)
+            )
+            action = "powers" if was_admin and is_admin else "make admin" if is_admin else "remove admin"
+            self.audit.record(owner_id, action, person.id, self._clock(), ", ".join(ordered))
+            if was_admin and not is_admin:
+                self._sessions.end_all(person.id)  # an ex-admin starts over
+            return self._admin_json(person, owner_id)
+
+    def _admin_json(self, person: Person, viewer_id: str) -> dict[str, Any]:
+        return {
+            "id": person.id, "name": person.display_name, "email": person.email,
+            "is_platform_admin": person.is_platform_admin,
+            "is_owner": self.policy.is_owner(person),
+            "is_you": person.id == viewer_id,
+            "powers": sorted(self.policy.powers(person)),
+            "has_login": (person.email or "") in self._logins,
+        }
+
+    # --- internals -----------------------------------------------------------------
 
     @staticmethod
     def _keep_an_admin(graph: CollectivizeGraph, leaving: Person) -> None:
@@ -262,11 +377,6 @@ class AccountsApi:
             ],
             "sessions": self._sessions.count_for(person.id),
         }
-
-
-def _require_admin(graph: CollectivizeGraph, person_id: str) -> None:
-    if not graph.visibility.is_platform_admin(person_id):
-        raise ApiError(HTTPStatus.FORBIDDEN, "only platform admins can do that")
 
 
 def _require_confirmation(person: Person, confirm: Any) -> None:

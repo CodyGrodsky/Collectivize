@@ -5,7 +5,11 @@ The file (`config/admin.local.json`, git-ignored, written by
 `scripts/set_admin_password.py`) lists the admins:
 
     {"admins": [{"username": "...", "email": "<their account's email>",
-                 "password_hash": "scrypt$..."}]}
+                 "password_hash": "scrypt$...", "role": "owner" | "admin"}]}
+
+`role: "owner"` marks the account that manages the other admins
+(admin_policy.py). It can only be set here, on this machine, never from
+the app.
 
 - Passwords are never stored: only a salted scrypt hash. A file holding a
   plain `password` is refused, so one can't be left lying around.
@@ -51,6 +55,7 @@ class AdminCredential:
     username: str
     email: str  # the platform-admin account this signs in to
     password_hash: str
+    role: str = "admin"  # or "owner"
 
 
 def hash_password(password: str, salt: bytes | None = None) -> str:
@@ -108,13 +113,25 @@ class AdminAuth:
                     f"{path.name} holds a plain password: run scripts/set_admin_password.py instead"
                 )
             return cls(tuple(
-                AdminCredential(str(e["username"]), str(e["email"]).lower(), str(e["password_hash"]))
+                AdminCredential(str(e["username"]), str(e["email"]).lower(),
+                                str(e["password_hash"]), _role(e.get("role", "admin")))
                 for e in entries
             ))
         except (KeyError, TypeError, ValueError) as error:
             if isinstance(error, AdminAuthError):
                 raise
             raise AdminAuthError(f"{path.name} isn't a valid admin credentials file") from None
+
+    @property
+    def owner_emails(self) -> frozenset[str]:
+        return frozenset(c.email for c in self._by_name.values() if c.role == "owner")
+
+    @property
+    def emails(self) -> frozenset[str]:
+        return frozenset(c.email for c in self._by_name.values())
+
+    def credential(self, username: str) -> AdminCredential | None:
+        return self._by_name.get(username.strip().casefold())
 
     def verify(self, username: str, password: str) -> str | None:
         """The admin account's email if the username and password match,
@@ -141,13 +158,20 @@ class AdminAuth:
             return len(recent) >= MAX_FAILURES
 
 
+def _role(value: object) -> str:
+    if value not in ("admin", "owner"):
+        raise AdminAuthError('an admin\'s role must be "admin" or "owner"')
+    return str(value)
+
+
 def save_credential(credential: AdminCredential, path: Path = CREDENTIALS_PATH) -> None:
     """Add or replace one admin in the credentials file (readable only by you)."""
-    existing = AdminAuth.load(path)._by_name if path.exists() else {}
+    existing = dict(AdminAuth.load(path)._by_name) if path.exists() else {}
     existing[credential.username.casefold()] = credential
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"admins": [
-        {"username": c.username, "email": c.email, "password_hash": c.password_hash}
+        {"username": c.username, "email": c.email, "password_hash": c.password_hash,
+         "role": c.role}
         for c in existing.values()
     ]}
     path.touch(mode=0o600, exist_ok=True)

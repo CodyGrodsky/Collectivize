@@ -4,6 +4,36 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-14 — Admin powers, an owner who manages admins, and deleted accounts sent home
+
+**Request:** "ensure that there are as little problems with platform admin as possible and also make it so if an account is deleted they are kicked back to home screen. Also make it so there is another account type that manages the admins and has the ability to change powers of admin. For example view only, delete power, view all info, impersonation power, etc."
+
+### What changed
+- **Admin powers.** Each platform admin now has a list of powers (`Person.admin_powers`): view all info, view as, edit, create, sign people out, delete. With none, an admin can only see the list of accounts (no emails) and the log. Every admin method checks its own power on each request, so a change applies on the admin's next click.
+- **The owner.** A new level above admins (`src/backend/admin_policy.py`). The owner has every power and is the only one who can make or remove admins, set their powers, change a sign-in email, or touch another admin's account. Who the owner is comes from the credentials file (`role: "owner"`), never from the app. New routes: `GET/POST /api/admin/admins`.
+- **Admin page.** The owner gets an "Admins and their powers" panel with a tick box per power and "Remove admin"; "Make platform admin" is in the Manage panel. Other admins only see the buttons their powers allow.
+- **Deleted accounts go home.** When an account is deleted (or signed out everywhere), each of its browsers is sent to the landing page with a short notice. Open pages check every 8 seconds; any click is refused at once. With sign-in turned off, a deleted account is no longer quietly signed in as Drew.
+- **Admin sign-ins end after eight hours.**
+- `scripts/set_admin_password.py` gained `--owner` and `--make-owner <username>`.
+
+### Problems closed
+- An admin could give themselves or anyone the admin role; that is now the owner's alone.
+- An admin with edit rights could change someone's sign-in email and then sign in as them; email changes are now the owner's alone.
+- Admins could read, edit, sign out or delete each other and the owner; admin accounts are now the owner's alone to manage.
+- A view-only admin could see and search every email; emails now need "view all info".
+- The owner account can't be deleted or demoted from the app.
+- `/api/me` now reports `is_owner` and `powers`.
+
+### Decisions
+- "Impersonation" stays read-only view-as, as the v1.1 spec asks.
+- Without an owner in the credentials file nobody can manage admins; tests and old callers that pass no owner list treat every admin as an owner, as before.
+- A new admin still needs a login made with the script on the machine running the server; the owner can't set passwords from the page.
+
+### Tests
+- `tests/backend/test_admin_powers.py` (17 tests); `test_accounts.py` updated for the moved role change.
+
+---
+
 ## 2026-11-14 — A hidden, password-protected admin sign-in at /admin
 
 **Request:** "I need a hidden method to sign in that is still easy to log in from, but normal people won't be able to. Make a config file that contains a field for username and password for admins (if this is secure enough and if not, then recommend other methods)"
