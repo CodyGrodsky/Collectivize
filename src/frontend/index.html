@@ -11,26 +11,11 @@
     <script src="shared.js" defer></script>
     <script src="signin-form.js" defer></script>
     <script src="landing.js" defer></script>
-    <script type="module">
-        import { initLogo3D } from "./logo3d.js";
-        const box = document.getElementById("logo3d");
-        initLogo3D({ container: box, logoSrc: "../../public/brand/logo.png" })
-            .then(() => box.classList.add("is-3d"))
-            .catch((error) => console.warn("3D logo unavailable; showing the image.", error));
-    </script>
 </head>
 <body>
     <main class="cover">
         <div class="cover-hero" id="hero">
-<<<<<<< HEAD
-            <!-- The 3D dot logo (logo3d.js). The spinning image shows until it's ready,
-                 and stays if WebGL or the three.js download isn't available. -->
-            <div class="cover-logo3d" id="logo3d" role="img" aria-label="Collectivize logo">
-                <img class="cover-logo logo-spin" src="../../public/brand/logo.svg" alt="" width="600" height="600">
-            </div>
-=======
             <img class="cover-logo logo-spin" src="/public/brand/logo.svg" alt="" width="600" height="600">
->>>>>>> e958a1bba480de7527dc47746c866261c5aabdc1
             <h1 class="cover-title">
                 <img class="cover-wordmark" src="/public/brand/wordmark-on-paper.svg" alt="Collectivize" width="1210" height="128">
             </h1>
