@@ -418,7 +418,8 @@
 
         orgCard(org) {
             const meta = [KIND[org.kind] || org.kind, ...org.tags].join(" · ");
-            return el("li", { className: "dc-card dc-entity" }, [
+            // The whole card opens the organization's page, not just its name.
+            return el("li", { className: "dc-card dc-entity is-link" }, [
                 el("span", { className: "dc-entity-icon is-org", text: cleanName(org.name).charAt(0), attrs: { "aria-hidden": "true" } }),
                 el("div", { className: "dc-body" }, [
                     el("h2", { className: "dc-card-title" }, [el("a", { text: cleanName(org.name), attrs: { href: Ui.orgHref(org.id) } })]),

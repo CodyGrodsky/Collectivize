@@ -530,6 +530,11 @@ button, input, select { font: inherit; color: inherit; }
 .dc-card-title a { color: inherit; text-decoration: none; }
 .dc-card-title a:hover { text-decoration: underline; }
 
+/* A card that's one big link: the title's link stretches over the whole card. */
+.dc-entity.is-link { position: relative; cursor: pointer; }
+.dc-entity.is-link .dc-card-title a::after { content: ""; position: absolute; inset: 0; }
+.dc-entity.is-link:hover .dc-card-title a { text-decoration: underline; }
+
 .dc-entity { grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; }
 
 .dc-entity-icon {
