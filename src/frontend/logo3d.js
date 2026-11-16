@@ -387,9 +387,27 @@ export async function initLogo3D(options = {}) {
     renderer.render(scene, camera);
   });
 
+  // Is this screen point on (or within `slop` px of) a visible dot? The
+  // canvas fills a box much bigger than the logo, so callers use this to
+  // tell a click on the logo from a click on the empty space around it.
+  const projected = new THREE.Vector3();
+  const hits = (clientX, clientY, slop = 24) => {
+    const r = canvas.getBoundingClientRect();
+    points.updateMatrixWorld();
+    for (let i = 0; i < N; i++) {
+      if (scale[i] <= 0) continue;
+      projected.fromArray(pos, i * 3).applyMatrix4(points.matrixWorld).project(camera);
+      const x = r.left + ((projected.x + 1) / 2) * r.width;
+      const y = r.top + ((1 - projected.y) / 2) * r.height;
+      if (Math.abs(x - clientX) < slop && Math.abs(y - clientY) < slop) return true;
+    }
+    return false;
+  };
+
   return {
     goTo,
     toggle,
+    hits,
     spin: (speed = o.flick) => { spinVel += speed; },
     reset() { rotX = rotY = velX = velY = panX = panY = 0; },
     destroy() {

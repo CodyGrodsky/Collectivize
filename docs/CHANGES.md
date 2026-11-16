@@ -4,6 +4,12 @@ This is a running log of changes made to Collectivize, newest first. Each entry 
 
 ---
 
+## 2026-11-16 — Home screen: the empty space around the logo opens Discover too
+
+- The 3D logo's canvas covers most of the signed-in home screen, so most "empty" clicks landed on it and only spun the logo. `logo3d.js` now has `hits(x, y)` (is this point on a visible dot?), and `landing.js` counts only the dots as the logo: a click anywhere else opens Discover. Dragging the logo to tilt it never navigates. Over the empty part of the canvas the cursor is a pointer, over the dots it's "grab".
+
+---
+
 ## 2026-11-15 — Demo: real Northeastern club names, fake people
 
 - `demo/neu_orgs.json`: the public list of Boston student orgs from engage.northeastern.edu (580 names and categories).

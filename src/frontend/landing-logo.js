@@ -4,5 +4,8 @@ import { initLogo3D } from "./logo3d.js";
 
 const box = document.getElementById("logo3d");
 initLogo3D({ container: box, logoSrc: "/public/brand/logo.png" })
-    .then(() => box.classList.add("is-3d"))
+    .then((logo) => {
+        box.classList.add("is-3d");
+        box.logo3d = logo; // landing.js asks it whether a click hit the dots
+    })
     .catch((error) => console.warn("3D logo unavailable; showing the image.", error));

@@ -26,9 +26,24 @@
     function showSignedIn() {
         $("signin").hidden = true;
         document.body.classList.add("is-signed-in");
-        const isLogo = (target) => target instanceof Element && target.closest("#logo3d");
+        // The logo's canvas is far bigger than the logo, so only the dots
+        // themselves count as the logo (while the 3D logo loads, its image).
+        const box = $("logo3d");
+        const isLogo = (event) => {
+            if (!(event.target instanceof Element) || !box.contains(event.target)) return false;
+            return box.logo3d ? box.logo3d.hits(event.clientX, event.clientY) : event.target.tagName === "IMG";
+        };
+        // A drag (tilting the logo) isn't a click, wherever it ends.
+        let downAt = null;
+        document.addEventListener("pointerdown", (event) => { downAt = [event.clientX, event.clientY]; }, true);
+        const dragged = (event) => downAt && Math.hypot(event.clientX - downAt[0], event.clientY - downAt[1]) > 5;
         document.addEventListener("click", (event) => {
-            if (!isLogo(event.target)) location.assign("discover");
+            if (!dragged(event) && !isLogo(event)) location.assign("discover");
+        });
+        // Over the logo's empty space, show the "opens something" hand, not "grab".
+        box.addEventListener("pointermove", (event) => {
+            const canvas = box.querySelector("canvas");
+            if (canvas && event.buttons === 0) canvas.style.cursor = isLogo(event) ? "grab" : "pointer";
         });
         document.addEventListener("keydown", (event) => {
             if (event.key === "Enter" || event.key === " ") location.assign("discover");
